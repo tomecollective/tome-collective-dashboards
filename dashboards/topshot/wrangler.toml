@@ -1,0 +1,7 @@
+name = "tome-topshot-dashboard"
+main = "worker/index.js"
+compatibility_date = "2026-08-11"
+
+# No KV needed yet — small seed dataset served directly. Once real Cadence
+# script queries are wired in (next session), consider a short KV cache layer
+# since on-chain queries are slower than serving a static bundled file.

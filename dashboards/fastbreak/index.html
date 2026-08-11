@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tome Edge: Fast Break</title>
+<style>
+  body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
+  .subtitle { color: #8fa89f; margin-bottom: 32px; }
+  table { width: 100%; max-width: 700px; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; }
+  th { color: #0C7958; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
+  th:hover { color: #f5f5f0; }
+  th.sorted-asc::after { content: " ▲"; }
+  th.sorted-desc::after { content: " ▼"; }
+</style>
+</head>
+<body>
+  <h1>Tome Edge: Fast Break</h1>
+  <p class="subtitle">Today's objective, click any column header to sort. Prototype — placeholder rows.</p>
+  <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th data-key="name">Player</th>
+        <th data-key="team">Team</th>
+        <th data-key="opp">Opp</th>
+        <th data-key="proj">Proj</th>
+        <th data-key="ytd">YTD</th>
+        <th data-key="l10">L10</th>
+      </tr>
+    </thead>
+    <tbody id="players-body"></tbody>
+  </table>
+
+  <script>
+    const WORKER_URL = "https://tome-fastbreak-dashboard.YOUR_SUBDOMAIN.workers.dev/api/fastbreak";
+    let players = [];
+    let sortKey = null;
+    let sortDir = 1;
+
+    function render() {
+      const tbody = document.getElementById("players-body");
+      tbody.innerHTML = "";
+      players.forEach(p => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp}</td><td>${p.proj ?? '—'}</td><td>${p.ytd}</td><td>${p.l10}</td>`;
+        tbody.appendChild(row);
+      });
+      document.querySelectorAll("th").forEach(th => {
+        th.classList.remove("sorted-asc", "sorted-desc");
+        if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+      });
+    }
+
+    document.querySelectorAll("th[data-key]").forEach(th => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        sortDir = (sortKey === key) ? -sortDir : 1;
+        sortKey = key;
+        players.sort((a, b) => {
+          const av = a[key], bv = b[key];
+          if (typeof av === "number") return (av - bv) * sortDir;
+          return String(av).localeCompare(String(bv)) * sortDir;
+        });
+        render();
+      });
+    });
+
+    async function loadData() {
+      const res = await fetch(WORKER_URL);
+      const data = await res.json();
+      players = data.players;
+      render();
+    }
+
+    loadData().catch(err => {
+      document.body.innerHTML += "<p style='color:#c0392b'>Failed to load data: " + err.message + "</p>";
+    });
+  </script>
+</body>
+</html>

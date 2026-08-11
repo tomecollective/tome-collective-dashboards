@@ -1,0 +1,13 @@
+{
+  "dashboard_name": "Tome Edge: NBA Top Shot",
+  "last_updated": "2026-08-11",
+  "moments": [
+    {"id": "m1", "player": "LeBron James", "team": "Lakers", "league": "NBA", "season": "2025-26", "tier": "Legendary", "set": "Holo Icon", "population": 199, "burned": 4, "last_sale": 420.00, "avg_sale_30d": 395.50, "sale_count_30d": 6},
+    {"id": "m2", "player": "Victor Wembanyama", "team": "Spurs", "league": "NBA", "season": "2025-26", "tier": "Rare", "set": "Metallic Gold LE", "population": 750, "burned": 12, "last_sale": 88.00, "avg_sale_30d": 91.25, "sale_count_30d": 22},
+    {"id": "m3", "player": "Caitlin Clark", "team": "Fever", "league": "WNBA", "season": "2026", "tier": "Legendary", "set": "Holo Icon", "population": 99, "burned": 1, "last_sale": 610.00, "avg_sale_30d": 585.00, "sale_count_30d": 4},
+    {"id": "m4", "player": "Angel Reese", "team": "Sky", "league": "WNBA", "season": "2026", "tier": "Rare", "set": "Metallic Gold LE", "population": 500, "burned": 8, "last_sale": 65.00, "avg_sale_30d": 61.75, "sale_count_30d": 15},
+    {"id": "m5", "player": "Anthony Edwards", "team": "Timberwolves", "league": "NBA", "season": "2025-26", "tier": "Common", "set": "Base Set", "population": 5000, "burned": 40, "last_sale": 8.50, "avg_sale_30d": 9.10, "sale_count_30d": 60},
+    {"id": "m6", "player": "A'ja Wilson", "team": "Aces", "league": "WNBA", "season": "2026", "tier": "Rare", "set": "Fresh Gems", "population": 400, "burned": 5, "last_sale": 72.00, "avg_sale_30d": 70.20, "sale_count_30d": 11}
+  ],
+  "note": "Seed data for UI/filter testing. Real population/burned/sale data pending Cadence script build against the TopShot smart contract, scoped as its own session per the build roadmap."
+}

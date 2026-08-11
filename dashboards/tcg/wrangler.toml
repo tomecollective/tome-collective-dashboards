@@ -1,0 +1,12 @@
+name = "tome-chase-index"
+main = "worker/index.js"
+compatibility_date = "2026-08-08"
+
+# KV binding is commented out for tonight's prototype — nothing to bind yet.
+# Once real weekly snapshots are needed, create the namespace with:
+#   wrangler kv:namespace create CHASE_INDEX_KV
+# then uncomment below with the id it gives you.
+#
+# [[kv_namespaces]]
+# binding = "CHASE_INDEX_KV"
+# id = "REPLACE_WITH_REAL_ID"

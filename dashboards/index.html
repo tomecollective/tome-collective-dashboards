@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tome Analytics — All Dashboards</title>
+<style>
+  body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.4rem; margin-bottom: 4px; }
+  .subtitle { color: #8fa89f; margin-bottom: 40px; max-width: 600px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+  .card { background: #10160f; border-radius: 10px; padding: 24px; text-decoration: none; color: inherit; display: block; transition: transform 0.15s; }
+  .card:hover { transform: translateY(-2px); }
+  .card.edge { border: 1px solid #0C7958; }
+  .card.vault { border: 1px solid #d4a72c; }
+  .badge { display: inline-block; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 10px; border-radius: 4px; margin-bottom: 12px; }
+  .badge.edge { background: #0C7958; color: #fff; }
+  .badge.vault { background: #d4a72c; color: #1a1a1a; }
+  .card h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.3rem; margin: 0 0 8px 0; }
+  .card p { color: #8fa89f; font-size: 0.85rem; margin: 0; line-height: 1.5; }
+  .status { display: inline-block; margin-top: 12px; font-size: 0.7rem; color: #6b7d76; }
+  footer { margin-top: 48px; font-size: 0.7rem; color: #6b7d76; }
+</style>
+</head>
+<body>
+  <h1>Tome Analytics</h1>
+  <p class="subtitle">Every tool, in one place. Each card shows which tier unlocks it — green for
+  Tome Edge, gold for Tome Vault.</p>
+
+  <div class="grid">
+    <a class="card edge" href="fastbreak/index.html">
+      <span class="badge edge">Tome Edge</span>
+      <h2>Fast Break</h2>
+      <p>Today's Fast Break objective, sortable player stats, live YTD/L10 data.</p>
+      <span class="status">Live data (ESPN)</span>
+    </a>
+
+    <a class="card edge" href="topshot/index.html">
+      <span class="badge edge">Tome Edge</span>
+      <h2>NBA Top Shot</h2>
+      <p>Moment population, burned supply, and sale history. NBA/WNBA toggle, player/team/season/tier filters.</p>
+      <span class="status">Seed data — Cadence build next</span>
+    </a>
+
+    <a class="card vault" href="tcg/index.html">
+      <span class="badge vault">Tome Vault</span>
+      <h2>Pokemon Chase Modern 50</h2>
+      <p>Chase-card index trend chart, full candidate pool by set, transparent methodology.</p>
+      <span class="status">Prototype — partial data</span>
+    </a>
+  </div>
+
+  <footer>Powered by Tome Analytics</footer>
+</body>
+</html>

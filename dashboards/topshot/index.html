@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tome Edge: NBA Top Shot</title>
+<style>
+  body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
+  .subtitle { color: #8fa89f; margin-bottom: 24px; }
+
+  .league-toggle { display: flex; gap: 0; margin-bottom: 24px; border: 1px solid #1c2622; border-radius: 6px; width: fit-content; overflow: hidden; }
+  .league-toggle button { background: transparent; border: none; color: #8fa89f; padding: 10px 28px; font-size: 0.9rem; font-weight: bold; cursor: pointer; font-family: inherit; }
+  .league-toggle button.active { background: #0C7958; color: #fff; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; padding: 16px; background: #10160f; border: 1px solid #1c2622; border-radius: 8px; }
+  .filters input, .filters select { background: #0a0f0d; border: 1px solid #1c2622; color: #f5f5f0; padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 0.85rem; }
+  .filters input::placeholder { color: #6b7d76; }
+  .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; font-size: 0.9rem; }
+  th { color: #0C7958; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
+  th:hover { color: #f5f5f0; }
+  .tier-Legendary { color: #d4a72c; font-weight: bold; }
+  .tier-Rare { color: #8fa89f; }
+  .tier-Common { color: #5a6b64; }
+  .empty-state { padding: 40px; text-align: center; color: #6b7d76; }
+  .note { font-size: 0.75rem; color: #6b7d76; margin-top: 24px; border-left: 2px solid #0C7958; padding-left: 12px; max-width: 600px; }
+
+  .my-collection { background: #10160f; border: 1px solid #1c2622; border-radius: 8px; padding: 20px 24px; margin-bottom: 32px; }
+  .wallet-input-row { display: flex; gap: 10px; margin-top: 8px; }
+  .wallet-input-row input { flex: 1; max-width: 400px; background: #0a0f0d; border: 1px solid #1c2622; color: #f5f5f0; padding: 10px 14px; border-radius: 4px; font-family: inherit; font-size: 0.85rem; }
+  .wallet-input-row input::placeholder { color: #6b7d76; }
+  .wallet-input-row button { background: #0C7958; border: none; color: #fff; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+  .wallet-input-row button:hover { background: #0a5f47; }
+  #wallet-result { margin-top: 16px; padding: 16px; background: #0a0f0d; border-radius: 6px; }
+  #wallet-result .total-value { font-size: 1.6rem; font-weight: bold; color: #0C7958; font-family: 'EB Garamond', Georgia, serif; }
+  #wallet-result .moment-count { color: #8fa89f; font-size: 0.85rem; margin-bottom: 8px; }
+  #wallet-result .disclaimer-small { font-size: 0.7rem; color: #6b7d76; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1>Tome Edge: NBA Top Shot</h1>
+  <p class="subtitle">Moment population, burned supply, and sale history. Seed data — real on-chain figures land in the next build phase.</p>
+  <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;margin-bottom:24px;">Powered by Tome Analytics</p>
+
+  <div class="my-collection">
+    <h2 style="margin-top:0;">My Collection</h2>
+    <p class="subtitle" style="margin-bottom:12px;">Enter your Flow wallet address to see your collection's estimated value, based on each
+    moment's 30-day average sale price. Your address is public on-chain data — no login or
+    permission needed to look it up.</p>
+    <div class="wallet-input-row">
+      <input type="text" id="wallet-address" placeholder="0x... your Flow wallet address">
+      <button id="wallet-lookup-btn">Look Up Value</button>
+    </div>
+    <div id="wallet-result" style="display:none;"></div>
+  </div>
+
+  <div class="league-toggle" id="league-toggle">
+    <button data-league="NBA" class="active">NBA</button>
+    <button data-league="WNBA">WNBA</button>
+  </div>
+
+  <div class="filters">
+    <label>Player
+      <input type="text" id="filter-player" placeholder="Search player...">
+    </label>
+    <label>Team
+      <select id="filter-team"><option value="">All Teams</option></select>
+    </label>
+    <label>Season
+      <select id="filter-season"><option value="">All Seasons</option></select>
+    </label>
+    <label>Tier
+      <select id="filter-tier">
+        <option value="">All Tiers</option>
+        <option value="Common">Common</option>
+        <option value="Rare">Rare</option>
+        <option value="Legendary">Legendary</option>
+      </select>
+    </label>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th data-key="player">Player</th>
+        <th data-key="team">Team</th>
+        <th data-key="tier">Tier</th>
+        <th data-key="set">Set</th>
+        <th data-key="population">Pop.</th>
+        <th data-key="burned">Burned</th>
+        <th data-key="circulating">Circulating</th>
+        <th data-key="last_sale">Last Sale</th>
+        <th data-key="avg_sale_30d">Avg (30d)</th>
+      </tr>
+    </thead>
+    <tbody id="moments-body"></tbody>
+  </table>
+  <div id="empty-state" class="empty-state" style="display:none;">No moments match these filters.</div>
+
+  <p class="note">Population, burned, and sale figures are seed data for testing the toggle and
+  filters. Real values will come from read-only Cadence scripts against the TopShot smart
+  contract — see the build roadmap for that scoped, separate work.</p>
+
+  <script>
+    const WORKER_URL = "https://tome-topshot-dashboard.YOUR_SUBDOMAIN.workers.dev/api/topshot";
+    let allMoments = [];
+    let currentLeague = "NBA";
+    let sortKey = null;
+    let sortDir = 1;
+
+    function populateFilterOptions() {
+      const inLeague = allMoments.filter(m => m.league === currentLeague);
+      const teams = [...new Set(inLeague.map(m => m.team))].sort();
+      const seasons = [...new Set(inLeague.map(m => m.season))].sort();
+
+      const teamSelect = document.getElementById("filter-team");
+      const seasonSelect = document.getElementById("filter-season");
+      teamSelect.innerHTML = '<option value="">All Teams</option>' + teams.map(t => `<option value="${t}">${t}</option>`).join("");
+      seasonSelect.innerHTML = '<option value="">All Seasons</option>' + seasons.map(s => `<option value="${s}">${s}</option>`).join("");
+    }
+
+    function getFiltered() {
+      const playerQuery = document.getElementById("filter-player").value.trim().toLowerCase();
+      const team = document.getElementById("filter-team").value;
+      const season = document.getElementById("filter-season").value;
+      const tier = document.getElementById("filter-tier").value;
+
+      let filtered = allMoments.filter(m => m.league === currentLeague);
+      if (playerQuery) filtered = filtered.filter(m => m.player.toLowerCase().includes(playerQuery));
+      if (team) filtered = filtered.filter(m => m.team === team);
+      if (season) filtered = filtered.filter(m => m.season === season);
+      if (tier) filtered = filtered.filter(m => m.tier === tier);
+
+      if (sortKey) {
+        filtered.sort((a, b) => {
+          const av = sortKey === "circulating" ? a.population - a.burned : a[sortKey];
+          const bv = sortKey === "circulating" ? b.population - b.burned : b[sortKey];
+          if (typeof av === "number") return (av - bv) * sortDir;
+          return String(av).localeCompare(String(bv)) * sortDir;
+        });
+      }
+      return filtered;
+    }
+
+    function render() {
+      const filtered = getFiltered();
+      const tbody = document.getElementById("moments-body");
+      const emptyState = document.getElementById("empty-state");
+      tbody.innerHTML = "";
+
+      if (!filtered.length) {
+        emptyState.style.display = "block";
+        return;
+      }
+      emptyState.style.display = "none";
+
+      filtered.forEach(m => {
+        const circulating = m.population - m.burned;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${m.player}</td>
+          <td>${m.team}</td>
+          <td class="tier-${m.tier}">${m.tier}</td>
+          <td>${m.set}</td>
+          <td>${m.population}</td>
+          <td>${m.burned}</td>
+          <td>${circulating}</td>
+          <td>$${m.last_sale.toFixed(2)}</td>
+          <td>$${m.avg_sale_30d.toFixed(2)}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.querySelectorAll("th[data-key]").forEach(th => {
+        th.classList.toggle("sorted", th.dataset.key === sortKey);
+      });
+    }
+
+    document.getElementById("league-toggle").addEventListener("click", e => {
+      if (e.target.tagName !== "BUTTON") return;
+      document.querySelectorAll(".league-toggle button").forEach(b => b.classList.remove("active"));
+      e.target.classList.add("active");
+      currentLeague = e.target.dataset.league;
+      populateFilterOptions();
+      document.getElementById("filter-team").value = "";
+      document.getElementById("filter-season").value = "";
+      render();
+    });
+
+    ["filter-player", "filter-team", "filter-season", "filter-tier"].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener("input", render);
+      el.addEventListener("change", render);
+    });
+
+    document.querySelectorAll("th[data-key]").forEach(th => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        sortDir = (sortKey === key) ? -sortDir : 1;
+        sortKey = key;
+        render();
+      });
+    });
+
+    async function loadData() {
+      const res = await fetch(WORKER_URL);
+      const data = await res.json();
+      allMoments = data.moments;
+      populateFilterOptions();
+      render();
+    }
+
+    // "My Collection" wallet lookup.
+    // TODAY: demo only. No real wallet-to-moment ownership mapping exists yet -
+    // that requires the Cadence script build against the TopShot contract, scoped
+    // separately. This never fabricates a result tied to a specific real address;
+    // it clearly labels the output as a demo using the same seed moments shown
+    // above, so nobody sees a fake dollar figure presented as their real collection.
+    function runWalletLookup(address) {
+      const resultDiv = document.getElementById("wallet-result");
+      if (!address || address.trim().length < 3) {
+        resultDiv.style.display = "block";
+        resultDiv.innerHTML = `<p style="color:#c0392b;">Enter a wallet address to look up.</p>`;
+        return;
+      }
+
+      // Demo calculation: uses all seed moments as a stand-in collection.
+      // Real version will query the specific address's actual holdings on-chain.
+      const totalValue = allMoments.reduce((sum, m) => sum + m.avg_sale_30d, 0);
+      const count = allMoments.length;
+
+      resultDiv.style.display = "block";
+      resultDiv.innerHTML = `
+        <div class="moment-count">${count} moments (demo collection)</div>
+        <div class="total-value">$${totalValue.toFixed(2)}</div>
+        <div class="disclaimer-small">
+          Demo result only — this is not a real lookup of ${address.trim()}. Live wallet
+          ownership queries require the Cadence/Flow integration, not yet built. Value shown
+          is the sum of 30-day average sale price across the demo moment set above, informational
+          only, not investment advice.
+        </div>
+      `;
+    }
+
+    document.getElementById("wallet-lookup-btn").addEventListener("click", () => {
+      runWalletLookup(document.getElementById("wallet-address").value);
+    });
+    document.getElementById("wallet-address").addEventListener("keypress", e => {
+      if (e.key === "Enter") runWalletLookup(e.target.value);
+    });
+
+    // Support a `?wallet=0x...` URL parameter, so a future personalized link
+    // (e.g. sent via Beehiiv, wallet baked into the URL) can pre-fill and
+    // auto-run the lookup without the user re-typing their address.
+    function checkUrlWalletParam() {
+      const params = new URLSearchParams(window.location.search);
+      const wallet = params.get("wallet");
+      if (wallet) {
+        document.getElementById("wallet-address").value = wallet;
+        runWalletLookup(wallet);
+      }
+    }
+
+    loadData().then(checkUrlWalletParam).catch(err => {
+      document.body.innerHTML += "<p style='color:#c0392b'>Failed to load data: " + err.message + "</p>";
+    });
+  </script>
+</body>
+</html>

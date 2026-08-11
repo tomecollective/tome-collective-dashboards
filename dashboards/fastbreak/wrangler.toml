@@ -1,0 +1,7 @@
+name = "tome-fastbreak-dashboard"
+main = "worker/index.js"
+compatibility_date = "2026-08-08"
+
+# No KV needed for this dashboard — it's live/current data, not historical
+# trend tracking like the Chase Index. Each request can pull fresh from the
+# three real data sources (see worker/index.js) once those are wired in.
