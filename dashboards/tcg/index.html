@@ -80,18 +80,6 @@
     const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
     // Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
 
-    async function loadIndex() {
-      const res = await fetch(WORKER_URL);
-      const data = await res.json();
-
-      // Flatten in_index cards for the chart + holdings table
-      const indexCards = [];
-      data.sets.forEach(set => {
-        set.top_10.forEach(card => {
-          if (card.in_index) indexCards.push({ ...card, set: set.set_name });
-        });
-      });
-
     let currentTimeframeDays = 90;
     let indexHistory = []; // populated in loadIndex(), [{date, total}]
 
