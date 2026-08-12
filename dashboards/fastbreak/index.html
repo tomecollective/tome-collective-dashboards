@@ -4,80 +4,115 @@
 <meta charset="UTF-8">
 <title>Tome Edge: Fast Break</title>
 <style>
-  body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
-  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
-  .subtitle { color: #8fa89f; margin-bottom: 32px; }
-  table { width: 100%; max-width: 700px; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; }
-  th { color: #0C7958; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
-  th:hover { color: #f5f5f0; }
-  th.sorted-asc::after { content: " ▲"; }
-  th.sorted-desc::after { content: " ▼"; }
+body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
+.subtitle { color: #8fa89f; margin-bottom: 32px; }
+table { width: 100%; max-width: 700px; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; }
+th { color: #0C7958; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
+th:hover { color: #f5f5f0; }
+th.sorted-asc::after { content: " ▲"; }
+th.sorted-desc::after { content: " ▼"; }
+.export-btn { background: #0C7958; color: #0a0f0d; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
+.export-btn:hover { background: #0fa377; }
 </style>
 </head>
 <body>
-  <h1>Tome Edge: Fast Break</h1>
-  <p class="subtitle">Today's objective, click any column header to sort. Prototype — placeholder rows.</p>
-  <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
+<h1>Tome Edge: Fast Break</h1>
+<p class="subtitle">Today's objective, click any column header to sort. Prototype — placeholder rows.</p>
+<p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
 
-  <table>
-    <thead>
-      <tr>
-        <th data-key="name">Player</th>
-        <th data-key="team">Team</th>
-        <th data-key="opp">Opp</th>
-        <th data-key="proj">Proj</th>
-        <th data-key="ytd">YTD</th>
-        <th data-key="l10">L10</th>
-      </tr>
-    </thead>
-    <tbody id="players-body"></tbody>
-  </table>
+<button class="export-btn" id="export-csv-btn">Download CSV</button>
 
-  <script>
-    const WORKER_URL = "https://tome-fastbreak.tomecollective.workers.dev/api/fastbreak";
-    let players = [];
-    let sortKey = null;
-    let sortDir = 1;
+<table>
+<thead>
+<tr>
+<th data-key="name">Player</th>
+<th data-key="team">Team</th>
+<th data-key="opp">Opp</th>
+<th data-key="proj">Proj</th>
+<th data-key="ytd">YTD</th>
+<th data-key="l10">L10</th>
+</tr>
+</thead>
+<tbody id="players-body"></tbody>
+</table>
 
-    function render() {
-      const tbody = document.getElementById("players-body");
-      tbody.innerHTML = "";
-      players.forEach(p => {
-        const row = document.createElement("tr");
-        row.innerHTML = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp}</td><td>${p.proj ?? '—'}</td><td>${p.ytd}</td><td>${p.l10}</td>`;
-        tbody.appendChild(row);
-      });
-      document.querySelectorAll("th").forEach(th => {
-        th.classList.remove("sorted-asc", "sorted-desc");
-        if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
-      });
-    }
+<script>
+const WORKER_URL = "https://tome-fastbreak.tomecollective.workers.dev/api/fastbreak";
+let players = [];
+let sortKey = null;
+let sortDir = 1;
 
-    document.querySelectorAll("th[data-key]").forEach(th => {
-      th.addEventListener("click", () => {
-        const key = th.dataset.key;
-        sortDir = (sortKey === key) ? -sortDir : 1;
-        sortKey = key;
-        players.sort((a, b) => {
-          const av = a[key], bv = b[key];
-          if (typeof av === "number") return (av - bv) * sortDir;
-          return String(av).localeCompare(String(bv)) * sortDir;
-        });
-        render();
-      });
-    });
+function render() {
+const tbody = document.getElementById("players-body");
+tbody.innerHTML = "";
+players.forEach(p => {
+const row = document.createElement("tr");
+row.innerHTML = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp}</td><td>${p.proj ?? '—'}</td><td>${p.ytd}</td><td>${p.l10}</td>`;
+tbody.appendChild(row);
+});
+document.querySelectorAll("th").forEach(th => {
+th.classList.remove("sorted-asc", "sorted-desc");
+if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+});
+}
 
-    async function loadData() {
-      const res = await fetch(WORKER_URL);
-      const data = await res.json();
-      players = data.players;
-      render();
-    }
+document.querySelectorAll("th[data-key]").forEach(th => {
+th.addEventListener("click", () => {
+const key = th.dataset.key;
+sortDir = (sortKey === key) ? -sortDir : 1;
+sortKey = key;
+players.sort((a, b) => {
+const av = a[key], bv = b[key];
+if (typeof av === "number") return (av - bv) * sortDir;
+return String(av).localeCompare(String(bv)) * sortDir;
+});
+render();
+});
+});
 
-    loadData().catch(err => {
-      document.body.innerHTML += "<p style='color:#c0392b'>Failed to load data: " + err.message + "</p>";
-    });
-  </script>
+function csvEscape(value) {
+const str = String(value ?? "");
+if (/[",\n]/.test(str)) {
+return '"' + str.replace(/"/g, '""') + '"';
+}
+return str;
+}
+
+function downloadCSV() {
+const headers = ["Player", "Team", "Opp", "Proj", "YTD", "L10"];
+const rows = players.map(p => [p.name, p.team, p.opp, p.proj ?? "", p.ytd, p.l10]);
+const csvLines = [headers.join(","), ...rows.map(row => row.map(csvEscape).join(","))];
+const csvContent = csvLines.join("\n");
+const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const today = new Date();
+const yyyy = today.getFullYear();
+const mm = String(today.getMonth() + 1).padStart(2, "0");
+const dd = String(today.getDate()).padStart(2, "0");
+const filename = `tome-edge-fastbreak-${yyyy}-${mm}-${dd}.csv`;
+const link = document.createElement("a");
+link.href = url;
+link.download = filename;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
+}
+
+document.getElementById("export-csv-btn").addEventListener("click", downloadCSV);
+
+async function loadData() {
+const res = await fetch(WORKER_URL);
+const data = await res.json();
+players = data.players;
+render();
+}
+
+loadData().catch(err => {
+document.body.innerHTML += "<p style='color:#c0392b'>Failed to load data: " + err.message + "</p>";
+});
+</script>
 </body>
 </html>
