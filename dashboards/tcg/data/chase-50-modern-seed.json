@@ -1,10 +1,234 @@
 {
   "index_name": "Tome Vault: Pokemon Chase Modern 50",
-  "last_updated": "2026-08-08",
+  "last_updated": "2026-08-13",
   "sets": [
     {
+      "set_name": "XY (base)",
+      "era": "XY",
+      "release_date": "2014-02-05",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
+      "set_name": "XY Evolutions",
+      "era": "XY",
+      "release_date": "2016-11-02",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
+      "set_name": "Sun & Moon (base)",
+      "era": "Sun & Moon",
+      "release_date": "2017-02-03",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
+      "set_name": "Hidden Fates",
+      "era": "Sun & Moon",
+      "release_date": "2019-08-23",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
+      "set_name": "Sword & Shield (base)",
+      "era": "Sword & Shield",
+      "release_date": "2020-02-07",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
+      "set_name": "Evolving Skies",
+      "era": "Sword & Shield",
+      "release_date": "2021-08-27",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
+    },
+    {
       "set_name": "Scarlet & Violet (base)",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2023-03-31",
+      "top_5": [
         {
           "rank": 1,
           "name": "Gardevoir ex",
@@ -503,12 +727,44 @@
           "shortlisted": true,
           "in_index": true,
           "history": []
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 4,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 5,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
         }
       ]
     },
     {
       "set_name": "Paldea Evolved",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2023-06-09",
+      "top_5": [
         {
           "rank": 1,
           "name": "Magikarp",
@@ -1003,7 +1259,9 @@
     },
     {
       "set_name": "Obsidian Flames",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2023-08-11",
+      "top_5": [
         {
           "rank": 1,
           "name": "Charmander (Pokemon Center promo)",
@@ -1018,7 +1276,9 @@
     },
     {
       "set_name": "Paradox Rift",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2023-11-03",
+      "top_5": [
         {
           "rank": 1,
           "name": "Groudon",
@@ -1032,7 +1292,9 @@
     },
     {
       "set_name": "Temporal Forces",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2024-03-22",
+      "top_5": [
         {
           "rank": 1,
           "name": "Raging Bolt",
@@ -1046,7 +1308,9 @@
     },
     {
       "set_name": "Twilight Masquerade",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2024-05-24",
+      "top_5": [
         {
           "rank": 1,
           "name": "Tera Greninja ex",
@@ -1061,7 +1325,9 @@
     },
     {
       "set_name": "Scarlet & Violet 151",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2024-01-26",
+      "top_5": [
         {
           "rank": 1,
           "name": "Venusaur ex",
@@ -1076,7 +1342,9 @@
     },
     {
       "set_name": "Shrouded Fable",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2024-08-02",
+      "top_5": [
         {
           "rank": 1,
           "name": "Duskull",
@@ -1090,7 +1358,9 @@
     },
     {
       "set_name": "Surging Sparks",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2024-11-08",
+      "top_5": [
         {
           "rank": 1,
           "name": "Pikachu ex",
@@ -1105,7 +1375,9 @@
     },
     {
       "set_name": "Prismatic Evolutions",
-      "top_10": [
+      "era": "Scarlet & Violet",
+      "release_date": "2025-01-17",
+      "top_5": [
         {
           "rank": 1,
           "name": "Umbreon ex (\"Sunbreon\")",
@@ -1127,6 +1399,64 @@
           "note": "price unverified"
         }
       ]
+    },
+    {
+      "set_name": "Mega Evolution (base)",
+      "era": "Mega Evolution",
+      "release_date": "2026-08-05",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — also brand-new era, release date is provisional pending confirmation"
+        },
+        {
+          "rank": 2,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — also brand-new era, release date is provisional pending confirmation"
+        },
+        {
+          "rank": 3,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — also brand-new era, release date is provisional pending confirmation"
+        },
+        {
+          "rank": 4,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        },
+        {
+          "rank": 5,
+          "name": "TBD — needs research",
+          "rarity": "TBD",
+          "price": null,
+          "shortlisted": false,
+          "in_index": false,
+          "history": [],
+          "note": "needs research — no real pricing entered yet"
+        }
+      ]
     }
-  ]
+  ],
+  "note": "index_name/sets as before. NEW: each set now carries \"era\" and \"release_date\". \"top_10\" was renamed \"top_5\" to match the candidate-pool UI, which now shows exactly 5 ranked candidates per set (no more ranks 6-10). Sets newly added for XY / Sun & Moon / Sword & Shield / Mega Evolution era coverage are placeholder-only (price: null, note: \"needs research\") — do not treat these as real pricing until David fills them in."
 }
