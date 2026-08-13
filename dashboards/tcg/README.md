@@ -16,25 +16,56 @@ to check access against tonight. **Vault-exclusive once tiers exist.**
 
 ## Page structure
 1. **Index Trend** — line chart of index value over time, with a 7D/30D/90D/180D/1Y timeframe
-   toggle above it. Right now only 2 seeded cards (Gardevoir ex, Magikarp) have mock daily
-   history so the toggle can be tested end to end; the rest show as flat/missing until real data
-   is wired in.
-2. **Index Holdings** — flat table of the 50 in-index cards
-3. **Full Candidate Pool, By Set** — top 5 visible per set, ranks 6-10 behind a "See more"
-   toggle (native `<details>`, easy to instrument for click analytics later). Gold = shortlisted
-   top 3 per set, bold/green = actually in the final 50.
+   toggle above it, and hover tooltips (Chart.js's built-in tooltip, themed to match the page)
+   showing the exact index value at any point on the line. Right now only 2 seeded cards
+   (Gardevoir ex, Magikarp) have mock daily history so the toggle/tooltip can be tested end to
+   end; the rest show as flat/missing until real data is wired in.
+2. **Index Holdings** — flat table of the 50 in-index cards. It renders every card flagged
+   `in_index: true` across all sets, so it scales to the full 50 automatically once research is
+   complete — no code change needed. It's sparse today only because most sets are still
+   placeholder-only (see below), not because of a display limit.
+3. **Full Candidate Pool, By Set** — grouped by era (XY, Sun & Moon, Sword & Shield, Scarlet &
+   Violet, Mega Evolution, oldest first), each set shows exactly its top 5 candidates, no more —
+   the old "See ranks 6-10" toggle is gone. Within those 5:
+   - **Gold** = actually in the final 50-card index. Capped at 3 per set in code (`MAX_GOLD_PER_SET`
+     in index.html), not just by convention — even if a set's data flags more than 3 cards
+     `in_index: true`, only the top 3 by rank can ever render gold.
+   - **Green** = shortlisted (rank 1-3 of the 5 shown) but not in the final index.
+   - **Gray** = not shortlisted (rank 4-5 of the 5 shown) — always exactly 2 per set once a set
+     has 5 candidates entered; fewer if the set doesn't have 5 yet.
+
+   Shortlist tier is derived purely from rank position in code, not from a hand-set `shortlisted`
+   flag in the data — that flag is now legacy/informational only.
+
+## Set eligibility (age gating)
+A set's cards can be shown, ranked, and shortlisted (gray/green) as soon as there's any data for
+them — no waiting period. But a set can't contribute a **gold** (in-index) card until it's been
+out for more than `SET_ELIGIBILITY_DAYS` (30, in index.html) days, based on each set's
+`release_date`. A set that's too new shows a visible note on its card explaining why nothing in
+it is gold yet. This is what the new Mega Evolution placeholder set demonstrates on the live page.
 
 ## Data schema
-See `data/chase-index-schema-template.json` for the annotated reference. Each card's `history`
-field is `[{date, price}]` — this is what both the index-value chart and any future per-card
-detail view will read from. Once the real JustTCG fetch replaces the static seed import, this
-populates automatically per card; nothing about the schema needs to change.
+See `data/chase-index-schema-template.json` for the annotated reference. Each set now carries
+`era` and `release_date` fields in addition to the `top_5` array (renamed from `top_10` now that
+only 5 candidates are ever shown). Each card's `history` field is `[{date, price}]` — this is what
+both the index-value chart and any future per-card detail view will read from. Once the real
+JustTCG fetch replaces the static seed import, this populates automatically per card; nothing
+about the schema needs to change.
+
+## Era coverage
+The index now spans XY forward — XY, Sun & Moon, Sword & Shield, Scarlet & Violet, and Mega
+Evolution — closing the previous gap between the Vintage (WOTC) index and this Modern one. The
+newly-added XY, Sun & Moon, Sword & Shield, and Mega Evolution sets in
+`chase-50-modern-seed.json` are placeholder-only right now (`price: null`, `note: "needs
+research"`) — nobody has researched real pricing for them yet. Don't treat those numbers as real;
+fill them in via the research workflow below.
 
 ## Research workflow (David's part)
-Fill in `top_10` per eligible set (Sword & Shield forward, and only sets released 1+ month ago —
-see the new-set eligibility rule) with real cards and current pricing. Once all sets are
-populated and the top-50-overall selection is finalized, flip `in_index` to `true` on exactly
-those 50. Historical `history` arrays can now come directly from JustTCG's API once wired in,
+Fill in `top_5` per eligible set (XY forward) with real cards and current pricing — replace the
+placeholder `"TBD — needs research"` rows as you go, rather than guessing values. Once all sets
+are populated and the top-50-overall selection is finalized, flip `in_index` to `true` on exactly
+those 50 (subject to the 3-per-set cap and the 30-day age gate, both enforced automatically by the
+frontend). Historical `history` arrays can now come directly from JustTCG's API once wired in,
 rather than needing manual historical research — that part of the original plan is no longer
 necessary given the API's retention capability.
 
@@ -54,14 +85,13 @@ necessary given the API's retention capability.
    then swap the static import in `worker/index.js` for the live fetch documented inline there
 
 ## Future: usage analytics
-Each set's "See ranks 6-10" toggle is a native `<details>` element specifically so it's easy to
-instrument later — a `toggle` event listener per element, logged to wherever analytics eventually
-lives, tells you exactly which sets people actually dig into vs. which ones nobody expands.
+The "See ranks 6-10" toggle mentioned in earlier notes has been removed — the candidate pool now
+shows a fixed top 5 per set, so there's nothing left to expand.
 
 ## What's deliberately NOT built tonight
 - **Live JustTCG integration** — documented and ready to wire in, but needs your real API key
   added as a Cloudflare secret, which has to happen on your end
 - **Tier gating** — intentionally open. Add an access check once Stripe/tiers are live.
-- **Full 50-card + full top-10-per-set data** — this is a partial prototype dataset.
+- **Full 50-card + full top-5-per-set data** — this is a partial prototype dataset.
 
 
