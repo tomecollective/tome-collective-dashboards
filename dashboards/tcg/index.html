@@ -8,6 +8,8 @@
 body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
 h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
 h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #d4a72c; margin-top: 48px; }
+h3.era-heading { font-family: 'EB Garamond', Georgia, serif; font-size: 1.15rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1c2622; padding-bottom: 6px; margin: 32px 0 16px 0; }
+h3.era-heading:first-of-type { margin-top: 8px; }
 .subtitle { color: #8fa89f; margin-bottom: 32px; }
 .disclaimer { font-size: 0.8rem; color: #6b7d76; border-left: 2px solid #d4a72c; padding-left: 12px; margin-bottom: 32px; max-width: 640px; }
 #chart-container { max-width: 900px; margin-bottom: 24px; }
@@ -15,23 +17,19 @@ h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #d4a7
 .timeframe-toggle button { background: transparent; border: 1px solid #1c2622; color: #8fa89f; padding: 6px 14px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
 .timeframe-toggle button.active { background: #d4a72c; border-color: #d4a72c; color: #1a1a1a; }
 .timeframe-toggle button:hover:not(.active) { border-color: #d4a72c; color: #f5f5f0; }
-.legend { display: flex; gap: 24px; font-size: 0.8rem; color: #8fa89f; margin-bottom: 32px; }
+.legend { display: flex; gap: 24px; font-size: 0.8rem; color: #8fa89f; margin-bottom: 32px; flex-wrap: wrap; }
 .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
-.sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
+.sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; margin-bottom: 8px; }
 .set-card { background: #10160f0f; border: 1px solid #1c2622; border-radius: 8px; padding: 16px 20px; }
-.set-card h3 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.1rem; margin: 0 0 12px 0; color: #f5f5f0; }
+.set-card h4 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.1rem; margin: 0 0 4px 0; color: #f5f5f0; }
+.set-card .release-date { font-size: 0.7rem; color: #6b7d76; margin-bottom: 10px; }
+.set-card .ineligible-note { font-size: 0.72rem; color: #b8892c; background: rgba(212, 167, 44, 0.08); border-left: 2px solid #d4a72c; padding: 6px 8px; margin-bottom: 10px; line-height: 1.35; }
 .set-card ol { margin: 0; padding-left: 20px; }
-.set-card li { padding: 4px 0; color: #b8c4bf; font-size: 0.9rem; }
-.set-card li.shortlisted { color: #d4a72c; }
-.set-card li.in-index { font-weight: bold; color: #f5f5f0; }
-.set-card li.in-index.shortlisted { color: #0C7958; }
+.set-card li { padding: 4px 0; color: #8fa89f; font-size: 0.9rem; }
+.set-card li.tier-gold { color: #d4a72c; font-weight: bold; }
+.set-card li.tier-green { color: #0C7958; }
+.set-card li.tier-gray { color: #6b7d76; }
 .set-card .price { float: right; color: #8fa89f; font-weight: normal; }
-.see-more { margin-top: 8px; }
-.see-more summary { color: #d4a72c; cursor: pointer; font-size: 0.8rem; list-style: none; }
-.see-more summary::-webkit-details-marker { display: none; }
-.see-more summary:before { content: "+ "; }
-.see-more[open] summary:before { content: "− "; }
-.see-more ol { margin-top: 8px; }
 table { width: 100%; max-width: 900px; border-collapse: collapse; margin-bottom: 40px; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; }
 th { color: #d4a72c; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
@@ -42,7 +40,7 @@ th { color: #d4a72c; text-transform: uppercase; font-size: 0.75rem; letter-spaci
 </head>
 <body>
 <h1>Tome Vault: Pokemon Chase Modern 50</h1>
-<p class="subtitle">Pokemon TCG chase-card index, Sword &amp; Shield forward. Prototype — partial data.</p>
+<p class="subtitle">Pokemon TCG chase-card index, XY forward. Prototype — partial data.</p>
 <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
 <p class="disclaimer">This index is informational only and does not constitute investment advice.
 Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
@@ -68,24 +66,56 @@ not recommend buying, selling, or holding any card based on this index.</p>
 </table>
 
 <h2>Full Candidate Pool, By Set</h2>
-<p class="subtitle" style="max-width:700px">Top 10 chase-tier candidates per eligible set.
-<span style="color:#d4a72c">Gold</span> marks the top 3 shortlisted per set (per the locked
-methodology). <strong>Bold</strong> marks the cards that actually made the final 50-card index.
-A card can be shortlisted without making the index if it didn't rank in the overall top 50.</p>
+<p class="subtitle" style="max-width:700px">Top 5 chase-tier candidates per eligible set, spanning
+XY through Mega Evolution era. <span style="color:#d4a72c">Gold</span> marks cards that actually
+made the final 50-card index (capped at 3 per set). <span style="color:#0C7958">Green</span> marks
+the rest of that set's top 3 — shortlisted, but not in the final 50. Gray marks ranks 4-5, which
+are shown for context but were never in the running. A newly-released set's cards can still show up
+and rank here, but none can turn gold until the set has been out for over a month.</p>
 <div class="legend">
-<span><span class="legend-swatch" style="background:#8fa89f"></span>Not shortlisted</span>
-<span><span class="legend-swatch" style="background:#d4a72c"></span>Shortlisted (top 3)</span>
-<span><span class="legend-swatch" style="background:#0C7958"></span>In final index</span>
+<span><span class="legend-swatch" style="background:#d4a72c"></span>In final index</span>
+<span><span class="legend-swatch" style="background:#0C7958"></span>Shortlisted (top 3 of 5), not in index</span>
+<span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
 </div>
-<div class="sets-grid" id="sets-grid"></div>
+<div id="sets-by-era"></div>
 
 <script>
 const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
 // Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
 
+// A set can't contribute a gold ("in final index") card until it's been out
+// this many days. Cards can still be shown/ranked/shortlisted before that —
+// this only blocks the gold tier.
+const SET_ELIGIBILITY_DAYS = 30;
+
+// A set can never contribute more than this many cards to the final index,
+// no matter what the underlying data says.
+const MAX_GOLD_PER_SET = 3;
+
+// Eras rendered oldest-first, closing the gap between the Vintage (WOTC)
+// index and this Modern one. Any era name in the data that isn't listed
+// here still renders, just after these in whatever order it was returned.
+const ERA_ORDER = ["XY", "Sun & Moon", "Sword & Shield", "Scarlet & Violet", "Mega Evolution"];
+
 let currentTimeframeDays = 90;
 let indexHistory = []; // populated in loadIndex(), [{date, total}]
 let indexCards = []; // populated in loadIndex(), same data rendered into the Index Holdings table
+
+function daysSince(dateStr) {
+  const then = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  return (now - then) / 86400000;
+}
+
+function isSetEligibleForGold(set) {
+  if (!set.release_date) return true; // no release date on record — don't block on missing data
+  return daysSince(set.release_date) > SET_ELIGIBILITY_DAYS;
+}
+
+function formatReleaseDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+}
 
 function renderChart() {
 const cutoff = new Date();
@@ -106,10 +136,31 @@ backgroundColor: "rgba(212, 167, 44, 0.15)",
 fill: true,
 tension: 0.2,
 pointRadius: 2,
+pointHoverRadius: 5,
+pointHoverBackgroundColor: "#d4a72c",
+pointHoverBorderColor: "#0a0f0d",
 }],
 },
 options: {
-plugins: { legend: { display: false } },
+interaction: { mode: "index", intersect: false },
+plugins: {
+legend: { display: false },
+tooltip: {
+enabled: true,
+backgroundColor: "#10160f",
+titleColor: "#d4a72c",
+bodyColor: "#f5f5f0",
+borderColor: "#d4a72c",
+borderWidth: 1,
+padding: 10,
+displayColors: false,
+titleFont: { family: "Helvetica, Arial, sans-serif", weight: "bold" },
+bodyFont: { family: "Helvetica, Arial, sans-serif" },
+callbacks: {
+label: ctx => "Index value: $" + ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+},
+},
+},
 scales: {
 x: { ticks: { color: "#8fa89f", maxTicksLimit: 8 } },
 y: { ticks: { color: "#8fa89f" } },
@@ -160,16 +211,48 @@ URL.revokeObjectURL(url);
 
 document.getElementById("export-csv-btn").addEventListener("click", downloadHoldingsCSV);
 
+// Assigns each of a set's visible (top 5) candidates a tier — "gold", "green",
+// or "gray" — purely from rank position and the eligibility/cap rules below.
+// This is deliberately NOT just trusting each card's stored `shortlisted` /
+// `in_index` flags on their own: rank position always decides who's even in
+// the running (only ranks 1-3 of the 5 shown can ever be gold or green;
+// ranks 4-5 are always gray), and an explicit running counter caps gold at
+// MAX_GOLD_PER_SET even if the data flags more than that many cards
+// `in_index: true` for one set.
+function tierCandidates(visible, set) {
+const eligible = isSetEligibleForGold(set);
+let goldCount = 0;
+return visible.map((card, i) => {
+const isTopThree = i < 3; // rank 1-3 of the 5 shown
+let tier = "gray";
+if (isTopThree) {
+const canBeGold = card.in_index && eligible && goldCount < MAX_GOLD_PER_SET;
+if (canBeGold) {
+tier = "gold";
+goldCount += 1;
+} else {
+tier = "green";
+}
+}
+return { card, tier };
+});
+}
+
 async function loadIndex() {
 const res = await fetch(WORKER_URL);
 const data = await res.json();
 
 // Flatten in_index cards for the holdings table and to build the
-// index-value-over-time series from each card's daily history.
+// index-value-over-time series from each card's daily history. The 3-per-set
+// cap and age-eligibility gate are enforced above in tierCandidates(), so a
+// card only ever lands here if it actually earned a gold slot — this stays
+// correct at 50 cards (or any count) once real research fills every set in.
 indexCards = [];
 data.sets.forEach(set => {
-set.top_10.forEach(card => {
-if (card.in_index) indexCards.push({ ...card, set: set.set_name });
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+tiered.forEach(({ card, tier }) => {
+if (tier === "gold") indexCards.push({ ...card, set: set.set_name });
 });
 });
 
@@ -199,31 +282,59 @@ indexHistory = Object.entries(dateMap)
 
 renderChart();
 
-// Full candidate pool by set — top 5 visible, 6-10 behind a toggle.
-// Using native <details>/<summary> rather than custom JS: no extra code,
-// and it's trivial to instrument later (listen for the 'toggle' event on
-// each <details> element to log which sets people actually expand).
-const grid = document.getElementById("sets-grid");
+// Full candidate pool by set, grouped by era, top 5 per set (no more
+// ranks-6-10 toggle — the pool only ever shows 5).
+const container = document.getElementById("sets-by-era");
+
+const byEra = new Map();
 data.sets.forEach(set => {
-const card = document.createElement("div");
-card.className = "set-card";
+if (!byEra.has(set.era)) byEra.set(set.era, []);
+byEra.get(set.era).push(set);
+});
 
-const renderItem = c => {
-const classes = [];
-if (c.shortlisted) classes.push("shortlisted");
-if (c.in_index) classes.push("in-index");
-const priceDisplay = c.price !== null ? "$" + c.price.toFixed(2) : "unverified";
-return `<li class="${classes.join(' ')}">${c.name} <span class="price">${priceDisplay}</span></li>`;
-};
+const eraNames = [...byEra.keys()].sort((a, b) => {
+const ai = ERA_ORDER.indexOf(a);
+const bi = ERA_ORDER.indexOf(b);
+if (ai === -1 && bi === -1) return a.localeCompare(b);
+if (ai === -1) return 1;
+if (bi === -1) return -1;
+return ai - bi;
+});
 
-const visible = set.top_10.slice(0, 5).map(renderItem).join("");
-const rest = set.top_10.slice(5);
-const restBlock = rest.length
-? `<details class="see-more"><summary>See ranks 6-10</summary><ol start="6">${rest.map(renderItem).join("")}</ol></details>`
+eraNames.forEach(era => {
+const heading = document.createElement("h3");
+heading.className = "era-heading";
+heading.textContent = era;
+container.appendChild(heading);
+
+const grid = document.createElement("div");
+grid.className = "sets-grid";
+
+byEra.get(era).forEach(set => {
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+const eligible = isSetEligibleForGold(set);
+
+const items = tiered.map(({ card, tier }) => {
+const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
+return `<li class="tier-${tier}">${card.name} <span class="price">${priceDisplay}</span></li>`;
+}).join("");
+
+const releaseNote = set.release_date
+? `<div class="release-date">Released ${formatReleaseDate(set.release_date)}</div>`
 : "";
 
-card.innerHTML = `<h3>${set.set_name}</h3><ol>${visible}</ol>${restBlock}`;
+const ineligibleNote = !eligible
+? `<div class="ineligible-note">Not yet eligible for gold: sets need ${SET_ELIGIBILITY_DAYS}+ days of trading history before any of their cards can enter the index. Cards here can still be shown, ranked, and shortlisted in the meantime.</div>`
+: "";
+
+const card = document.createElement("div");
+card.className = "set-card";
+card.innerHTML = `<h4>${set.set_name}</h4>${releaseNote}${ineligibleNote}<ol>${items}</ol>`;
 grid.appendChild(card);
+});
+
+container.appendChild(grid);
 });
 }
 
