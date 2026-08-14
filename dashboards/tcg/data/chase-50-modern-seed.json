@@ -65,7 +65,7 @@
           "rarity": "Secret Rare",
           "price": 1000.62,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -169,7 +169,7 @@
           "rarity": "Secret Rare",
           "price": 986.98,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -178,7 +178,7 @@
           "rarity": "Ultra Rare",
           "price": 745.4,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -187,7 +187,7 @@
           "rarity": "Secret Rare",
           "price": 530.94,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -221,7 +221,7 @@
           "rarity": "Ultra Rare",
           "price": 315.18,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -273,7 +273,7 @@
           "rarity": "Ultra Rare",
           "price": 503.84,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -282,7 +282,7 @@
           "rarity": "Ultra Rare",
           "price": 482.42,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -325,7 +325,7 @@
           "rarity": "Ultra Rare",
           "price": 427.54,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -377,7 +377,7 @@
           "rarity": "Ultra Rare",
           "price": 1069.91,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -386,7 +386,7 @@
           "rarity": "Ultra Rare",
           "price": 454.62,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -395,7 +395,7 @@
           "rarity": "Ultra Rare",
           "price": 325.32,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -845,7 +845,7 @@
           "rarity": "Rainbow Rare",
           "price": 652.17,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -897,7 +897,7 @@
           "rarity": "Shiny Holo Rare",
           "price": 773.3,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1001,7 +1001,7 @@
           "rarity": "Ultra Rare",
           "price": 462.63,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1261,7 +1261,7 @@
           "rarity": "Ultra Rare",
           "price": 3157.93,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1270,7 +1270,7 @@
           "rarity": "Ultra Rare",
           "price": 1610.07,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1279,7 +1279,7 @@
           "rarity": "Ultra Rare",
           "price": 861.78,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1365,7 +1365,7 @@
           "rarity": "Ultra Rare",
           "price": 624.99,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1374,7 +1374,7 @@
           "rarity": "Ultra Rare",
           "price": 334.31,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1417,7 +1417,7 @@
           "rarity": "Secret Rare",
           "price": 411.52,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1426,7 +1426,7 @@
           "rarity": "Ultra Rare",
           "price": 383.63,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1435,7 +1435,7 @@
           "rarity": "Ultra Rare",
           "price": 358.08,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1521,7 +1521,7 @@
           "rarity": "Ultra Rare",
           "price": 556.91,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1530,7 +1530,7 @@
           "rarity": "Ultra Rare",
           "price": 463.39,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1539,7 +1539,7 @@
           "rarity": "Ultra Rare",
           "price": 417.37,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1937,7 +1937,7 @@
           "rarity": "Secret Rare",
           "price": 384.49,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1989,7 +1989,7 @@
           "rarity": "Secret Rare",
           "price": 2259.46,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -1998,7 +1998,7 @@
           "rarity": "Secret Rare",
           "price": 1247.92,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2007,7 +2007,7 @@
           "rarity": "Ultra Rare",
           "price": 547.72,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2093,7 +2093,7 @@
           "rarity": "Secret Rare",
           "price": 1048.08,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2102,7 +2102,7 @@
           "rarity": "Secret Rare",
           "price": 349.25,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2145,7 +2145,7 @@
           "rarity": "Ultra Rare",
           "price": 321.73,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2301,7 +2301,7 @@
           "rarity": "Ultra Rare",
           "price": 828.32,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2353,7 +2353,7 @@
           "rarity": "Ultra Rare",
           "price": 524.59,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2509,7 +2509,7 @@
           "rarity": "Illustration Rare",
           "price": 390.33,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2665,7 +2665,7 @@
           "rarity": "Special Illustration Rare",
           "price": 372.18,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2717,7 +2717,7 @@
           "rarity": "Special Illustration Rare",
           "price": 1013.78,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -2821,7 +2821,7 @@
           "rarity": "Special Illustration Rare",
           "price": 373.57,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3029,7 +3029,7 @@
           "rarity": "Special Illustration Rare",
           "price": 1494.97,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3038,7 +3038,7 @@
           "rarity": "Special Illustration Rare",
           "price": 509.52,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3047,7 +3047,7 @@
           "rarity": "Special Illustration Rare",
           "price": 336.93,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3133,7 +3133,7 @@
           "rarity": "Special Illustration Rare",
           "price": 506.89,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3185,7 +3185,7 @@
           "rarity": "Black White Rare",
           "price": 605.75,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3194,7 +3194,7 @@
           "rarity": "Black White Rare",
           "price": 603.79,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3237,7 +3237,7 @@
           "rarity": "Black White Rare",
           "price": 560.28,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3246,7 +3246,7 @@
           "rarity": "Black White Rare",
           "price": 508.7,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3341,7 +3341,7 @@
           "rarity": "Special Illustration Rare",
           "price": 703.54,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3393,7 +3393,7 @@
           "rarity": "Special Illustration Rare",
           "price": 1118.76,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3402,7 +3402,7 @@
           "rarity": "Special Illustration Rare",
           "price": 1088.19,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3411,7 +3411,7 @@
           "rarity": "Special Illustration Rare",
           "price": 705.6,
           "shortlisted": true,
-          "in_index": false,
+          "in_index": true,
           "history": []
         },
         {
@@ -3591,5 +3591,5 @@
       ]
     }
   ],
-  "note": "index_name/sets as before. \"top_10\" was renamed \"top_5\" to match the candidate-pool UI. UPDATE 2026-08-14: all 69 sets now carry real, JustTCG-verified Near Mint prices -- the last 7 (XY (base), XY Evolutions, Sun & Moon (base), Hidden Fates, Sword & Shield (base), Evolving Skies, Scarlet & Violet (base)) were finished in this pass, replacing their placeholder-only or stale pre-JustTCG draft data. For each set, the top 3 of 5 cards by Near Mint price are marked shortlisted: true, the remaining 2 shortlisted: false. Scarlet & Violet (base) previously carried mock daily-history data on its Gardevoir ex card (used for testing the chart timeframe toggle, per worker/index.js's comments) alongside a stale $80 draft price; both were replaced with the real verified price ($70.20) and no history, consistent with how every other card in the file is handled -- the chart-toggle test fixture will need a new mock card if that testing is still needed going forward. Mega Evolution (base) was moved to lead the Mega Evolution era's array order, matching the convention every other era already follows (each era's \"(base)\" set sorts first). in_index is forced to false for every card in the file, no exceptions -- now that all 69 sets have real prices, the true top-50-overall selection can finally be computed for real, but that selection has not been made yet, so no card is marked in_index: true anywhere in this file yet."
+  "note": "index_name/sets as before. \"top_10\" was renamed \"top_5\" to match the candidate-pool UI. UPDATE 2026-08-14: the index is now COMPLETE. All 69 sets carry real, JustTCG-verified Near Mint prices. The true top 50 has been computed by taking every shortlisted (top-3-per-set) card from gold-eligible sets (release date more than 90 days before compute date 2026-08-14 -- the eligibility window was intentionally raised from an earlier 30-day threshold to 90 days, since new-set price volatility made 30 days too short a track record to trust), ranking all of those candidates by Near Mint price descending, and marking exactly the top 50 in_index: true. Chaos Rising (84 days old) and Pitch Black (28 days old) are both still within the 90-day gate as of this compute and were excluded from ranking entirely, even though several of their shortlisted cards would otherwise have priced into the top 50 (e.g. Chaos Rising's Mega Greninja ex at $212.20 and $182.07, and Pitch Black's Mega Darkrai ex at $229.73) -- those cards remain shortlisted/green, never gold, until their sets age past 90 days. No set contributed more than 3 cards to the final 50 (max observed: 3, matching the per-set shortlist cap) -- verified programmatically, not assumed. The \"index composition is still finalizing\" language is removed as no longer accurate; this note will need a fresh update whenever the index is recomputed (e.g. once Chaos Rising or Pitch Black age into eligibility, or if new sets are added)."
 }
