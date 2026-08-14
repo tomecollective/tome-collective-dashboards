@@ -48,13 +48,14 @@ not recommend buying, selling, or holding any card based on this index.</p>
 
 <h2>Index Trend</h2>
 <div class="timeframe-toggle" id="timeframe-toggle">
-<button data-days="7">7D</button>
+<button data-days="7" class="active">7D</button>
 <button data-days="30">30D</button>
-<button data-days="90" class="active">90D</button>
+<button data-days="90">90D</button>
 <button data-days="180">180D</button>
 <button data-days="365">1Y</button>
 </div>
 <div id="chart-container"><canvas id="indexChart"></canvas></div>
+<p style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;">Chart data currently reflects the last 7 days of real market pricing. Longer timeframe views (30D–1Y) will fill in automatically as more daily price history accumulates.</p>
 
 <h2>Index Holdings</h2>
 <button class="export-btn" id="export-csv-btn">Download CSV</button>
@@ -97,7 +98,7 @@ const MAX_GOLD_PER_SET = 3;
 // here still renders, just after these in whatever order it was returned.
 const ERA_ORDER = ["XY", "Sun & Moon", "Sword & Shield", "Scarlet & Violet", "Mega Evolution"];
 
-let currentTimeframeDays = 90;
+let currentTimeframeDays = 7;
 let indexHistory = []; // populated in loadIndex(), [{date, total}]
 let indexCards = []; // populated in loadIndex(), same data rendered into the Index Holdings table
 
