@@ -9,53 +9,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Blastoise EX (142 Full Art) - 142/146",
+          "rarity": "Ultra Rare",
+          "price": 156.88,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Xerneas EX (146 Full Art) - 146/146",
+          "rarity": "Ultra Rare",
+          "price": 105.27,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Venusaur EX (141 Full Art) - 141/146",
+          "rarity": "Ultra Rare",
+          "price": 95.54,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 4,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Yveltal EX (144 Full Art) - 144/146",
+          "rarity": "Ultra Rare",
+          "price": 92.68,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 5,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Emolga EX (143 Full Art) - 143/146",
+          "rarity": "Ultra Rare",
+          "price": 56.65,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         }
       ]
     },
@@ -690,33 +685,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "M Charizard EX (Full Art) - 101/108",
+          "rarity": "Ultra Rare",
+          "price": 145.65,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Charizard - 11/108",
+          "rarity": "Holo Rare",
+          "price": 103.49,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "M Blastoise EX (Full Art) - 102/108",
+          "rarity": "Ultra Rare",
+          "price": 67.45,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Dragonite EX (Full Art) - 106/108",
+          "rarity": "Ultra Rare",
+          "price": 48.8,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Mewtwo EX (Full Art) - 103/108",
+          "rarity": "Ultra Rare",
+          "price": 43.57,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
         }
       ]
     },
@@ -727,33 +737,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Umbreon GX (Secret) - 154/149",
+          "rarity": "Secret Rare",
+          "price": 143.44,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Umbreon GX (Full Art) - 142/149",
+          "rarity": "Ultra Rare",
+          "price": 55.14,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Espeon GX (Secret) - 152/149",
+          "rarity": "Secret Rare",
+          "price": 50.29,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Lillie (Full Art) - 147/149",
+          "rarity": "Ultra Rare",
+          "price": 44.02,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Ultra Ball (Secret) - 161/149",
+          "rarity": "Secret Rare",
+          "price": 33.04,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
         }
       ]
     },
@@ -1440,33 +1465,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Jessie & James (Full Art) - 68/68",
+          "rarity": "Ultra Rare",
+          "price": 70.31,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Moltres & Zapdos & Articuno GX - 44/68",
+          "rarity": "Ultra Rare",
+          "price": 57.94,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Moltres & Zapdos & Articuno GX (Full Art) - 66/68",
+          "rarity": "Ultra Rare",
+          "price": 45.05,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Moltres & Zapdos & Articuno GX (Secret) - 69/68",
+          "rarity": "Secret Rare",
+          "price": 43.88,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Charizard GX - 9/68",
+          "rarity": "Ultra Rare",
+          "price": 11.49,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
         }
       ]
     },
@@ -1529,33 +1569,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Snorlax VMAX (Secret) - 206/202",
+          "rarity": "Secret Rare",
+          "price": 108.18,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Snorlax VMAX - 142/202",
+          "rarity": "Ultra Rare",
+          "price": 55.96,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Marnie (Full Art) - 200/202",
+          "rarity": "Ultra Rare",
+          "price": 37.7,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Snorlax V (Full Art) - 197/202",
+          "rarity": "Ultra Rare",
+          "price": 35.74,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Morpeko VMAX (Secret) - 204/202",
+          "rarity": "Secret Rare",
+          "price": 25.88,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
         }
       ]
     },
@@ -1930,33 +1985,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Umbreon VMAX (Alternate Art Secret) - 215/203",
+          "rarity": "Secret Rare",
+          "price": 2259.46,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 2,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Rayquaza VMAX (Alternate Art Secret) - 218/203",
+          "rarity": "Secret Rare",
+          "price": 1247.92,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Dragonite V (Alternate Full Art) - 192/203",
+          "rarity": "Ultra Rare",
+          "price": 547.72,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Rayquaza V (Alternate Full Art) - 194/203",
+          "rarity": "Ultra Rare",
+          "price": 495.33,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Leafeon VMAX (Alternate Art Secret) - 205/203",
+          "rarity": "Secret Rare",
+          "price": 415.27,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
         }
       ]
     },
@@ -2383,532 +2453,48 @@
       "top_5": [
         {
           "rank": 1,
-          "name": "Gardevoir ex",
-          "rarity": "SIR",
-          "price": 80,
+          "name": "Gardevoir ex - 245/198",
+          "rarity": "Special Illustration Rare",
+          "price": 70.2,
           "shortlisted": true,
           "in_index": false,
-          "history": [
-            {
-              "date": "2026-04-10",
-              "price": 79.65
-            },
-            {
-              "date": "2026-04-11",
-              "price": 78.86
-            },
-            {
-              "date": "2026-04-12",
-              "price": 79.37
-            },
-            {
-              "date": "2026-04-13",
-              "price": 78.37
-            },
-            {
-              "date": "2026-04-14",
-              "price": 78.58
-            },
-            {
-              "date": "2026-04-15",
-              "price": 78.35
-            },
-            {
-              "date": "2026-04-16",
-              "price": 77.32
-            },
-            {
-              "date": "2026-04-17",
-              "price": 77.46
-            },
-            {
-              "date": "2026-04-18",
-              "price": 76.39
-            },
-            {
-              "date": "2026-04-19",
-              "price": 76.34
-            },
-            {
-              "date": "2026-04-20",
-              "price": 75.37
-            },
-            {
-              "date": "2026-04-21",
-              "price": 74.46
-            },
-            {
-              "date": "2026-04-22",
-              "price": 74.39
-            },
-            {
-              "date": "2026-04-23",
-              "price": 75.3
-            },
-            {
-              "date": "2026-04-24",
-              "price": 74.48
-            },
-            {
-              "date": "2026-04-25",
-              "price": 73.91
-            },
-            {
-              "date": "2026-04-26",
-              "price": 74.34
-            },
-            {
-              "date": "2026-04-27",
-              "price": 75.55
-            },
-            {
-              "date": "2026-04-28",
-              "price": 75.85
-            },
-            {
-              "date": "2026-04-29",
-              "price": 75.71
-            },
-            {
-              "date": "2026-04-30",
-              "price": 77.01
-            },
-            {
-              "date": "2026-05-01",
-              "price": 75.97
-            },
-            {
-              "date": "2026-05-02",
-              "price": 76.99
-            },
-            {
-              "date": "2026-05-03",
-              "price": 76.57
-            },
-            {
-              "date": "2026-05-04",
-              "price": 75.78
-            },
-            {
-              "date": "2026-05-05",
-              "price": 74.94
-            },
-            {
-              "date": "2026-05-06",
-              "price": 74.58
-            },
-            {
-              "date": "2026-05-07",
-              "price": 75.47
-            },
-            {
-              "date": "2026-05-08",
-              "price": 74.79
-            },
-            {
-              "date": "2026-05-09",
-              "price": 75.1
-            },
-            {
-              "date": "2026-05-10",
-              "price": 75.56
-            },
-            {
-              "date": "2026-05-11",
-              "price": 75.35
-            },
-            {
-              "date": "2026-05-12",
-              "price": 75.58
-            },
-            {
-              "date": "2026-05-13",
-              "price": 74.61
-            },
-            {
-              "date": "2026-05-14",
-              "price": 73.63
-            },
-            {
-              "date": "2026-05-15",
-              "price": 73.03
-            },
-            {
-              "date": "2026-05-16",
-              "price": 73.57
-            },
-            {
-              "date": "2026-05-17",
-              "price": 73.51
-            },
-            {
-              "date": "2026-05-18",
-              "price": 73.17
-            },
-            {
-              "date": "2026-05-19",
-              "price": 73.49
-            },
-            {
-              "date": "2026-05-20",
-              "price": 73.48
-            },
-            {
-              "date": "2026-05-21",
-              "price": 73.11
-            },
-            {
-              "date": "2026-05-22",
-              "price": 73.93
-            },
-            {
-              "date": "2026-05-23",
-              "price": 74.52
-            },
-            {
-              "date": "2026-05-24",
-              "price": 74.01
-            },
-            {
-              "date": "2026-05-25",
-              "price": 74.3
-            },
-            {
-              "date": "2026-05-26",
-              "price": 74.47
-            },
-            {
-              "date": "2026-05-27",
-              "price": 75.5
-            },
-            {
-              "date": "2026-05-28",
-              "price": 76.19
-            },
-            {
-              "date": "2026-05-29",
-              "price": 75.77
-            },
-            {
-              "date": "2026-05-30",
-              "price": 77.09
-            },
-            {
-              "date": "2026-05-31",
-              "price": 76.23
-            },
-            {
-              "date": "2026-06-01",
-              "price": 76.14
-            },
-            {
-              "date": "2026-06-02",
-              "price": 76.9
-            },
-            {
-              "date": "2026-06-03",
-              "price": 76.13
-            },
-            {
-              "date": "2026-06-04",
-              "price": 76.22
-            },
-            {
-              "date": "2026-06-05",
-              "price": 75.17
-            },
-            {
-              "date": "2026-06-06",
-              "price": 75.7
-            },
-            {
-              "date": "2026-06-07",
-              "price": 76.48
-            },
-            {
-              "date": "2026-06-08",
-              "price": 76.78
-            },
-            {
-              "date": "2026-06-09",
-              "price": 77.84
-            },
-            {
-              "date": "2026-06-10",
-              "price": 77.48
-            },
-            {
-              "date": "2026-06-11",
-              "price": 78.1
-            },
-            {
-              "date": "2026-06-12",
-              "price": 78.46
-            },
-            {
-              "date": "2026-06-13",
-              "price": 78.78
-            },
-            {
-              "date": "2026-06-14",
-              "price": 78.78
-            },
-            {
-              "date": "2026-06-15",
-              "price": 79.79
-            },
-            {
-              "date": "2026-06-16",
-              "price": 81.08
-            },
-            {
-              "date": "2026-06-17",
-              "price": 81.13
-            },
-            {
-              "date": "2026-06-18",
-              "price": 81.69
-            },
-            {
-              "date": "2026-06-19",
-              "price": 80.63
-            },
-            {
-              "date": "2026-06-20",
-              "price": 81.29
-            },
-            {
-              "date": "2026-06-21",
-              "price": 81.8
-            },
-            {
-              "date": "2026-06-22",
-              "price": 83.26
-            },
-            {
-              "date": "2026-06-23",
-              "price": 84.27
-            },
-            {
-              "date": "2026-06-24",
-              "price": 83.79
-            },
-            {
-              "date": "2026-06-25",
-              "price": 83.6
-            },
-            {
-              "date": "2026-06-26",
-              "price": 84.19
-            },
-            {
-              "date": "2026-06-27",
-              "price": 82.99
-            },
-            {
-              "date": "2026-06-28",
-              "price": 83.01
-            },
-            {
-              "date": "2026-06-29",
-              "price": 82.23
-            },
-            {
-              "date": "2026-06-30",
-              "price": 81.31
-            },
-            {
-              "date": "2026-07-01",
-              "price": 80.25
-            },
-            {
-              "date": "2026-07-02",
-              "price": 81.08
-            },
-            {
-              "date": "2026-07-03",
-              "price": 80.21
-            },
-            {
-              "date": "2026-07-04",
-              "price": 79.66
-            },
-            {
-              "date": "2026-07-05",
-              "price": 79.5
-            },
-            {
-              "date": "2026-07-06",
-              "price": 80.59
-            },
-            {
-              "date": "2026-07-07",
-              "price": 79.6
-            },
-            {
-              "date": "2026-07-08",
-              "price": 79.58
-            },
-            {
-              "date": "2026-07-09",
-              "price": 79.83
-            },
-            {
-              "date": "2026-07-10",
-              "price": 80.96
-            },
-            {
-              "date": "2026-07-11",
-              "price": 81.94
-            },
-            {
-              "date": "2026-07-12",
-              "price": 83.04
-            },
-            {
-              "date": "2026-07-13",
-              "price": 82.56
-            },
-            {
-              "date": "2026-07-14",
-              "price": 82.45
-            },
-            {
-              "date": "2026-07-15",
-              "price": 82.19
-            },
-            {
-              "date": "2026-07-16",
-              "price": 83.36
-            },
-            {
-              "date": "2026-07-17",
-              "price": 84.74
-            },
-            {
-              "date": "2026-07-18",
-              "price": 83.89
-            },
-            {
-              "date": "2026-07-19",
-              "price": 83.12
-            },
-            {
-              "date": "2026-07-20",
-              "price": 82.51
-            },
-            {
-              "date": "2026-07-21",
-              "price": 81.91
-            },
-            {
-              "date": "2026-07-22",
-              "price": 81.99
-            },
-            {
-              "date": "2026-07-23",
-              "price": 82.36
-            },
-            {
-              "date": "2026-07-24",
-              "price": 81.83
-            },
-            {
-              "date": "2026-07-25",
-              "price": 80.62
-            },
-            {
-              "date": "2026-07-26",
-              "price": 80.52
-            },
-            {
-              "date": "2026-07-27",
-              "price": 80.3
-            },
-            {
-              "date": "2026-07-28",
-              "price": 80.59
-            },
-            {
-              "date": "2026-07-29",
-              "price": 81.92
-            },
-            {
-              "date": "2026-07-30",
-              "price": 82.56
-            },
-            {
-              "date": "2026-07-31",
-              "price": 82.72
-            },
-            {
-              "date": "2026-08-01",
-              "price": 83.17
-            },
-            {
-              "date": "2026-08-02",
-              "price": 83.78
-            },
-            {
-              "date": "2026-08-03",
-              "price": 82.67
-            },
-            {
-              "date": "2026-08-04",
-              "price": 83.88
-            },
-            {
-              "date": "2026-08-05",
-              "price": 84.78
-            },
-            {
-              "date": "2026-08-06",
-              "price": 85.96
-            },
-            {
-              "date": "2026-08-07",
-              "price": 86.93
-            }
-          ]
+          "history": []
         },
         {
           "rank": 2,
-          "name": "Drowzee",
-          "rarity": "IR",
-          "price": 46,
+          "name": "Drowzee - 210/198",
+          "rarity": "Illustration Rare",
+          "price": 58.8,
           "shortlisted": true,
           "in_index": false,
           "history": []
         },
         {
           "rank": 3,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
-          "shortlisted": false,
+          "name": "Ralts - 211/198",
+          "rarity": "Illustration Rare",
+          "price": 44.04,
+          "shortlisted": true,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 4,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Kirlia - 212/198",
+          "rarity": "Illustration Rare",
+          "price": 43.51,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         },
         {
           "rank": 5,
-          "name": "TBD — needs research",
-          "rarity": "TBD",
-          "price": null,
+          "name": "Slowpoke - 204/198",
+          "rarity": "Illustration Rare",
+          "price": 40.29,
           "shortlisted": false,
           "in_index": false,
-          "history": [],
-          "note": "needs research — no real pricing entered yet"
+          "history": []
         }
       ]
     },
@@ -3693,6 +3279,58 @@
       ]
     },
     {
+      "set_name": "Mega Evolution (base)",
+      "era": "Mega Evolution",
+      "release_date": "2025-09-26",
+      "top_5": [
+        {
+          "rank": 1,
+          "name": "Mega Lucario ex - 188/132",
+          "rarity": "Mega Hyper Rare",
+          "price": 271.87,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 2,
+          "name": "Mega Gardevoir ex - 187/132",
+          "rarity": "Mega Hyper Rare",
+          "price": 208.37,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 3,
+          "name": "Mega Lucario ex - 179/132",
+          "rarity": "Special Illustration Rare",
+          "price": 206.94,
+          "shortlisted": true,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 4,
+          "name": "Mega Gardevoir ex - 178/132",
+          "rarity": "Special Illustration Rare",
+          "price": 195.81,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
+        },
+        {
+          "rank": 5,
+          "name": "Mega Venusaur ex - 177/132",
+          "rarity": "Special Illustration Rare",
+          "price": 156.26,
+          "shortlisted": false,
+          "in_index": false,
+          "history": []
+        }
+      ]
+    },
+    {
       "set_name": "Phantasmal Flames",
       "era": "Mega Evolution",
       "release_date": "2025-11-14",
@@ -3951,59 +3589,7 @@
           "history": []
         }
       ]
-    },
-    {
-      "set_name": "Mega Evolution (base)",
-      "era": "Mega Evolution",
-      "release_date": "2025-09-26",
-      "top_5": [
-        {
-          "rank": 1,
-          "name": "Mega Lucario ex - 188/132",
-          "rarity": "Mega Hyper Rare",
-          "price": 271.87,
-          "shortlisted": true,
-          "in_index": false,
-          "history": []
-        },
-        {
-          "rank": 2,
-          "name": "Mega Gardevoir ex - 187/132",
-          "rarity": "Mega Hyper Rare",
-          "price": 208.37,
-          "shortlisted": true,
-          "in_index": false,
-          "history": []
-        },
-        {
-          "rank": 3,
-          "name": "Mega Lucario ex - 179/132",
-          "rarity": "Special Illustration Rare",
-          "price": 206.94,
-          "shortlisted": true,
-          "in_index": false,
-          "history": []
-        },
-        {
-          "rank": 4,
-          "name": "Mega Gardevoir ex - 178/132",
-          "rarity": "Special Illustration Rare",
-          "price": 195.81,
-          "shortlisted": false,
-          "in_index": false,
-          "history": []
-        },
-        {
-          "rank": 5,
-          "name": "Mega Venusaur ex - 177/132",
-          "rarity": "Special Illustration Rare",
-          "price": 156.26,
-          "shortlisted": false,
-          "in_index": false,
-          "history": []
-        }
-      ]
     }
   ],
-  "note": "index_name/sets as before. \"top_10\" was renamed \"top_5\" to match the candidate-pool UI. UPDATE 2026-08-14: populated real, JustTCG-verified Near Mint prices for 57 sets (XY, Sun & Moon, Sword & Shield, and Scarlet & Violet era sets, including the main batch and the re-verification batch for previously-stale/sparse sets, plus Pitch Black) from the corrected batch script's successful re-run. For each set, the top 3 of 5 cards by Near Mint price are marked shortlisted: true, the remaining 2 are shortlisted: false; in_index stays false across the board -- see below. Combined with the 5 real-priced Mega Evolution sets already restored, 62 of 69 sets are now priced. The remaining 7 unpriced sets are placeholder-only (price: null, note: needs research) and still block final index selection: XY (base), XY Evolutions, Sun & Moon (base), Hidden Fates, Sword & Shield (base), Evolving Skies, and Scarlet & Violet (base) -- note this is 7 sets, not the 6 originally assumed; Scarlet & Violet (base) was also never part of the 57-set batch run and still needs real pricing. in_index is forced to false for every card in the file, no exceptions -- even now that 62 of 69 sets have real prices, a handful of sets (the 7 above) still don't, so no card can yet be confirmed as genuinely belonging in the true top-50-overall; Chaos Rising remains correctly excluded on this basis independent of its own age. XY (base) stays padded to 5 placeholder slots. Scarlet & Violet 151's release_date stays corrected to 2023-09-22."
+  "note": "index_name/sets as before. \"top_10\" was renamed \"top_5\" to match the candidate-pool UI. UPDATE 2026-08-14: all 69 sets now carry real, JustTCG-verified Near Mint prices -- the last 7 (XY (base), XY Evolutions, Sun & Moon (base), Hidden Fates, Sword & Shield (base), Evolving Skies, Scarlet & Violet (base)) were finished in this pass, replacing their placeholder-only or stale pre-JustTCG draft data. For each set, the top 3 of 5 cards by Near Mint price are marked shortlisted: true, the remaining 2 shortlisted: false. Scarlet & Violet (base) previously carried mock daily-history data on its Gardevoir ex card (used for testing the chart timeframe toggle, per worker/index.js's comments) alongside a stale $80 draft price; both were replaced with the real verified price ($70.20) and no history, consistent with how every other card in the file is handled -- the chart-toggle test fixture will need a new mock card if that testing is still needed going forward. Mega Evolution (base) was moved to lead the Mega Evolution era's array order, matching the convention every other era already follows (each era's \"(base)\" set sorts first). in_index is forced to false for every card in the file, no exceptions -- now that all 69 sets have real prices, the true top-50-overall selection can finally be computed for real, but that selection has not been made yet, so no card is marked in_index: true anywhere in this file yet."
 }
