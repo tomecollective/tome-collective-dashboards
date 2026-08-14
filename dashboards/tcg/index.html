@@ -256,6 +256,10 @@ if (tier === "gold") indexCards.push({ ...card, set: set.set_name });
 });
 });
 
+// Highest value first — the Index Holdings table (and its CSV export, which
+// reads this same array) should read as a ranked list, not insertion order.
+indexCards.sort((a, b) => b.price - a.price);
+
 const tbody = document.getElementById("holdings-body");
 indexCards.forEach(card => {
 const row = document.createElement("tr");
