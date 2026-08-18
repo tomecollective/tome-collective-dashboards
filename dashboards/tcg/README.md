@@ -1,4 +1,4 @@
-# Tome Analytics: Pokemon Chase Modern 50 — Prototype
+# Tome Analytics: Pokemon Chase Modern EN 50 — Prototype
 
 ## Major update: no more waiting on history to accumulate
 JustTCG retains historical NM (Near Mint) price data server-side on paid plans —
@@ -93,5 +93,3 @@ shows a fixed top 5 per set, so there's nothing left to expand.
   added as a Cloudflare secret, which has to happen on your end
 - **Tier gating** — intentionally open. Add an access check once Stripe/tiers are live.
 - **Full 50-card + full top-5-per-set data** — this is a partial prototype dataset.
-
-
