@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tome Vault: Pokemon Chase Modern 50</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
+h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #d4a72c; margin-top: 48px; }
+h3.era-heading { font-family: 'EB Garamond', Georgia, serif; font-size: 1.15rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1c2622; padding-bottom: 6px; margin: 32px 0 16px 0; }
+h3.era-heading:first-of-type { margin-top: 8px; }
+.subtitle { color: #8fa89f; margin-bottom: 32px; }
+.disclaimer { font-size: 0.8rem; color: #6b7d76; border-left: 2px solid #d4a72c; padding-left: 12px; margin-bottom: 32px; max-width: 640px; }
+#chart-container { max-width: 900px; margin-bottom: 24px; }
+.timeframe-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+.timeframe-toggle button { background: transparent; border: 1px solid #1c2622; color: #8fa89f; padding: 6px 14px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+.timeframe-toggle button.active { background: #d4a72c; border-color: #d4a72c; color: #1a1a1a; }
+.timeframe-toggle button:hover:not(.active) { border-color: #d4a72c; color: #f5f5f0; }
+.index-stats { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 20px; }
+.index-stats .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8fa89f; margin-bottom: 2px; }
+.index-stats .stat-value { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #f5f5f0; }
+.index-stats .stat-value.up { color: #3ea86b; }
+.index-stats .stat-value.down { color: #c0392b; }
+.index-stats .stat-value.flat { color: #8fa89f; }
+.index-stats .stat-sub { font-size: 0.72rem; color: #6b7d76; margin-top: 2px; }
+.legend { display: flex; gap: 24px; font-size: 0.8rem; color: #8fa89f; margin-bottom: 32px; flex-wrap: wrap; }
+.legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; margin-bottom: 8px; }
+.set-card { background: #10160f0f; border: 1px solid #1c2622; border-radius: 8px; padding: 16px 20px; }
+.set-card h4 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.1rem; margin: 0 0 4px 0; color: #f5f5f0; }
+.set-card .release-date { font-size: 0.7rem; color: #6b7d76; margin-bottom: 10px; }
+.set-card .ineligible-note { font-size: 0.72rem; color: #b8892c; background: rgba(212, 167, 44, 0.08); border-left: 2px solid #d4a72c; padding: 6px 8px; margin-bottom: 10px; line-height: 1.35; }
+.set-card ol { margin: 0; padding-left: 20px; }
+.set-card li { padding: 4px 0; color: #8fa89f; font-size: 0.9rem; }
+.set-card li.tier-gold { color: #d4a72c; font-weight: bold; }
+.set-card li.tier-green { color: #0C7958; }
+.set-card li.tier-gray { color: #6b7d76; }
+.set-card .price { float: right; color: #8fa89f; font-weight: normal; }
+table { width: 100%; max-width: 900px; border-collapse: collapse; margin-bottom: 40px; font-size: 0.82rem; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #1c2622; }
+th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
+.unverified { color: #8fa89f; font-style: italic; }
+.explainer { color: #8fa89f; margin-bottom: 32px; max-width: 640px; line-height: 1.5; }
+.export-btn { background: #d4a72c; color: #1a1a1a; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
+.export-btn:hover { background: #e0b53f; }
+</style>
+</head>
+<body>
+<h1>Tome Vault: Pokemon Chase Modern 50</h1>
+<p class="subtitle" id="subtitle">Pokemon TCG chase card index, XY forward.</p>
+<p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
+<p class="explainer">This index tracks the top 50 US English Pokemon chase cards — the rarest,
+highest-value chase pulls — from modern and current-era sets, spanning XY forward.</p>
+
+<h2>Index Trend</h2>
+<div class="index-stats" id="index-stats"></div>
+<div class="timeframe-toggle" id="timeframe-toggle">
+<button data-days="7" class="active">7D</button>
+<button data-days="30">30D</button>
+<button data-days="90">90D</button>
+<button data-days="180">180D</button>
+<button data-days="365">1Y</button>
+</div>
+<div id="chart-container"><canvas id="indexChart"></canvas></div>
+<p style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;">Chart data currently reflects the last 7 days of real market pricing. Longer timeframe views (30D–1Y) will fill in automatically as more daily price history accumulates.</p>
+<p class="disclaimer">This index is informational only and does not constitute investment advice.
+Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
+not recommend buying, selling, or holding any card based on this index.</p>
+
+<h2>Index Holdings</h2>
+<button class="export-btn" id="export-csv-btn">Download CSV</button>
+<table>
+<thead>
+<tr><th>Card</th><th>Set</th><th>Rarity</th><th>Price</th></tr>
+</thead>
+<tbody id="holdings-body"></tbody>
+</table>
+
+<h2>Full Candidate Pool, By Set</h2>
+<p class="subtitle" style="max-width:700px">Top 5 chase-tier candidates per eligible set, spanning
+XY through Mega Evolution era. <span style="color:#d4a72c">Gold</span> marks cards that actually
+made the final 50-card index (capped at 3 per set). <span style="color:#0C7958">Green</span> marks
+the rest of that set's top 3 — shortlisted, but not in the final 50. Gray marks ranks 4-5, which
+are shown for context but were never in the running. A newly-released set's cards can still show up
+and rank here, but none can turn gold until the set has been out for over a month.</p>
+<div class="legend">
+<span><span class="legend-swatch" style="background:#d4a72c"></span>In final index</span>
+<span><span class="legend-swatch" style="background:#0C7958"></span>Shortlisted (top 3 of 5), not in index</span>
+<span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
+</div>
+<div id="sets-by-era"></div>
+
+<script>
+const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
+// Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
+
+// A set can't contribute a gold ("in final index") card until it's been out
+// this many days. Cards can still be shown/ranked/shortlisted before that —
+// this only blocks the gold tier.
+const SET_ELIGIBILITY_DAYS = 90;
+
+// A set can never contribute more than this many cards to the final index,
+// no matter what the underlying data says.
+const MAX_GOLD_PER_SET = 3;
+
+// Eras rendered oldest-first, closing the gap between the Vintage (WOTC)
+// index and this Modern one. Any era name in the data that isn't listed
+// here still renders, just after these in whatever order it was returned.
+const ERA_ORDER = ["XY", "Sun & Moon", "Sword & Shield", "Scarlet & Violet", "Mega Evolution"];
+
+let currentTimeframeDays = 7;
+let indexHistory = []; // populated in loadIndex(), [{date, total}]
+let indexCards = []; // populated in loadIndex(), same data rendered into the Index Holdings table
+
+function daysSince(dateStr) {
+  const then = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  return (now - then) / 86400000;
+}
+
+function isSetEligibleForGold(set) {
+  if (!set.release_date) return true; // no release date on record — don't block on missing data
+  return daysSince(set.release_date) > SET_ELIGIBILITY_DAYS;
+}
+
+function formatReleaseDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+}
+
+// Finds the history point closest to `targetDate`, but only returns it if
+// it's within `toleranceDays` — otherwise a young index (with only a few
+// days of real history) would silently compare today's value against
+// whatever its very first data point happens to be and call that "YoY".
+function findClosestPoint(points, targetDate, toleranceDays) {
+  let best = null;
+  let bestDiff = Infinity;
+  points.forEach(p => {
+    const diff = Math.abs(new Date(p.date) - targetDate);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = p;
+    }
+  });
+  if (!best || bestDiff > toleranceDays * 86400000) return null;
+  return best;
+}
+
+function formatSignedDollars(delta) {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return sign + "$" + Math.abs(delta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatSignedPct(pct) {
+  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
+  return sign + Math.abs(pct).toFixed(2) + "%";
+}
+
+function directionClass(delta) {
+  return delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+}
+
+function renderStats() {
+  const statsEl = document.getElementById("index-stats");
+  if (!indexHistory.length) {
+    statsEl.innerHTML = "";
+    return;
+  }
+
+  const latest = indexHistory[indexHistory.length - 1];
+  const blocks = [];
+
+  blocks.push(`
+    <div>
+      <div class="stat-label">Index Value</div>
+      <div class="stat-value">$${latest.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div class="stat-sub">as of ${latest.date}</div>
+    </div>
+  `);
+
+  if (indexHistory.length >= 2) {
+    const previous = indexHistory[indexHistory.length - 2];
+    const delta = latest.total - previous.total;
+    const pct = previous.total !== 0 ? (delta / previous.total) * 100 : 0;
+    blocks.push(`
+      <div>
+        <div class="stat-label">Daily Change</div>
+        <div class="stat-value ${directionClass(delta)}">${formatSignedDollars(delta)} (${formatSignedPct(pct)})</div>
+        <div class="stat-sub">vs ${previous.date}</div>
+      </div>
+    `);
+  } else {
+    blocks.push(`
+      <div>
+        <div class="stat-label">Daily Change</div>
+        <div class="stat-value flat">—</div>
+        <div class="stat-sub">need 2+ days of history</div>
+      </div>
+    `);
+  }
+
+  // WoW for now — the index is only days old, so this is the longest
+  // lookback that's actually meaningful yet. Once there's enough history,
+  // add MoM (~30 days, tolerance ~4) and YoY (~365 days, tolerance ~10)
+  // as additional blocks using this same findClosestPoint() pattern.
+  const weekAgo = new Date(latest.date + "T00:00:00");
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const wowPoint = findClosestPoint(indexHistory, weekAgo, 2);
+  if (wowPoint) {
+    const delta = latest.total - wowPoint.total;
+    const pct = wowPoint.total !== 0 ? (delta / wowPoint.total) * 100 : 0;
+    blocks.push(`
+      <div>
+        <div class="stat-label">WoW Change</div>
+        <div class="stat-value ${directionClass(delta)}">${formatSignedDollars(delta)} (${formatSignedPct(pct)})</div>
+        <div class="stat-sub">vs ${wowPoint.date}</div>
+      </div>
+    `);
+  } else {
+    blocks.push(`
+      <div>
+        <div class="stat-label">WoW Change</div>
+        <div class="stat-value flat">—</div>
+        <div class="stat-sub">need 1W of history</div>
+      </div>
+    `);
+  }
+
+  statsEl.innerHTML = blocks.join("");
+}
+
+function renderChart() {
+const cutoff = new Date();
+cutoff.setDate(cutoff.getDate() - currentTimeframeDays);
+const filtered = indexHistory.filter(p => new Date(p.date) >= cutoff);
+
+const ctx = document.getElementById("indexChart");
+if (window._chaseChart) window._chaseChart.destroy();
+window._chaseChart = new Chart(ctx, {
+type: "line",
+data: {
+labels: filtered.map(p => p.date),
+datasets: [{
+label: "Tome Analytics: Pokemon Chase Modern 50 — Value ($)",
+data: filtered.map(p => p.total),
+borderColor: "#d4a72c",
+backgroundColor: "rgba(212, 167, 44, 0.15)",
+fill: true,
+tension: 0.2,
+pointRadius: 2,
+pointHoverRadius: 5,
+pointHoverBackgroundColor: "#d4a72c",
+pointHoverBorderColor: "#0a0f0d",
+}],
+},
+options: {
+interaction: { mode: "index", intersect: false },
+plugins: {
+legend: { display: false },
+tooltip: {
+enabled: true,
+backgroundColor: "#10160f",
+titleColor: "#d4a72c",
+bodyColor: "#f5f5f0",
+borderColor: "#d4a72c",
+borderWidth: 1,
+padding: 10,
+displayColors: false,
+titleFont: { family: "Helvetica, Arial, sans-serif", weight: "bold" },
+bodyFont: { family: "Helvetica, Arial, sans-serif" },
+callbacks: {
+label: ctx => "Index value: $" + ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+},
+},
+},
+scales: {
+x: { ticks: { color: "#8fa89f", maxTicksLimit: 8 } },
+y: { ticks: { color: "#8fa89f" } },
+},
+},
+});
+}
+
+document.getElementById("timeframe-toggle").addEventListener("click", e => {
+if (e.target.tagName !== "BUTTON") return;
+document.querySelectorAll(".timeframe-toggle button").forEach(b => b.classList.remove("active"));
+e.target.classList.add("active");
+currentTimeframeDays = parseInt(e.target.dataset.days, 10);
+renderChart();
+});
+
+function csvEscape(value) {
+const str = String(value ?? "");
+if (/[",\n]/.test(str)) {
+return '"' + str.replace(/"/g, '""') + '"';
+}
+return str;
+}
+
+function downloadHoldingsCSV() {
+const headers = ["Card", "Set", "Rarity", "Price"];
+const rows = indexCards.map(card => {
+const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
+return [card.name, card.set, card.rarity, priceDisplay];
+});
+const csvLines = [headers.join(","), ...rows.map(row => row.map(csvEscape).join(","))];
+const csvContent = csvLines.join("\n");
+const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const today = new Date();
+const yyyy = today.getFullYear();
+const mm = String(today.getMonth() + 1).padStart(2, "0");
+const dd = String(today.getDate()).padStart(2, "0");
+const filename = `tome-vault-chase-modern-50-${yyyy}-${mm}-${dd}.csv`;
+const link = document.createElement("a");
+link.href = url;
+link.download = filename;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
+}
+
+document.getElementById("export-csv-btn").addEventListener("click", downloadHoldingsCSV);
+
+// Assigns each of a set's visible (top 5) candidates a tier — "gold", "green",
+// or "gray" — purely from rank position and the eligibility/cap rules below.
+// This is deliberately NOT just trusting each card's stored `shortlisted` /
+// `in_index` flags on their own: rank position always decides who's even in
+// the running (only ranks 1-3 of the 5 shown can ever be gold or green;
+// ranks 4-5 are always gray), and an explicit running counter caps gold at
+// MAX_GOLD_PER_SET even if the data flags more than that many cards
+// `in_index: true` for one set.
+function tierCandidates(visible, set) {
+const eligible = isSetEligibleForGold(set);
+let goldCount = 0;
+return visible.map((card, i) => {
+const isTopThree = i < 3; // rank 1-3 of the 5 shown
+let tier = "gray";
+if (isTopThree) {
+const canBeGold = card.in_index && eligible && goldCount < MAX_GOLD_PER_SET;
+if (canBeGold) {
+tier = "gold";
+goldCount += 1;
+} else {
+tier = "green";
+}
+}
+return { card, tier };
+});
+}
+
+async function loadIndex() {
+const res = await fetch(WORKER_URL);
+const data = await res.json();
+
+if (data.last_updated) {
+document.getElementById("subtitle").textContent =
+`Pokemon TCG chase card index, XY forward. Data as of ${formatReleaseDate(data.last_updated)}.`;
+}
+
+// Flatten in_index cards for the holdings table and to build the
+// index-value-over-time series from each card's daily history. The 3-per-set
+// cap and age-eligibility gate are enforced above in tierCandidates(), so a
+// card only ever lands here if it actually earned a gold slot — this stays
+// correct at 50 cards (or any count) once real research fills every set in.
+indexCards = [];
+data.sets.forEach(set => {
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+tiered.forEach(({ card, tier }) => {
+if (tier === "gold") indexCards.push({ ...card, set: set.set_name });
+});
+});
+
+// Highest value first — the Index Holdings table (and its CSV export, which
+// reads this same array) should read as a ranked list, not insertion order.
+indexCards.sort((a, b) => b.price - a.price);
+
+const tbody = document.getElementById("holdings-body");
+indexCards.forEach(card => {
+const row = document.createElement("tr");
+const priceDisplay = card.price !== null
+? "$" + card.price.toFixed(2)
+: '<span class="unverified">unverified</span>';
+row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td>`;
+tbody.appendChild(row);
+});
+
+// Build index-value-over-time by summing each card's daily history on
+// matching dates. Once the real JustTCG history feed is wired into the
+// Worker (see worker/index.js), every card's `history` array will be
+// populated server-side and this just works without further changes.
+const dateMap = {};
+indexCards.forEach(card => {
+(card.history || []).forEach(point => {
+dateMap[point.date] = (dateMap[point.date] || 0) + point.price;
+});
+});
+indexHistory = Object.entries(dateMap)
+.map(([date, total]) => ({ date, total }))
+.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+renderStats();
+renderChart();
+
+// Full candidate pool by set, grouped by era, top 5 per set (no more
+// ranks-6-10 toggle — the pool only ever shows 5).
+const container = document.getElementById("sets-by-era");
+
+const byEra = new Map();
+data.sets.forEach(set => {
+if (!byEra.has(set.era)) byEra.set(set.era, []);
+byEra.get(set.era).push(set);
+});
+
+const eraNames = [...byEra.keys()].sort((a, b) => {
+const ai = ERA_ORDER.indexOf(a);
+const bi = ERA_ORDER.indexOf(b);
+if (ai === -1 && bi === -1) return a.localeCompare(b);
+if (ai === -1) return 1;
+if (bi === -1) return -1;
+return ai - bi;
+});
+
+eraNames.forEach(era => {
+const heading = document.createElement("h3");
+heading.className = "era-heading";
+heading.textContent = era;
+container.appendChild(heading);
+
+const grid = document.createElement("div");
+grid.className = "sets-grid";
+
+byEra.get(era).forEach(set => {
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+const eligible = isSetEligibleForGold(set);
+
+const items = tiered.map(({ card, tier }) => {
+const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
+return `<li class="tier-${tier}">${card.name} <span class="price">${priceDisplay}</span></li>`;
+}).join("");
+
+const releaseNote = set.release_date
+? `<div class="release-date">Released ${formatReleaseDate(set.release_date)}</div>`
+: "";
+
+const ineligibleNote = !eligible
+? `<div class="ineligible-note">Not yet eligible for gold: sets need ${SET_ELIGIBILITY_DAYS}+ days of trading history before any of their cards can enter the index. Cards here can still be shown, ranked, and shortlisted in the meantime.</div>`
+: "";
+
+const card = document.createElement("div");
+card.className = "set-card";
+card.innerHTML = `<h4>${set.set_name}</h4>${releaseNote}${ineligibleNote}<ol>${items}</ol>`;
+grid.appendChild(card);
+});
+
+container.appendChild(grid);
+});
+}
+
+loadIndex().catch(err => {
+document.body.innerHTML += "<p style='color:#c0392b'>Failed to load index data: " + err.message + "</p>";
+});
+</script>
+</body>
+</html>
