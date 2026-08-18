@@ -30,21 +30,21 @@ h3.era-heading:first-of-type { margin-top: 8px; }
 .set-card li.tier-green { color: #0C7958; }
 .set-card li.tier-gray { color: #6b7d76; }
 .set-card .price { float: right; color: #8fa89f; font-weight: normal; }
-table { width: 100%; max-width: 900px; border-collapse: collapse; margin-bottom: 40px; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; }
-th { color: #d4a72c; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+table { width: 100%; max-width: 900px; border-collapse: collapse; margin-bottom: 40px; font-size: 0.82rem; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #1c2622; }
+th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
 .unverified { color: #8fa89f; font-style: italic; }
+.explainer { color: #8fa89f; margin-bottom: 32px; max-width: 640px; line-height: 1.5; }
 .export-btn { background: #d4a72c; color: #1a1a1a; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
 .export-btn:hover { background: #e0b53f; }
 </style>
 </head>
 <body>
 <h1>Tome Vault: Pokemon Chase Modern 50</h1>
-<p class="subtitle">Pokemon TCG chase-card index, XY forward. Prototype — partial data.</p>
+<p class="subtitle" id="subtitle">Pokemon TCG chase card index, XY forward.</p>
 <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
-<p class="disclaimer">This index is informational only and does not constitute investment advice.
-Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
-not recommend buying, selling, or holding any card based on this index.</p>
+<p class="explainer">This index tracks the top 50 US English Pokemon chase cards — the rarest,
+highest-value chase pulls — from modern and current-era sets, spanning XY forward.</p>
 
 <h2>Index Trend</h2>
 <div class="timeframe-toggle" id="timeframe-toggle">
@@ -56,6 +56,9 @@ not recommend buying, selling, or holding any card based on this index.</p>
 </div>
 <div id="chart-container"><canvas id="indexChart"></canvas></div>
 <p style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;">Chart data currently reflects the last 7 days of real market pricing. Longer timeframe views (30D–1Y) will fill in automatically as more daily price history accumulates.</p>
+<p class="disclaimer">This index is informational only and does not constitute investment advice.
+Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
+not recommend buying, selling, or holding any card based on this index.</p>
 
 <h2>Index Holdings</h2>
 <button class="export-btn" id="export-csv-btn">Download CSV</button>
@@ -242,6 +245,11 @@ return { card, tier };
 async function loadIndex() {
 const res = await fetch(WORKER_URL);
 const data = await res.json();
+
+if (data.last_updated) {
+document.getElementById("subtitle").textContent =
+`Pokemon TCG chase card index, XY forward. Data as of ${formatReleaseDate(data.last_updated)}.`;
+}
 
 // Flatten in_index cards for the holdings table and to build the
 // index-value-over-time series from each card's daily history. The 3-per-set
