@@ -1,4 +1,4 @@
-# Tome Analytics: Pokemon Chase Modern EN 50 — Prototype
+# Tome Analytics: Pokemon Chase Modern EN 50
 
 ## Major update: no more waiting on history to accumulate
 JustTCG retains historical NM (Near Mint) price data server-side on paid plans —
