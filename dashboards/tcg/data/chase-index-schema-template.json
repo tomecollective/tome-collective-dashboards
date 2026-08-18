@@ -1,5 +1,5 @@
 {
-  "index_name": "Tome Vault: Pokemon Chase Modern 50",
+  "index_name": "Tome Vault: Pokemon Chase Modern EN 50",
   "last_updated": "2026-08-13",
   "note": "TEMPLATE — real data goes here via David's historical pricing research. Two example rows below per set show the expected shape. `era` groups sets in the UI (XY, Sun & Moon, Sword & Shield, Scarlet & Violet, Mega Evolution, ...). `release_date` (YYYY-MM-DD) drives the age-eligibility gate: a set's cards can be shown/ranked/shortlisted any time, but the frontend won't let any of them turn gold (in_index) until the set is 30+ days past release_date — that's enforced in index.html's JS, not here, so this field just needs to be accurate. `shortlisted` is legacy/informational now — the frontend derives shortlist tier purely from rank position (ranks 1-3 of the 5 shown are eligible for gold/green, ranks 4-5 are always gray), so don't worry about keeping it perfectly in sync by hand. in_index=true marks a card as one of the final 50 in the published index, capped at 3 per set (also enforced in the frontend, in rank order, even if more than 3 cards in one set are flagged in_index=true). history is an empty array until the weekly cron snapshot job is built — populate current price now, let history accumulate going forward.",
 
