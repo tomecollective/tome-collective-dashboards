@@ -50,7 +50,7 @@ th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacin
 <h1>Tome Vault: Pokemon Chase Modern EN 50</h1>
 <p class="subtitle" id="subtitle">Pokemon TCG chase card index, XY forward.</p>
 <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
-<p class="explainer">This index tracks the top 50 English Pokemon chase cards — the rarest,
+<p class="explainer">This index tracks the top 50 US English Pokemon chase cards — the rarest,
 highest-value chase pulls — from modern and current-era sets, spanning XY forward.</p>
 
 <h2>Index Trend</h2>
@@ -242,7 +242,7 @@ type: "line",
 data: {
 labels: filtered.map(p => p.date),
 datasets: [{
-label: "Tome Analytics: Pokemon Chase Modern 50 — Value ($)",
+label: "Tome Analytics: Pokemon Chase Modern EN 50 — Value ($)",
 data: filtered.map(p => p.total),
 borderColor: "#d4a72c",
 backgroundColor: "rgba(212, 167, 44, 0.15)",
@@ -312,7 +312,7 @@ const today = new Date();
 const yyyy = today.getFullYear();
 const mm = String(today.getMonth() + 1).padStart(2, "0");
 const dd = String(today.getDate()).padStart(2, "0");
-const filename = `tome-vault-chase-modern-50-${yyyy}-${mm}-${dd}.csv`;
+const filename = `tome-vault-chase-modern-en-50-${yyyy}-${mm}-${dd}.csv`;
 const link = document.createElement("a");
 link.href = url;
 link.download = filename;
