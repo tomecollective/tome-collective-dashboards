@@ -2,11 +2,20 @@ name = "tome-chase-index"
 main = "worker/index.js"
 compatibility_date = "2026-08-08"
 
-# KV binding is commented out for tonight's prototype — nothing to bind yet.
-# Once real weekly snapshots are needed, create the namespace with:
+# Required so /api/chase-index has something to serve besides the bundled
+# seed, and so the scheduled refresh has somewhere to write its output and
+# cache resolved JustTCG card IDs. Create it once with:
 #   wrangler kv:namespace create CHASE_INDEX_KV
-# then uncomment below with the id it gives you.
-#
-# [[kv_namespaces]]
-# binding = "CHASE_INDEX_KV"
-# id = "REPLACE_WITH_REAL_ID"
+# then replace REPLACE_WITH_REAL_ID below with the id it prints.
+[[kv_namespaces]]
+binding = "CHASE_INDEX_KV"
+id = "REPLACE_WITH_REAL_ID"
+
+# Runs the scheduled() handler in worker/index.js once a day. This is the
+# piece that was actually missing before -- there was no cron on this worker
+# at all, only on the separate healthcheck worker (which just checks uptime,
+# not data freshness). Time is UTC; 13:00 UTC = 8am ET / 7am CT. Change to
+# taste -- one run a day is enough since JustTCG's priceHistoryDuration
+# window backfills any days a run gets missed.
+[triggers]
+crons = ["0 13 * * *"]
