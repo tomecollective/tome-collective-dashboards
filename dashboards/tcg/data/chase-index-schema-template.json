@@ -1,7 +1,7 @@
 {
   "index_name": "Tome Vault: Pokemon Chase Modern EN 50",
-  "last_updated": "2026-08-13",
-  "note": "TEMPLATE — real data goes here via David's historical pricing research. Two example rows below per set show the expected shape. `era` groups sets in the UI (XY, Sun & Moon, Sword & Shield, Scarlet & Violet, Mega Evolution, ...). `release_date` (YYYY-MM-DD) drives the age-eligibility gate: a set's cards can be shown/ranked/shortlisted any time, but the frontend won't let any of them turn gold (in_index) until the set is 30+ days past release_date — that's enforced in index.html's JS, not here, so this field just needs to be accurate. `shortlisted` is legacy/informational now — the frontend derives shortlist tier purely from rank position (ranks 1-3 of the 5 shown are eligible for gold/green, ranks 4-5 are always gray), so don't worry about keeping it perfectly in sync by hand. in_index=true marks a card as one of the final 50 in the published index, capped at 3 per set (also enforced in the frontend, in rank order, even if more than 3 cards in one set are flagged in_index=true). history is an empty array until the weekly cron snapshot job is built — populate current price now, let history accumulate going forward.",
+  "last_updated": "2026-08-19",
+  "note": "TEMPLATE -- real data goes here via David's set/rarity research; live pricing and history are now filled in automatically by the worker's scheduled() handler (see worker/index.js and DEPLOY.md), not by hand. `era` groups sets in the UI. `release_date` (YYYY-MM-DD) drives the age-eligibility gate -- a set's cards can be shown/ranked/shortlisted any time, but can't turn gold (in_index) until the set is SET_ELIGIBILITY_DAYS past release_date (enforced both in index.html's JS for display and in worker/index.js's recomputeIndex() for the data the API actually serves -- keep those two constants in sync if you ever change the gate). `shortlisted` and `in_index` are now recomputed every scheduled run from price rank, so don't hand-edit them -- they'll be overwritten. `price` and `history` are also overwritten by the worker once it successfully resolves and fetches a card; leave `price: null` with `note: \"needs research\"` for any card that hasn't been entered into the candidate pool yet, and the worker will skip it rather than guess.",
 
   "sets": [
     {
@@ -16,7 +16,9 @@
           "price": 80.00,
           "shortlisted": true,
           "in_index": true,
-          "history": []
+          "history": [],
+          "justtcg_card_id": "pokemon-scarlet-violet-gardevoir-ex-245-198",
+          "justtcg_variant_id": null
         },
         {
           "rank": 2,
@@ -27,19 +29,7 @@
           "in_index": true,
           "history": []
         }
-        // Continue to rank 5 for this set. Only ranks 1-3 can ever become
-        // gold/in_index. Not every top-3 card makes in_index: true — that
-        // depends on whether it's in the top 50 across ALL sets combined,
-        // and no set can contribute more than 3 to that top 50.
       ]
     }
-    // Repeat this block per eligible set (XY forward — see README for the
-    // full era range). Sets with fewer than 5 cards clearing the
-    // price/rarity/data floors from the Spike Report methodology can just
-    // have fewer entries — don't pad with cards that don't actually qualify.
-    // For a set you haven't researched yet, add placeholder rows instead of
-    // guessing values: {"price": null, "shortlisted": false, "in_index":
-    // false, "note": "needs research"} — see chase-50-modern-seed.json for
-    // live examples (the XY/Sun & Moon/Sword & Shield/Mega Evolution sets).
   ]
 }
