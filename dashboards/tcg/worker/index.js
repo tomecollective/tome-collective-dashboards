@@ -365,6 +365,22 @@ export default {
     // see why almost nothing is resolving.
     // ?mode=price -- raw price+history fetch using an already-cached
     // resolution (only works once something has resolved at least once).
+    // ?raw=1 -- pass EVERY other query param straight through to JustTCG's
+    // /v1/cards as-is (e.g. ?raw=1&q=Charizard&game=pokemon), so several
+    // combinations can be tried without redeploying between each one.
+    if (url.pathname === "/api/debug-card" && url.searchParams.get("raw") === "1") {
+      if (!env.JUSTTCG_API_KEY) {
+        return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
+      }
+      const passthrough = new URLSearchParams(url.searchParams);
+      passthrough.delete("raw");
+      const res = await fetch(`${JUSTTCG_BASE}?${passthrough.toString()}`, {
+        headers: { "x-api-key": env.JUSTTCG_API_KEY },
+      });
+      const body = await res.text();
+      return new Response(body, { status: res.status, headers: corsHeaders });
+    }
+
     if (url.pathname === "/api/debug-card") {
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
