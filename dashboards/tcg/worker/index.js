@@ -83,16 +83,40 @@ function resolveKey(name, setName) {
   return `${RESOLVE_PREFIX}${name}|${setName}`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// JustTCG rate-limits requests (429 "Rate limit exceeded"). A batch of 12
+// sequential calls with no spacing was enough to trip it partway through a
+// run, after which every remaining card in that run kept failing too since
+// nothing backed off. This adds a fixed pause before every call, plus a
+// retry-with-backoff specifically for 429s (transient by nature -- the
+// request itself is fine, it just needs to wait its turn).
+const REQUEST_DELAY_MS = 350;
+const MAX_429_RETRIES = 3;
+
 async function justtcgFetch(env, params) {
   const url = `${JUSTTCG_BASE}?${new URLSearchParams(params).toString()}`;
-  const res = await fetch(url, {
-    headers: { "x-api-key": env.JUSTTCG_API_KEY },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`JustTCG ${res.status} for ${url}: ${body.slice(0, 300)}`);
+  for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+    await sleep(REQUEST_DELAY_MS);
+    const res = await fetch(url, {
+      headers: { "x-api-key": env.JUSTTCG_API_KEY },
+    });
+    if (res.status === 429) {
+      if (attempt === MAX_429_RETRIES) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`JustTCG 429 (gave up after ${MAX_429_RETRIES} retries) for ${url}: ${body.slice(0, 300)}`);
+      }
+      await sleep(REQUEST_DELAY_MS * 2 ** attempt * 4); // 1.4s, 2.8s, 5.6s
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`JustTCG ${res.status} for ${url}: ${body.slice(0, 300)}`);
+    }
+    return res.json();
   }
-  return res.json();
 }
 
 function firstMatch(data) {
