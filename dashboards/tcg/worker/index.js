@@ -361,15 +361,31 @@ export default {
     // runs update `price` fine but `history` comes back empty). The API key
     // stays server-side; nothing secret is exposed by hitting this URL.
     // Remove this block once toHistory()/refreshCard() are fixed and verified.
+    // ?mode=search (default) -- raw output of the name/set text search, to
+    // see why almost nothing is resolving.
+    // ?mode=price -- raw price+history fetch using an already-cached
+    // resolution (only works once something has resolved at least once).
     if (url.pathname === "/api/debug-card") {
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
       }
       const name = url.searchParams.get("name") || "M Charizard EX (X) (Secret) - 108/106";
       const setName = url.searchParams.get("set") || "Flashfire";
+      const mode = url.searchParams.get("mode") || "search";
+
+      if (mode === "search") {
+        const searchName = name.split(" - ")[0].trim();
+        const res = await fetch(
+          `${JUSTTCG_BASE}?${new URLSearchParams({ q: searchName, set: setName, game: GAME, limit: "5" }).toString()}`,
+          { headers: { "x-api-key": env.JUSTTCG_API_KEY } }
+        );
+        const body = await res.text();
+        return new Response(body, { status: res.status, headers: corsHeaders });
+      }
+
       const cached = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(resolveKey(name, setName), "json") : null;
       if (!cached) {
-        return new Response(JSON.stringify({ error: "no cached resolution for that name/set -- pass ?name=&set= matching a card already refreshed at least once" }), {
+        return new Response(JSON.stringify({ error: "no cached resolution for that name/set -- pass ?name=&set= matching a card already refreshed at least once, or use ?mode=search" }), {
           status: 404,
           headers: corsHeaders,
         });
