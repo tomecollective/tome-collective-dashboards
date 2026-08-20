@@ -355,6 +355,39 @@ export default {
       return new Response(JSON.stringify(stale), { headers: corsHeaders });
     }
 
+    // TEMPORARY diagnostic endpoint -- returns JustTCG's raw response for one
+    // card so the actual field names can be confirmed (the blog-post-derived
+    // {t, p} priceHistory shape this file assumed turned out to be wrong: real
+    // runs update `price` fine but `history` comes back empty). The API key
+    // stays server-side; nothing secret is exposed by hitting this URL.
+    // Remove this block once toHistory()/refreshCard() are fixed and verified.
+    if (url.pathname === "/api/debug-card") {
+      if (!env.JUSTTCG_API_KEY) {
+        return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
+      }
+      const name = url.searchParams.get("name") || "M Charizard EX (X) (Secret) - 108/106";
+      const setName = url.searchParams.get("set") || "Flashfire";
+      const cached = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(resolveKey(name, setName), "json") : null;
+      if (!cached) {
+        return new Response(JSON.stringify({ error: "no cached resolution for that name/set -- pass ?name=&set= matching a card already refreshed at least once" }), {
+          status: 404,
+          headers: corsHeaders,
+        });
+      }
+      const params = {
+        cardId: cached.cardId,
+        condition: CONDITION,
+        include_price_history: "true",
+        priceHistoryDuration: PRICE_HISTORY_DURATION,
+      };
+      if (cached.variantId) params.variantId = cached.variantId;
+      const res = await fetch(`${JUSTTCG_BASE}?${new URLSearchParams(params).toString()}`, {
+        headers: { "x-api-key": env.JUSTTCG_API_KEY },
+      });
+      const body = await res.text();
+      return new Response(body, { status: res.status, headers: corsHeaders });
+    }
+
     if (url.pathname === "/api/refresh" && request.method === "POST") {
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set -- wrangler secret put JUSTTCG_API_KEY" }), {
