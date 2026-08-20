@@ -6,17 +6,19 @@
 //     or before the first scheduled run has completed). The fallback payload
 //     is flagged as STALE in its `note` field so a cold start is obvious in
 //     the API response itself, not just silently serving old numbers.
-//   - scheduled(): runs on the Cron Trigger defined in wrangler.toml. For
-//     each researched card it resolves a JustTCG cardId (cached in KV so
-//     this is a one-time lookup per card, not a fresh search every run),
-//     fetches real Near Mint price + price history, merges that history into
-//     the existing {date, price} shape the frontend already reads (no
-//     index.html changes needed), recomputes the shortlist/gold index using
-//     the same rules the 2026-08-14 manual pass used, and writes the result
-//     to KV.
-//   - POST /api/refresh: manually fires the same refresh logic on demand,
+//   - scheduled(): runs on the Cron Trigger defined in wrangler.toml. Kicks
+//     off processBatch(), which works through the ~295 cards in small
+//     batches (see BATCH_SIZE below) to stay under Cloudflare's per-
+//     invocation subrequest limit, chaining itself batch by batch until
+//     every card is refreshed, then recomputes the shortlist/gold index
+//     using the same rules the 2026-08-14 manual pass used and writes the
+//     result to KV.
+//   - POST /api/refresh: manually kicks off the same batched run on demand,
 //     without waiting for the cron -- same pattern the healthcheck worker's
-//     README documents for testing its own scheduled handler.
+//     README documents for testing its own scheduled handler. One POST
+//     starts the chain; it finishes itself over several batches a few
+//     seconds apart. Add ?resume=1 to continue an in-progress run instead of
+//     restarting from card 0 (this is what the worker passes to itself).
 //
 // Why this fixes the Aug 15-18 gap: JustTCG retains real daily NM prices
 // server-side (up to 180 days on paid plans). Requesting
@@ -62,6 +64,20 @@ const TOP_N = 50;
 
 const CACHE_KEY_LATEST = "latest";
 const RESOLVE_PREFIX = "resolved:"; // resolved:<name>|<set_name> -> {cardId, variantId}
+const KEY_PROGRESS = "refresh:progress"; // in-flight batch state between chained invocations
+const SELF_URL = "https://tome-tcg.tomecollective.workers.dev"; // used by scheduled() to call itself
+
+// Cloudflare Workers cap outbound requests (fetch calls AND KV operations
+// both count) at 50 per single invocation on the Free plan (1000 on Workers
+// Paid). Each card can use up to 3 of those (a KV read to check the resolved-
+// id cache, a JustTCG search if not cached, a JustTCG price fetch) -- so
+// refreshing ~295 cards in one invocation blows past 50 well before finishing
+// and everything after that point silently keeps its last known price. This
+// worker instead processes BATCH_SIZE cards per invocation, saves progress to
+// KV, and fires the next batch as a brand-new invocation (its own fresh
+// subrequest budget) via a self-fetch -- so the whole run completes across
+// several chained invocations instead of exceeding the limit in one.
+const BATCH_SIZE = 12;
 
 function resolveKey(name, setName) {
   return `${RESOLVE_PREFIX}${name}|${setName}`;
@@ -207,45 +223,83 @@ function recomputeIndex(sets, computeDateStr) {
   return sets;
 }
 
-async function runRefresh(env) {
-  const today = new Date().toISOString().slice(0, 10);
-  const sets = [];
-  const failures = [];
+// Flat list of {si, ci, setName} pointers into a `sets` array, one per card
+// that actually has real data to refresh (skips placeholder "needs research"
+// rows). Order is stable across calls since it's derived from the same
+// bundled seed structure every time.
+function flattenRefs(sets) {
+  const refs = [];
+  sets.forEach((set, si) => {
+    set.top_5.forEach((card, ci) => {
+      if (card.price !== null && card.note !== "needs research") {
+        refs.push({ si, ci, setName: set.set_name });
+      }
+    });
+  });
+  return refs;
+}
 
-  for (const set of chaseIndexData.sets) {
-    const top_5 = [];
-    for (const card of set.top_5) {
-      if (card.price === null || card.note === "needs research") {
-        top_5.push(card);
-        continue;
-      }
-      try {
-        top_5.push(await refreshCard(env, card, set.set_name));
-      } catch (err) {
-        failures.push(`${card.name} (${set.set_name}): ${err.message}`);
-        top_5.push(card); // keep last-known-good price/history rather than dropping the card
-      }
+function freshProgress() {
+  return {
+    today: new Date().toISOString().slice(0, 10),
+    // Deep clone so this run's edits don't mutate the imported seed module
+    // (which stays shared across invocations in the same isolate).
+    sets: JSON.parse(JSON.stringify(chaseIndexData.sets)),
+    offset: 0,
+    failures: [],
+  };
+}
+
+// Processes one BATCH_SIZE-sized slice of cards, then either chains itself
+// to the next batch (fire-and-forget, via ctx.waitUntil so it doesn't block
+// this invocation's response) or, once every card has been visited,
+// recomputes the index and publishes the final payload to KV.
+async function processBatch(env, origin, resume, ctx) {
+  let progress = resume ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
+  if (!progress) progress = freshProgress();
+
+  const refs = flattenRefs(progress.sets);
+  const total = refs.length;
+  const slice = refs.slice(progress.offset, progress.offset + BATCH_SIZE);
+
+  for (const ref of slice) {
+    const set = progress.sets[ref.si];
+    const card = set.top_5[ref.ci];
+    try {
+      set.top_5[ref.ci] = await refreshCard(env, card, ref.setName);
+    } catch (err) {
+      progress.failures.push(`${card.name} (${ref.setName}): ${err.message}`);
     }
-    sets.push({ ...set, top_5 });
+  }
+  progress.offset += slice.length;
+
+  if (progress.offset < total) {
+    await env.CHASE_INDEX_KV.put(KEY_PROGRESS, JSON.stringify(progress));
+    // New HTTP request = new Worker invocation = a fresh subrequest budget,
+    // which is the whole point -- this is NOT the same as looping in this
+    // invocation. waitUntil lets this response return immediately instead of
+    // waiting on the entire chain.
+    ctx.waitUntil(fetch(`${origin}/api/refresh?resume=1`, { method: "POST" }));
+    return { done: false, progress: `${progress.offset}/${total}`, message: "batch complete, next batch chaining automatically" };
   }
 
-  recomputeIndex(sets, today);
-
+  recomputeIndex(progress.sets, progress.today);
   const payload = {
     index_name: chaseIndexData.index_name,
-    last_updated: today,
-    sets,
+    last_updated: progress.today,
+    sets: progress.sets,
     note:
-      `Auto-refreshed ${today} via JustTCG (condition=${CONDITION}, ` +
-      `priceHistoryDuration=${PRICE_HISTORY_DURATION}). Eligibility gate: ` +
-      `${SET_ELIGIBILITY_DAYS} days. Max ${MAX_GOLD_PER_SET} gold per set.` +
-      (failures.length ? ` ${failures.length} card(s) failed to refresh and kept their last known price: ${failures.slice(0, 5).join("; ")}${failures.length > 5 ? "..." : ""}` : ""),
+      `Auto-refreshed ${progress.today} via JustTCG (condition=${CONDITION}, ` +
+      `priceHistoryDuration=${PRICE_HISTORY_DURATION}), processed in batches of ` +
+      `${BATCH_SIZE} to stay under Cloudflare's per-invocation subrequest limit. ` +
+      `Eligibility gate: ${SET_ELIGIBILITY_DAYS} days. Max ${MAX_GOLD_PER_SET} gold per set.` +
+      (progress.failures.length
+        ? ` ${progress.failures.length} card(s) failed to refresh and kept their last known price: ${progress.failures.slice(0, 5).join("; ")}${progress.failures.length > 5 ? "..." : ""}`
+        : ""),
   };
-
-  if (env.CHASE_INDEX_KV) {
-    await env.CHASE_INDEX_KV.put(CACHE_KEY_LATEST, JSON.stringify(payload));
-  }
-  return payload;
+  await env.CHASE_INDEX_KV.put(CACHE_KEY_LATEST, JSON.stringify(payload));
+  await env.CHASE_INDEX_KV.delete(KEY_PROGRESS);
+  return { done: true, total, payload };
 }
 
 export default {
@@ -281,14 +335,25 @@ export default {
           headers: corsHeaders,
         });
       }
-      const payload = await runRefresh(env);
-      return new Response(JSON.stringify(payload), { headers: corsHeaders });
+      if (!env.CHASE_INDEX_KV) {
+        return new Response(JSON.stringify({ error: "CHASE_INDEX_KV not bound -- check wrangler.toml" }), {
+          status: 500,
+          headers: corsHeaders,
+        });
+      }
+      // ?resume=1 continues a chained run already in progress (this is what
+      // the worker calls on itself between batches); no resume param means
+      // "start a fresh run from card 0", which is what you want the first
+      // time you POST here by hand.
+      const resume = url.searchParams.get("resume") === "1";
+      const result = await processBatch(env, url.origin, resume, ctx);
+      return new Response(JSON.stringify(result), { headers: corsHeaders });
     }
 
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runRefresh(env));
+    ctx.waitUntil(processBatch(env, SELF_URL, false, ctx));
   },
 };
