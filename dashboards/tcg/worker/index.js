@@ -125,6 +125,25 @@ function firstMatch(data) {
   return data || null;
 }
 
+function matchList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
+function normalizeSetName(s) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Our seed data's collector number is embedded in the card name, e.g.
+// "M Charizard EX (X) (Secret) - 108/106" -> "108/106". Some entries have a
+// second trailing "- 108/106" too (copy/paste artifact in the seed file);
+// this grabs the LAST NNN/NNN-shaped token in the string either way.
+function extractNumber(name) {
+  const matches = [...name.matchAll(/(\d{1,4}\/\d{1,4})/g)];
+  return matches.length ? matches[matches.length - 1][1] : null;
+}
+
 // Resolve a card's JustTCG identity once, then cache it in KV so day-to-day
 // refreshes don't re-search. Manual override: if the seed data carries a
 // `justtcg_card_id` (optionally `justtcg_variant_id`), trust it directly
@@ -133,6 +152,14 @@ function firstMatch(data) {
 // the cases a text search is likely to confuse with the "plain" version of
 // the same card, so spot-check the first refresh against real market prices
 // before assuming every match is correct.
+//
+// IMPORTANT: this does NOT pass JustTCG's `set` query param. Testing showed
+// it expects an internal slug (e.g. "arceus-pokemon") that has no
+// predictable relationship to the human-readable set names this project
+// uses (JustTCG calls our "Flashfire" set "XY - Flashfire", for example) --
+// passing our set name as that filter silently matched zero cards for
+// almost every set. Instead this searches by name only and filters/ranks
+// the results in-process against our own set_name and collector number.
 async function resolveCardId(env, card, setName) {
   if (card.justtcg_card_id) {
     return { cardId: card.justtcg_card_id, variantId: card.justtcg_variant_id || null };
@@ -143,10 +170,31 @@ async function resolveCardId(env, card, setName) {
     if (cached) return cached;
   }
   const searchName = card.name.split(" - ")[0].trim(); // strip trailing "- NNN/NNN" collector numbers
-  const data = await justtcgFetch(env, { q: searchName, set: setName, game: GAME, limit: "5" });
-  const match = firstMatch(data);
+  const wantedNumber = extractNumber(card.name);
+  const wantedSet = normalizeSetName(setName);
+
+  const data = await justtcgFetch(env, { q: searchName, game: GAME, limit: "25" });
+  const results = matchList(data);
+
+  let candidates = results.filter((r) => {
+    const rs = normalizeSetName(r.set_name);
+    return rs && (rs.includes(wantedSet) || wantedSet.includes(rs));
+  });
+  if (wantedNumber) {
+    const withNumber = candidates.filter((r) => (r.number || "").replace(/\s/g, "") === wantedNumber);
+    if (withNumber.length) candidates = withNumber;
+  }
+  // If set-name matching found nothing (an even less predictable JustTCG
+  // naming quirk than the ones already seen), fall back to matching on
+  // collector number alone across ALL results for this name -- still a real
+  // signal, just a weaker one.
+  if (!candidates.length && wantedNumber) {
+    candidates = results.filter((r) => (r.number || "").replace(/\s/g, "") === wantedNumber);
+  }
+
+  const match = candidates[0] || null;
   if (!match) return null;
-  const resolved = { cardId: match.cardId || match.id, variantId: match.variantId || null };
+  const resolved = { cardId: match.id || match.cardId, variantId: null };
   if (env.CHASE_INDEX_KV) {
     await env.CHASE_INDEX_KV.put(cacheKey, JSON.stringify(resolved));
   }
