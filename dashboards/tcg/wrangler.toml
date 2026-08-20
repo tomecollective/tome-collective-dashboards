@@ -1,6 +1,16 @@
-name = "tome-chase-index"
+name = "tome-tcg"
 main = "worker/index.js"
 compatibility_date = "2026-08-08"
+
+# Self-reference so the batch-chaining logic in worker/index.js can invoke
+# this same worker again without going through a public fetch() to its own
+# workers.dev URL -- Cloudflare blocks that as anti-infinite-loop protection
+# (same restriction the healthcheck worker's README documents for calling
+# OTHER workers; it applies to self-calls too, which is why the very first
+# deploy of this file's batching chained one batch then silently stopped).
+[[services]]
+binding = "SELF"
+service = "tome-tcg"
 
 # Required so /api/chase-index has something to serve besides the bundled
 # seed, and so the scheduled refresh has somewhere to write its output and
@@ -9,7 +19,7 @@ compatibility_date = "2026-08-08"
 # then replace REPLACE_WITH_REAL_ID below with the id it prints.
 [[kv_namespaces]]
 binding = "CHASE_INDEX_KV"
-id = "REPLACE_WITH_REAL_ID"
+id = "91fb21abc1084fe1ae7f723cec1b4e61"
 
 # Runs the scheduled() handler in worker/index.js once a day. This is the
 # piece that was actually missing before -- there was no cron on this worker
