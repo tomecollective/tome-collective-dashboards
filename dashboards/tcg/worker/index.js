@@ -275,11 +275,14 @@ async function processBatch(env, origin, resume, ctx) {
 
   if (progress.offset < total) {
     await env.CHASE_INDEX_KV.put(KEY_PROGRESS, JSON.stringify(progress));
-    // New HTTP request = new Worker invocation = a fresh subrequest budget,
-    // which is the whole point -- this is NOT the same as looping in this
-    // invocation. waitUntil lets this response return immediately instead of
-    // waiting on the entire chain.
-    ctx.waitUntil(fetch(`${origin}/api/refresh?resume=1`, { method: "POST" }));
+    // Chain to the next batch via the SELF service binding, NOT a plain
+    // fetch() to our own workers.dev URL -- Cloudflare silently blocks a
+    // worker from fetch()-ing its own *.workers.dev URL as anti-loop
+    // protection (error 1042/404, request never actually invoked), which is
+    // exactly what made the first version of this chain die after batch 1
+    // with no visible error. Service bindings route worker-to-worker
+    // internally and aren't subject to that restriction -- see wrangler.toml.
+    ctx.waitUntil(env.SELF.fetch(`${origin}/api/refresh?resume=1`, { method: "POST" }));
     return { done: false, progress: `${progress.offset}/${total}`, message: "batch complete, next batch chaining automatically" };
   }
 
@@ -357,3 +360,8 @@ export default {
     ctx.waitUntil(processBatch(env, SELF_URL, false, ctx));
   },
 };
+
+// Note: SELF_URL is still used as the base for building the /api/refresh?
+// resume=1 URL passed to env.SELF.fetch() -- the service binding needs a
+// full Request/URL, it just doesn't route over the public network the way a
+// bare global fetch() to that same URL would.
