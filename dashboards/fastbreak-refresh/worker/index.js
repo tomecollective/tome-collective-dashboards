@@ -435,12 +435,13 @@ async function buildDashboard(env) {
 
   let playerIds = [...new Set(roster.map((p) => p.id))];
 
-  // Reserve 2 subrequests per player chunk (stats + advanced, if PITP is one of
-  // today's objectives). If the full player list would exceed the Free-plan
-  // subrequest ceiling, trim it and say so honestly rather than silently
-  // dropping players or crashing mid-run.
+  // Reserve 2 subrequests per player chunk for stats (recent-scoped + YTD-
+  // scoped, see fix note below), plus 2 more for advanced stats if PITP is
+  // one of today's objectives. If the full player list would exceed the
+  // Free-plan subrequest ceiling, trim it and say so honestly rather than
+  // silently dropping players or crashing mid-run.
   const needsAdvanced = objectives.some((o) => STAT_FIELD_MAP[o.stat].source === "advanced");
-  const perChunkRequests = needsAdvanced ? 2 : 1;
+  const perChunkRequests = needsAdvanced ? 4 : 2;
   const chunksNeeded = Math.ceil(playerIds.length / PLAYER_CHUNK_SIZE) * perChunkRequests;
   let droppedCount = 0;
   if (subrequests + chunksNeeded > MAX_SUBREQUESTS) {
@@ -450,27 +451,48 @@ async function buildDashboard(env) {
     playerIds = playerIds.slice(0, Math.max(0, maxPlayers));
   }
 
+  // BUG FIX (verified live 2026-08-21): a single combined query scoped to
+  // `allGameIds` (L10 ∪ YTD, i.e. the whole season) silently overflowed the
+  // API's per_page=100 cap for any chunk with real game history -- and since
+  // /player_stats and /player_game_advanced_stats return rows OLDEST-FIRST
+  // (same ordering quirk documented above for /games), the surviving page-1
+  // rows skewed toward early-season games. YTD still looked "plausible" off
+  // that partial sample, but L10 -- which specifically needs the most recent
+  // games -- came back empty for every player. Fix: issue two narrower,
+  // separately-scoped queries per chunk. The last10GameIds-scoped query is
+  // guaranteed to fit one page (PLAYER_CHUNK_SIZE=10 players * 10 games =
+  // <=100 rows), so L10 is always complete. The ytdGameIds-scoped query keeps
+  // the prior single-page best-effort behavior (unchanged from before this
+  // fix) for season-long rows. Rows are deduped per (player, game) since the
+  // two scopes overlap on a player's most recent games.
   const playerChunks = chunk(playerIds, PLAYER_CHUNK_SIZE);
   const statsByPlayer = new Map();
   const advByPlayer = new Map();
 
-  for (const c of playerChunks) {
-    const stats = await getStatsForChunk(c, season, allGameIds, env);
-    subrequests += 1;
-    for (const s of stats) {
-      const pid = s.player?.id ?? s.player_id;
-      if (!statsByPlayer.has(pid)) statsByPlayer.set(pid, []);
-      statsByPlayer.get(pid).push(s);
+  function mergeRows(targetMap, rows) {
+    for (const row of rows) {
+      const pid = row.player?.id ?? row.player_id;
+      const gid = row.game?.id ?? row.game_id;
+      if (!targetMap.has(pid)) targetMap.set(pid, new Map());
+      targetMap.get(pid).set(gid, row);
     }
+  }
+
+  for (const c of playerChunks) {
+    const recentStats = await getStatsForChunk(c, season, last10GameIds, env);
+    subrequests += 1;
+    mergeRows(statsByPlayer, recentStats);
+    const ytdStats = await getStatsForChunk(c, season, ytdGameIds, env);
+    subrequests += 1;
+    mergeRows(statsByPlayer, ytdStats);
 
     if (needsAdvanced) {
-      const adv = await getAdvancedForChunk(c, season, allGameIds, env);
+      const recentAdv = await getAdvancedForChunk(c, season, last10GameIds, env);
       subrequests += 1;
-      for (const a of adv) {
-        const pid = a.player?.id ?? a.player_id;
-        if (!advByPlayer.has(pid)) advByPlayer.set(pid, []);
-        advByPlayer.get(pid).push(a);
-      }
+      mergeRows(advByPlayer, recentAdv);
+      const ytdAdv = await getAdvancedForChunk(c, season, ytdGameIds, env);
+      subrequests += 1;
+      mergeRows(advByPlayer, ytdAdv);
     }
   }
 
@@ -478,7 +500,8 @@ async function buildDashboard(env) {
 
   function rowsForObjective(stat, pid) {
     const def = STAT_FIELD_MAP[stat];
-    const lines = def.source === "advanced" ? advByPlayer.get(pid) || [] : statsByPlayer.get(pid) || [];
+    const byGame = def.source === "advanced" ? advByPlayer.get(pid) : statsByPlayer.get(pid);
+    const lines = byGame ? [...byGame.values()] : [];
     return { def, lines };
   }
 
