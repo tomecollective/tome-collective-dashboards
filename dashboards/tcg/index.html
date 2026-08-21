@@ -24,6 +24,9 @@ h3.era-heading:first-of-type { margin-top: 8px; }
 .index-stats .stat-value.down { color: #c0392b; }
 .index-stats .stat-value.flat { color: #8fa89f; }
 .index-stats .stat-sub { font-size: 0.72rem; color: #6b7d76; margin-top: 2px; }
+.change-up { color: #3ea86b; }
+.change-down { color: #c0392b; }
+.change-flat { color: #8fa89f; }
 .legend { display: flex; gap: 24px; font-size: 0.8rem; color: #8fa89f; margin-bottom: 32px; flex-wrap: wrap; }
 .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
 .sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; margin-bottom: 8px; }
@@ -72,7 +75,7 @@ not recommend buying, selling, or holding any card based on this index.</p>
 <button class="export-btn" id="export-csv-btn">Download CSV</button>
 <table>
 <thead>
-<tr><th>Card</th><th>Set</th><th>Rarity</th><th>Price</th></tr>
+<tr><th>Card</th><th>Set</th><th>Rarity</th><th>Price</th><th>1D Δ</th><th>7D Δ</th></tr>
 </thead>
 <tbody id="holdings-body"></tbody>
 </table>
@@ -83,7 +86,7 @@ XY through Mega Evolution era. <span style="color:#d4a72c">Gold</span> marks car
 made the final 50-card index (capped at 3 per set). <span style="color:#0C7958">Green</span> marks
 the rest of that set's top 3 — shortlisted, but not in the final 50. Gray marks ranks 4-5, which
 are shown for context but were never in the running. A newly-released set's cards can still show up
-and rank here, but none can turn gold until the set has been out for over a month.</p>
+and rank here, but none can turn gold until the set has been out for more than 90 days.</p>
 <div class="legend">
 <span><span class="legend-swatch" style="background:#d4a72c"></span>In final index</span>
 <span><span class="legend-swatch" style="background:#0C7958"></span>Shortlisted (top 3 of 5), not in index</span>
@@ -159,6 +162,47 @@ function formatSignedPct(pct) {
 
 function directionClass(delta) {
   return delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+}
+
+// Per-card version of the same daily/WoW logic used for the index-wide
+// stat tiles above — reads straight off that card's own `history` array
+// (same data the chart sums across cards), so it stays in sync with the
+// chart automatically once the Worker backfills more of a given card's
+// history. Returns { delta, pct } or null when there isn't a data point
+// far enough back yet (findClosestPoint's tolerance handles that).
+function cardChanges(card) {
+  const hist = (card.history || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (!hist.length) return { daily: null, wow: null };
+
+  const latest = hist[hist.length - 1];
+
+  let daily = null;
+  if (hist.length >= 2) {
+    const previous = hist[hist.length - 2];
+    const delta = latest.price - previous.price;
+    const pct = previous.price !== 0 ? (delta / previous.price) * 100 : 0;
+    daily = { delta, pct };
+  }
+
+  const weekAgo = new Date(latest.date + "T00:00:00");
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const wowPoint = findClosestPoint(hist, weekAgo, 2);
+  let wow = null;
+  if (wowPoint) {
+    const delta = latest.price - wowPoint.price;
+    const pct = wowPoint.price !== 0 ? (delta / wowPoint.price) * 100 : 0;
+    wow = { delta, pct };
+  }
+
+  return { daily, wow };
+}
+
+// Renders a change object as the same "+$X.XX (+X.XX%)" / colored format
+// the index-wide stat tiles use, or an em dash when there's not yet enough
+// history for that card to compute it.
+function formatChangeCell(change) {
+  if (!change) return '<span class="unverified">—</span>';
+  return `<span class="change-${directionClass(change.delta)}">${formatSignedDollars(change.delta)} (${formatSignedPct(change.pct)})</span>`;
 }
 
 function renderStats() {
@@ -299,10 +343,20 @@ return str;
 }
 
 function downloadHoldingsCSV() {
-const headers = ["Card", "Set", "Rarity", "Price"];
+const headers = ["Card", "Set", "Rarity", "Price", "Daily Change ($)", "Daily Change (%)", "WoW Change ($)", "WoW Change (%)"];
 const rows = indexCards.map(card => {
 const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
-return [card.name, card.set, card.rarity, priceDisplay];
+const { daily, wow } = cardChanges(card);
+return [
+card.name,
+card.set,
+card.rarity,
+priceDisplay,
+daily ? daily.delta.toFixed(2) : "",
+daily ? daily.pct.toFixed(2) : "",
+wow ? wow.delta.toFixed(2) : "",
+wow ? wow.pct.toFixed(2) : "",
+];
 });
 const csvLines = [headers.join(","), ...rows.map(row => row.map(csvEscape).join(","))];
 const csvContent = csvLines.join("\n");
@@ -384,7 +438,8 @@ const row = document.createElement("tr");
 const priceDisplay = card.price !== null
 ? "$" + card.price.toFixed(2)
 : '<span class="unverified">unverified</span>';
-row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td>`;
+const { daily, wow } = cardChanges(card);
+row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td><td>${formatChangeCell(daily)}</td><td>${formatChangeCell(wow)}</td>`;
 tbody.appendChild(row);
 });
 
