@@ -2,6 +2,17 @@ name = "tome-fastbreak-dashboard"
 main = "worker/index.js"
 compatibility_date = "2026-08-08"
 
-# No KV needed for this dashboard — it's live/current data, not historical
-# trend tracking like the Chase Index. Each request can pull fresh from the
-# three real data sources (see worker/index.js) once those are wired in.
+# This Worker is a thin public-facing read (and admin-write) proxy over the
+# same KV namespace tome-fastbreak-refresh populates on a cron schedule. It
+# never calls BALLDONTLIE directly. Create the namespace once with:
+#   wrangler kv:namespace create FASTBREAK_KV
+# then replace REPLACE_WITH_REAL_ID below with the id it prints -- use the
+# SAME id here and in dashboards/fastbreak-refresh/wrangler.toml so both
+# Workers read/write the same store.
+[[kv_namespaces]]
+binding = "FASTBREAK_KV"
+id = "REPLACE_WITH_REAL_ID"
+
+# Admin token gating writes to /api/fastbreak/objectives/day. Set with:
+#   wrangler secret put FASTBREAK_ADMIN_TOKEN
+# Never commit the actual token value.
