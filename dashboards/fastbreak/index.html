@@ -3,72 +3,146 @@
 <head>
 <meta charset="UTF-8">
 <title>Tome Edge: Fast Break</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
-  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
-  h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.4rem; margin: 0 0 12px; }
-  .subtitle { color: #8fa89f; margin-bottom: 8px; }
-  a, .link-btn { color: #0C7958; }
+  *,*::before,*::after{box-sizing:border-box;}
+
+  :root{
+    --green:#0C7958;--green-lt:#0fa377;--gold:#FFB515;
+    --bg:#0f1009;--surface:#181910;--surface2:#1e201a;--surface3:#262820;
+    --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);--border-str:rgba(255,255,255,0.18);
+    --text:#eaecdf;--text-2:#a8aa9c;--text-3:#6a6c60;
+    --up:#34d399;--dn:#f87171;
+    --sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+    --r:8px;--r-lg:14px;
+    --tier1-bg:rgba(15,163,119,0.55);--tier2-bg:rgba(15,163,119,0.26);
+    --tier3-bg:rgba(255,181,21,0.30);--tier4-bg:rgba(255,181,21,0.13);
+  }
+
+  body{margin:0;padding:0;font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;}
+  a{color:var(--green-lt);}
+
+  h1,h2{font-family:var(--sans);font-weight:700;letter-spacing:-0.3px;margin:0;}
+
+  /* -- header bar ------------------------------------------------------- */
+  .hdr{background:var(--green);height:50px;display:flex;align-items:center;padding:0 1.5rem;gap:12px;position:sticky;top:0;z-index:300;}
+  .hdr-logo{display:flex;align-items:center;gap:7px;}
+  .hdr-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;}
+  .hdr-name{font-size:14px;font-weight:600;color:#fff;letter-spacing:-0.2px;}
+  .hdr-div{width:1px;height:18px;background:rgba(255,255,255,0.25);}
+  .hdr-product{font-size:13px;font-weight:500;color:rgba(255,255,255,0.8);}
+  .hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+  .hdr-pill{font-size:11px;font-weight:600;background:rgba(255,255,255,0.14);color:rgba(255,255,255,0.85);padding:3px 10px;border-radius:20px;letter-spacing:0.2px;}
+
+  /* -- layout ------------------------------------------------------------ */
+  .wrap{max-width:1320px;margin:0 auto;padding:1.5rem 1.5rem 4rem;}
+  .pg-hd{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:1.25rem;}
+  .pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green-lt);margin-bottom:4px;}
+  .pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
+  .pg-sub{font-size:13px;color:var(--text-2);margin-top:5px;max-width:640px;line-height:1.5;}
+  .pg-meta{font-size:11px;color:var(--text-3);text-align:right;}
 
   /* -- toggles ------------------------------------------------------- */
-  .toggle-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: center; }
-  .toggle-group { display: flex; gap: 0; border: 1px solid #1c2622; border-radius: 6px; width: fit-content; overflow: hidden; }
-  .toggle-group button { background: transparent; border: none; color: #8fa89f; padding: 10px 22px; font-size: 0.85rem; font-weight: bold; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; }
-  .toggle-group button.active { background: #0C7958; color: #fff; }
-  .toggle-group button:disabled { color: #45524d; cursor: not-allowed; background: transparent; }
-  .toggle-group button:not(:disabled):hover { color: #f5f5f0; }
-  .toggle-note { font-size: 0.7rem; color: #6b7d76; }
+  .toggle-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
+  .toggle-group { display: flex; gap: 4px; background:var(--surface); border: 0.5px solid var(--border); border-radius: 11px; padding:4px; width: fit-content; }
+  .toggle-group button { background: transparent; border: none; border-radius:8px; color: var(--text-2); padding: 8px 18px; font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
+  .toggle-group button.active { background: var(--green); color: #fff; box-shadow:0 2px 8px rgba(12,121,88,0.35); }
+  .toggle-group button:disabled { color: #3d423b; cursor: not-allowed; background: transparent; }
+  .toggle-group button:not(:disabled):not(.active):hover { color: var(--text); background:var(--surface2); }
+  .toggle-note { font-size: 0.72rem; color: var(--text-3); }
 
-  .admin-link-btn { margin-left: auto; background: transparent; border: 1px solid #1c2622; color: #8fa89f; padding: 8px 16px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-family: inherit; letter-spacing: 0.03em; }
-  .admin-link-btn:hover { color: #f5f5f0; border-color: #0C7958; }
+  .admin-link-btn { margin-left: auto; background: var(--surface); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 9px 16px; border-radius: 10px; font-size: 0.76rem; font-weight:600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
+  .admin-link-btn:hover { color: var(--text); border-color: var(--green); }
 
-  /* -- game tiles ------------------------------------------------------ */
-  .schedule-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
-  .game-tile { background: #10160f; border: 1px solid #1c2622; border-radius: 8px; padding: 12px 16px; min-width: 180px; }
-  .game-tile .matchup { font-weight: bold; font-size: 0.95rem; }
-  .game-tile .time { color: #8fa89f; font-size: 0.78rem; margin-top: 4px; }
-  .schedule-empty { color: #6b7d76; font-size: 0.85rem; margin-bottom: 28px; }
+  /* -- game tiles (ESPN-style schedule strip) --------------------------- */
+  .schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; }
+  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; }
+  .game-tile .matchup { font-weight: 700; font-size: 0.92rem; letter-spacing:-0.1px; }
+  .game-tile .time { color: var(--text-3); font-size: 0.72rem; margin-top: 4px; font-family:var(--mono); }
+  .schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); }
+
+  /* -- toolbar (export + legend) ----------------------------------------- */
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:0.85rem;}
+  .export-btn { background: var(--green); color: #fff; border: none; padding: 9px 18px; border-radius: var(--r); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; transition: background .12s; }
+  .export-btn:hover { background: var(--green-lt); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.72rem; color: var(--text-2); }
+  .legend span.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
 
   /* -- table ------------------------------------------------------------ */
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1c2622; font-size: 0.85rem; white-space: nowrap; }
-  th { color: #0C7958; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
-  th:hover { color: #f5f5f0; }
-  th.sorted-asc::after { content: " \25B2"; }
-  th.sorted-desc::after { content: " \25BC"; }
-  th.obj-group-start { border-left: 1px solid #1c2622; }
-  .export-btn { background: #0C7958; color: #0a0f0d; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
-  .export-btn:hover { background: #0fa377; }
+  .tbl-outer{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;}
+  .tbl-scroll{overflow-x:auto;}
+  table { width: 100%; border-collapse: collapse; font-size:12.5px; min-width:820px; }
+  thead tr{background:var(--surface2);}
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-3); text-transform: uppercase; font-size: 0.66rem; font-weight:700; letter-spacing: 0.05em; cursor: pointer; user-select: none; position:sticky; top:0; background:var(--surface2); }
+  th:hover { color: var(--text); }
+  th.sorted-asc, th.sorted-desc{ color:var(--green-lt); }
+  th.sorted-asc::after { content: " \25B2"; opacity:0.85; }
+  th.sorted-desc::after { content: " \25BC"; opacity:0.85; }
+  th.obj-group-start { border-left: 0.5px solid var(--border-str); }
+  td.obj-group-start{ border-left: 0.5px solid var(--border-str); }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--surface2);}
+  td{font-family:var(--mono);font-size:12px;color:var(--text-2);}
+  td:first-child, td:nth-child(2), td:nth-child(3){font-family:var(--sans);color:var(--text);}
+  td:first-child{font-weight:600;}
+  td strong{color:var(--text);font-weight:700;}
 
   /* -- 5-tier color coding (locked scheme, reused from WNBA Fast Break tables) */
-  td.tier-dark-green   { background: rgba(15, 163, 119, 0.55); color: #fff; font-weight: bold; }
-  td.tier-light-green  { background: rgba(15, 163, 119, 0.28); color: #f5f5f0; }
-  td.tier-yellow        { background: rgba(212, 167, 44, 0.32); color: #f5f5f0; }
-  td.tier-light-yellow  { background: rgba(212, 167, 44, 0.14); color: #f5f5f0; }
+  td.tier-dark-green   { background: var(--tier1-bg); color: #f2fdf9; font-weight: 700; }
+  td.tier-light-green  { background: var(--tier2-bg); color: var(--text); }
+  td.tier-yellow        { background: var(--tier3-bg); color: var(--text); }
+  td.tier-light-yellow  { background: var(--tier4-bg); color: var(--text); }
 
-  .note { font-size: 0.75rem; color: #6b7d76; margin-top: 24px; border-left: 2px solid #0C7958; padding-left: 12px; max-width: 700px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.72rem; color: #8fa89f; margin: 4px 0 20px; }
-  .legend span.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
 
   /* -- admin view -------------------------------------------------------- */
   #view-admin { display: none; }
-  .admin-banner { background: #1a1410; border: 1px solid #3a2c14; color: #d4a72c; padding: 10px 16px; border-radius: 6px; font-size: 0.8rem; margin-bottom: 20px; }
-  .admin-table th, .admin-table td { font-size: 0.82rem; }
-  .admin-form { background: #10160f; border: 1px solid #1c2622; border-radius: 8px; padding: 20px 24px; margin-top: 24px; max-width: 520px; }
-  .admin-form label { display: block; font-size: 0.72rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 4px; }
-  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: #0a0f0d; border: 1px solid #1c2622; color: #f5f5f0; padding: 8px 10px; border-radius: 4px; font-family: inherit; font-size: 0.85rem; }
+  .admin-banner { display:flex; align-items:center; gap:8px; background: rgba(255,181,21,0.1); border: 0.5px solid rgba(255,181,21,0.35); color: var(--gold); padding: 10px 16px; border-radius: var(--r); font-size: 0.8rem; margin-bottom: 20px; }
+  .admin-table{width:100%;}
+  .admin-table th, .admin-table td { font-size: 0.8rem; }
+  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 22px 24px; margin-top: 22px; max-width: 520px; }
+  .admin-form h2{font-size:1.05rem;margin-bottom:4px;}
+  .admin-form label { display: block; font-size: 0.7rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 14px 0 5px; }
+  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
+  .admin-form input:focus, .admin-form select:focus{border-color:var(--green);}
   .admin-form .obj-pair { display: flex; gap: 12px; }
   .admin-form .obj-pair > div { flex: 1; }
-  .admin-form button { margin-top: 18px; background: #0C7958; border: none; color: #fff; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
-  .admin-form button:hover { background: #0a5f47; }
+  .admin-form button { margin-top: 20px; background: var(--green); border: none; color: #fff; padding: 10px 20px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.85rem; transition:background .12s; }
+  .admin-form button:hover { background: var(--green-lt); }
   #admin-status { margin-top: 12px; font-size: 0.8rem; }
+
+  ::-webkit-scrollbar{height:8px;width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
 </style>
 </head>
 <body>
 
-<h1>Tome Edge: Fast Break</h1>
-<p class="subtitle">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
-<p style="font-size:0.7rem;color:#6b7d76;margin-top:-4px;margin-bottom:20px;">Powered by Tome Analytics</p>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-dot"></span>
+    <span class="hdr-name">Tome Collective</span>
+  </div>
+  <div class="hdr-div"></div>
+  <span class="hdr-product">Tome Edge: Fast Break</span>
+  <div class="hdr-right">
+    <span class="hdr-pill" id="mode-badge">WNBA · Classic</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<div class="pg-hd">
+  <div>
+    <div class="pg-eye">Tome Collective · Fast Break</div>
+    <h1 class="pg-title">Today's Fast Break Objectives</h1>
+    <p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
+  </div>
+  <div class="pg-meta">Powered by Tome Analytics</div>
+</div>
 
 <div class="toggle-row">
   <div class="toggle-group" id="league-toggle">
@@ -88,21 +162,24 @@
 
   <div id="schedule-tiles" class="schedule-row"></div>
 
-  <button class="export-btn" id="export-csv-btn">Download CSV</button>
-
-  <div class="legend" id="color-legend">
-    <span><span class="swatch" style="background:rgba(15,163,119,0.55)"></span>&ge;125% of target</span>
-    <span><span class="swatch" style="background:rgba(15,163,119,0.28)"></span>&ge;100%</span>
-    <span><span class="swatch" style="background:rgba(212,167,44,0.32)"></span>&ge;90%</span>
-    <span><span class="swatch" style="background:rgba(212,167,44,0.14)"></span>&ge;75%</span>
-    <span>no fill: below 75%</span>
+  <div class="toolbar">
+    <button class="export-btn" id="export-csv-btn">Download CSV</button>
+    <div class="legend" id="color-legend">
+      <span><span class="swatch" style="background:var(--tier1-bg)"></span>&ge;125% of target</span>
+      <span><span class="swatch" style="background:var(--tier2-bg)"></span>&ge;100%</span>
+      <span><span class="swatch" style="background:var(--tier3-bg)"></span>&ge;90%</span>
+      <span><span class="swatch" style="background:var(--tier4-bg)"></span>&ge;75%</span>
+      <span>no fill: below 75%</span>
+    </div>
   </div>
 
-  <div style="overflow-x:auto;">
-    <table>
-      <thead id="table-head"></thead>
-      <tbody id="players-body"></tbody>
-    </table>
+  <div class="tbl-outer">
+    <div class="tbl-scroll">
+      <table>
+        <thead id="table-head"></thead>
+        <tbody id="players-body"></tbody>
+      </table>
+    </div>
   </div>
 
   <p class="note" id="dashboard-note"></p>
@@ -116,15 +193,19 @@
     by clicking on the page content itself.
   </div>
 
-  <table class="admin-table">
-    <thead>
-      <tr><th>Date</th><th>Objective 1</th><th>Target 1</th><th>Weight 1</th><th>Objective 2</th><th>Target 2</th><th>Weight 2</th></tr>
-    </thead>
-    <tbody id="admin-schedule-body"></tbody>
-  </table>
+  <div class="tbl-outer">
+    <div class="tbl-scroll">
+      <table class="admin-table">
+        <thead>
+          <tr><th>Date</th><th>Objective 1</th><th>Target 1</th><th>Weight 1</th><th>Objective 2</th><th>Target 2</th><th>Weight 2</th></tr>
+        </thead>
+        <tbody id="admin-schedule-body"></tbody>
+      </table>
+    </div>
+  </div>
 
   <div class="admin-form">
-    <h2 style="font-size:1.1rem;">Set / Update a Day's Objectives</h2>
+    <h2>Set / Update a Day's Objectives</h2>
     <label>Admin Token</label>
     <input type="password" id="admin-token" placeholder="Required to save changes">
 
@@ -191,6 +272,8 @@
   </div>
 </div>
 
+</div>
+
 <script>
 const WORKER_BASE = "https://tome-fastbreak.tomecollective.workers.dev";
 const WORKER_URL = WORKER_BASE + "/api/fastbreak";
@@ -198,6 +281,7 @@ const OBJECTIVES_URL = WORKER_BASE + "/api/fastbreak/objectives";
 const OBJECTIVES_DAY_URL = WORKER_BASE + "/api/fastbreak/objectives/day";
 
 let dashboard = { objectives: [], games: [], players: [], note: "" };
+
 let sortKey = "base:ovrRank";
 let sortDir = 1;
 
@@ -209,11 +293,16 @@ let sortDir = 1;
 let currentLeague = "WNBA";
 let currentMode = "Classic";
 
+function updateModeBadge() {
+  document.getElementById("mode-badge").textContent = `${currentLeague} · ${currentMode}`;
+}
+
 document.getElementById("league-toggle").addEventListener("click", (e) => {
   if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
   document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
   e.target.classList.add("active");
   currentLeague = e.target.dataset.league;
+  updateModeBadge();
 });
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
@@ -223,6 +312,9 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
   currentMode = e.target.dataset.mode;
   document.getElementById("mode-note").textContent =
     currentMode === "Pro" ? "Pro: Top Shot badge/set filtering planned once moment-ownership data exists." : "";
+  updateModeBadge();
+  // TODO(mode): Classic and Pro currently read the same live data from the
+  // Worker; once it branches by mode, re-fetch here instead of just re-labeling.
 });
 
 // -- Admin view toggle --------------------------------------------------------
@@ -323,13 +415,14 @@ function render() {
   sorted.forEach((p) => {
     const row = document.createElement("tr");
     let html = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp || "—"}</td>`;
-    objCols.forEach((oc) => {
+    objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
-      html += `<td class="${tierClass(ov.colorProj)}">${ov.proj ?? "—"}</td>`;
+      const groupStart = i === 0 ? " obj-group-start" : "";
+      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${ov.proj ?? "—"}</td>`;
       html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "—"}</td>`;
       html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "—"}</td>`;
     });
-    html += `<td><strong>${p.ovrRank ?? "—"}</strong></td>`;
+    html += `<td class="obj-group-start"><strong>${p.ovrRank ?? "—"}</strong></td>`;
     row.innerHTML = html;
     tbody.appendChild(row);
   });
@@ -409,14 +502,14 @@ async function loadAdminSchedule() {
       </tr>`;
     }).join("");
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:#c0392b;">Failed to load schedule: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
   }
 }
 
 // -- Admin: save a day (locked behind the token, never a direct DOM edit) ----
 document.getElementById("admin-save-btn").addEventListener("click", async () => {
   const statusEl = document.getElementById("admin-status");
-  statusEl.style.color = "#8fa89f";
+  statusEl.style.color = "#a8aa9c";
   statusEl.textContent = "Saving…";
 
   const token = document.getElementById("admin-token").value;
@@ -427,7 +520,7 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
   const hasSecond = document.getElementById("admin-has-second").checked;
 
   if (!date || !target1) {
-    statusEl.style.color = "#c0392b";
+    statusEl.style.color = "#f87171";
     statusEl.textContent = "Date and Objective 1 target are required.";
     return;
   }
@@ -438,7 +531,7 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
     const target2 = parseFloat(document.getElementById("admin-target-2").value);
     const weight2 = parseFloat(document.getElementById("admin-weight-2").value);
     if (!target2 || !weight2) {
-      statusEl.style.color = "#c0392b";
+      statusEl.style.color = "#f87171";
       statusEl.textContent = "Objective 2 target and weight are required when adding a second objective.";
       return;
     }
@@ -453,27 +546,33 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    statusEl.style.color = "#0fa377";
+    statusEl.style.color = "#34d399";
     statusEl.textContent = `Saved ${date}. It will take effect on the dashboard's next refresh.`;
     loadAdminSchedule();
   } catch (err) {
-    statusEl.style.color = "#c0392b";
+    statusEl.style.color = "#f87171";
     statusEl.textContent = `Failed to save: ${err.message}`;
   }
 });
 
 // -- Load ------------------------------------------------------------------------
 async function loadData() {
-  const res = await fetch(WORKER_URL);
-  const data = await res.json();
-  dashboard = data;
+  try {
+    const res = await fetch(WORKER_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    dashboard = data;
+  } catch (err) {
+    const banner = document.createElement("p");
+    banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
+    banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
+    document.getElementById("view-main").insertBefore(banner, document.getElementById("schedule-tiles"));
+  }
   renderScheduleTiles();
   render();
 }
 
-loadData().catch((err) => {
-  document.body.innerHTML += "<p style='color:#c0392b'>Failed to load data: " + err.message + "</p>";
-});
+loadData();
 </script>
 </body>
 </html>
