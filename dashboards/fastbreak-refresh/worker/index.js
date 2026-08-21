@@ -232,6 +232,50 @@ function normalizeWeights(objectives) {
   return objectives.map((o) => ({ ...o, weight: o.weight / sum }));
 }
 
+// -- Projections (manual, Rotowire-sourced where available) ------------------
+// BALLDONTLIE has no projections endpoint, so real Proj values come from a
+// manual admin upload (David sources them from Rotowire via spreadsheet).
+// Confirmed per-objective: 3PM, 3PA, and OREB all have genuine Rotowire
+// projections that are NOT the same as L10 and must be preserved exactly as
+// given. PITP is the one confirmed exception -- neither Rotowire nor standard
+// WNBA stats sites project it, so PITP intentionally has no override entry
+// and always falls back to the L10 average (see the lookup in buildDashboard
+// below). Do not "fix" that by requiring an override for every stat.
+function normalizePlayerName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+async function upsertProjections(env, { league, date, stat, projections }) {
+  if (league !== SUPPORTED_LEAGUE) throw new Error(`unsupported league: ${league}`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+  if (!stat || !STAT_FIELD_MAP[stat]) throw new Error(`unknown stat code: ${stat}`);
+  if (!Array.isArray(projections) || !projections.length) {
+    throw new Error("projections must be a non-empty array of {name, value}");
+  }
+  const values = {};
+  for (const p of projections) {
+    if (!p || !p.name || typeof p.value !== "number" || Number.isNaN(p.value)) {
+      throw new Error(`each projection needs a name and a numeric value (got ${JSON.stringify(p)})`);
+    }
+    values[normalizePlayerName(p.name)] = { name: p.name, value: p.value };
+  }
+
+  const schedule = await loadObjectivesSchedule(env);
+  if (!schedule[league]) schedule[league] = {};
+  if (!schedule[league][date]) schedule[league][date] = { objectives: DEFAULT_OBJECTIVES };
+  if (!schedule[league][date].projections) schedule[league][date].projections = {};
+  schedule[league][date].projections[stat] = values;
+  await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
+  return schedule;
+}
+
+function projectionsForDate(schedule, league, date, stat) {
+  return schedule?.[league]?.[date]?.projections?.[stat] || null;
+}
+
 async function upsertObjectivesDay(env, { league, date, objectives }) {
   if (league !== SUPPORTED_LEAGUE) throw new Error(`unsupported league: ${league}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
@@ -239,7 +283,8 @@ async function upsertObjectivesDay(env, { league, date, objectives }) {
 
   const schedule = await loadObjectivesSchedule(env);
   if (!schedule[league]) schedule[league] = {};
-  schedule[league][date] = { objectives: normalizeWeights(objectives) };
+  const existing = schedule[league][date] || {};
+  schedule[league][date] = { ...existing, objectives: normalizeWeights(objectives) };
   await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
   return schedule;
 }
@@ -442,8 +487,17 @@ async function buildDashboard(env) {
     return typeof v === "number" ? v : null;
   }
 
+  // Load any admin-uploaded Rotowire projections for today's objective(s).
+  // Keyed by stat -> { normalizedName: {name, value} }. See upsertProjections.
+  const projectionOverrides = {};
+  for (const obj of objectives) {
+    projectionOverrides[obj.stat] = projectionsForDate(schedule, SUPPORTED_LEAGUE, today, obj.stat) || {};
+  }
+
   const playerBase = playerIds.map((pid) => {
     const player = rosterById.get(pid);
+    const playerName = `${player.first_name} ${player.last_name}`;
+    const nameKey = normalizePlayerName(playerName);
     const objectiveValues = {};
 
     for (const obj of objectives) {
@@ -456,13 +510,15 @@ async function buildDashboard(env) {
 
       const l10 = round1(average(l10Lines.map((l) => statValue(def, l))));
       const ytd = round1(average(ytdLines.map((l) => statValue(def, l))));
-      // TODO(projections): Proj is currently a straight L10-average
-      // passthrough -- matches what's being done manually today. A real
-      // projection model (weighting recent form vs. season average, back-
-      // to-backs, pace/matchup context) is real sports-analytics judgment
-      // that deserves its own dedicated, separately-scoped build. Do not
-      // treat this as the final projection methodology.
-      const proj = l10;
+
+      // Proj: real Rotowire-sourced value when the admin has uploaded one for
+      // this stat/date (confirmed distinct from L10 for 3PM/3PA/OREB -- never
+      // overwrite those with an L10 passthrough). Falls back to the L10
+      // average only when no override exists, which today is PITP's
+      // intentional, documented case (Rotowire and standard WNBA stats sites
+      // don't project PITP) -- not a general default.
+      const override = projectionOverrides[obj.stat]?.[nameKey];
+      const proj = override != null ? round1(override.value) : l10;
 
       const perPlayerTarget = obj.dailyTeamTarget / 5;
       objectiveValues[obj.stat] = {
@@ -472,6 +528,7 @@ async function buildDashboard(env) {
         dailyTeamTarget: obj.dailyTeamTarget,
         perPlayerTarget: round1(perPlayerTarget),
         proj,
+        projSource: override != null ? "rotowire" : "l10-fallback",
         ytd,
         l10,
         gamesPlayedL10: l10Lines.length,
@@ -483,7 +540,7 @@ async function buildDashboard(env) {
 
     return {
       id: pid,
-      name: `${player.first_name} ${player.last_name}`,
+      name: playerName,
       team: player.team?.abbreviation || "",
       opp: opponentByTeam.get(player.team?.id) || "",
       objectives: objectiveValues,
@@ -507,9 +564,19 @@ async function buildDashboard(env) {
   players.sort((a, b) => a.ovrRank - b.ovrRank);
 
   const baseNote =
-    "Live BALLDONTLIE data. YTD/L10 use trusted, client-sorted game windows (never API default ordering). PITP (when an objective) is derived from player_game_advanced_stats.stats.misc.points_paint. Proj is currently the L10 average (see TODO in worker source) -- an in-house pace/matchup/usage-adjusted model is planned as a future, separately-scoped enhancement.";
+    "Live BALLDONTLIE data. YTD/L10 use trusted, client-sorted game windows (never API default ordering). PITP (when an objective) is derived from player_game_advanced_stats.stats.misc.points_paint. Proj uses admin-uploaded Rotowire projections where available for today's objective(s); it falls back to the L10 average only where no projection was uploaded (PITP's documented, intentional case) -- an in-house pace/matchup/usage-adjusted model to replace the manual upload process entirely is planned as a future, separately-scoped enhancement.";
 
   const notes = [baseNote];
+  for (const obj of objectives) {
+    const overrides = projectionOverrides[obj.stat] || {};
+    const overrideCount = Object.keys(overrides).length;
+    if (overrideCount > 0) {
+      const matched = playerBase.filter((p) => p.objectives[obj.stat]?.projSource === "rotowire").length;
+      notes.push(
+        `${obj.stat}: ${overrideCount} uploaded Rotowire projection(s), ${matched} matched a player on today's roster.`
+      );
+    }
+  }
   if (droppedCount > 0) {
     notes.push(`NOTE: ${droppedCount} players were dropped this run to stay under the Cloudflare Free-plan subrequest limit.`);
   }
@@ -595,6 +662,32 @@ export default {
       }
     }
 
+    // Bulk-load real, manually-sourced (Rotowire) Proj values for one stat on
+    // one date. Admin-token gated, same as the objectives/day write above.
+    // Never used for PITP -- there's no Rotowire (or standard WNBA stats
+    // site) projection for it, so PITP intentionally has no override entries
+    // and always falls back to the L10 average in buildDashboard.
+    if (url.pathname === "/api/fastbreak/objectives/day/projections" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+      try {
+        const body = await request.json();
+        const schedule = await upsertProjections(env, {
+          league: body.league || SUPPORTED_LEAGUE,
+          date: body.date,
+          stat: body.stat,
+          projections: body.projections,
+        });
+        return new Response(JSON.stringify({ ok: true, schedule }), { headers: corsHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: corsHeaders });
+      }
+    }
+
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 
@@ -622,4 +715,7 @@ export const __testables__ = {
   formatGameTime,
   pickLastNGameIdsPerTeam,
   buildDashboard,
+  normalizePlayerName,
+  upsertProjections,
+  projectionsForDate,
 };
