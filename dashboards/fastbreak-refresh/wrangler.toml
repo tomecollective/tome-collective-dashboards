@@ -1,0 +1,22 @@
+name = "tome-fastbreak-refresh"
+main = "worker/index.js"
+compatibility_date = "2026-08-08"
+
+# Same KV namespace as dashboards/fastbreak/wrangler.toml -- this Worker is
+# the only writer of the "fastbreak:latest" and "fastbreak:objectives" keys;
+# the public tome-fastbreak-dashboard Worker only reads/relays them. Use the
+# SAME namespace id in both wrangler.toml files.
+[[kv_namespaces]]
+binding = "FASTBREAK_KV"
+id = "REPLACE_WITH_REAL_ID"
+
+# Required secrets (set once, never committed):
+#   wrangler secret put BALLDONTLIE_API_KEY
+#   wrangler secret put FASTBREAK_ADMIN_TOKEN
+
+# Refresh cadence: every 15 minutes. WNBA games run ~2 hours; this keeps L10/
+# YTD and the schedule tiles reasonably current without burning through the
+# Cloudflare Free plan's daily cron-invocation budget. Tighten (or add a
+# game-day-only schedule) once usage patterns are clearer.
+[triggers]
+crons = ["*/15 * * * *"]
