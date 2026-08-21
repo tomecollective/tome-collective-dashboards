@@ -270,6 +270,38 @@
     <button id="admin-save-btn">Save Day</button>
     <div id="admin-status"></div>
   </div>
+
+  <div class="admin-form">
+    <h2>Load Real Projections (Rotowire-sourced)</h2>
+    <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+      BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
+      here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
+      upload (PITP, always) and its Proj falls back to the L10 average automatically.
+    </p>
+    <label>Date</label>
+    <input type="date" id="proj-date">
+
+    <label>Stat</label>
+    <select id="proj-stat">
+      <option value="PTS">PTS</option>
+      <option value="REB">REB</option>
+      <option value="AST">AST</option>
+      <option value="STL">STL</option>
+      <option value="BLK">BLK</option>
+      <option value="TOV">TOV</option>
+      <option value="3PM">3PM</option>
+      <option value="3PA">3PA</option>
+      <option value="FTM">FTM</option>
+      <option value="FTA">FTA</option>
+      <option value="PITP">PITP</option>
+    </select>
+
+    <label>Player, Proj (one per line -- e.g. "Rhyne Howard, 3.3")</label>
+    <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
+
+    <button id="proj-save-btn">Load Projections</button>
+    <div id="proj-status"></div>
+  </div>
 </div>
 
 </div>
@@ -549,6 +581,75 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
     statusEl.style.color = "#34d399";
     statusEl.textContent = `Saved ${date}. It will take effect on the dashboard's next refresh.`;
     loadAdminSchedule();
+  } catch (err) {
+    statusEl.style.color = "#f87171";
+    statusEl.textContent = `Failed to save: ${err.message}`;
+  }
+});
+
+// -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
+const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
+
+function parseProjRows(text) {
+  const rows = [];
+  const errors = [];
+  text.split("\n").forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const parts = trimmed.split(",");
+    if (parts.length !== 2) {
+      errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
+      return;
+    }
+    const name = parts[0].trim();
+    const value = parseFloat(parts[1].trim());
+    if (!name || Number.isNaN(value)) {
+      errors.push(`Line ${i + 1}: could not parse a name and number from "${trimmed}"`);
+      return;
+    }
+    rows.push({ name, value });
+  });
+  return { rows, errors };
+}
+
+document.getElementById("proj-save-btn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("proj-status");
+  statusEl.style.color = "#a8aa9c";
+  statusEl.textContent = "Saving…";
+
+  const token = document.getElementById("admin-token").value;
+  const date = document.getElementById("proj-date").value;
+  const stat = document.getElementById("proj-stat").value;
+  const rawText = document.getElementById("proj-rows").value;
+
+  if (!date) {
+    statusEl.style.color = "#f87171";
+    statusEl.textContent = "Date is required.";
+    return;
+  }
+
+  const { rows, errors } = parseProjRows(rawText);
+  if (errors.length) {
+    statusEl.style.color = "#f87171";
+    statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
+    return;
+  }
+  if (!rows.length) {
+    statusEl.style.color = "#f87171";
+    statusEl.textContent = "Enter at least one \"Name, Value\" row.";
+    return;
+  }
+
+  try {
+    const res = await fetch(PROJECTIONS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      body: JSON.stringify({ league: "WNBA", date, stat, projections: rows }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    statusEl.style.color = "#34d399";
+    statusEl.textContent = `Loaded ${rows.length} ${stat} projection(s) for ${date}. Takes effect on the dashboard's next refresh.`;
   } catch (err) {
     statusEl.style.color = "#f87171";
     statusEl.textContent = `Failed to save: ${err.message}`;
