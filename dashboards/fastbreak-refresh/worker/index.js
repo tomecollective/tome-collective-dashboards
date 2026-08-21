@@ -39,6 +39,7 @@ const STAT_FIELD_MAP = {
   "3PA": { source: "stats", field: (s) => s.fg3a, label: "3PA" },
   FTM: { source: "stats", field: (s) => s.ftm, label: "FTM" },
   FTA: { source: "stats", field: (s) => s.fta, label: "FTA" },
+  OREB: { source: "stats", field: (s) => s.oreb, label: "OREB" },
   // PITP: points in the paint. Not a standard box-score stat -- lives under
   // player_game_advanced_stats.stats.misc.points_paint. Confirmed working
   // against the live endpoint.
