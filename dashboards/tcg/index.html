@@ -16,7 +16,8 @@ h3.era-heading:first-of-type { margin-top: 8px; }
 .timeframe-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
 .timeframe-toggle button { background: transparent; border: 1px solid #1c2622; color: #8fa89f; padding: 6px 14px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
 .timeframe-toggle button.active { background: #d4a72c; border-color: #d4a72c; color: #1a1a1a; }
-.timeframe-toggle button:hover:not(.active) { border-color: #d4a72c; color: #f5f5f0; }
+.timeframe-toggle button:hover:not(.active):not(:disabled) { border-color: #d4a72c; color: #f5f5f0; }
+.timeframe-toggle button:disabled { opacity: 0.4; color: #4a554f; cursor: not-allowed; }
 .index-stats { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 20px; }
 .index-stats .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8fa89f; margin-bottom: 2px; }
 .index-stats .stat-value { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #f5f5f0; }
@@ -66,7 +67,7 @@ highest-value chase pulls — from modern and current-era sets, spanning XY forw
 <button data-days="365">1Y</button>
 </div>
 <div id="chart-container"><canvas id="indexChart"></canvas></div>
-<p style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;">Chart data currently reflects the last 7 days of real market pricing. Longer timeframe views (30D–1Y) will fill in automatically as more daily price history accumulates.</p>
+<p id="chart-caption" style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;"></p>
 <p class="disclaimer">This index is informational only and does not constitute investment advice.
 Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
 not recommend buying, selling, or holding any card based on this index.</p>
@@ -327,12 +328,66 @@ y: { ticks: { color: "#8fa89f" } },
 }
 
 document.getElementById("timeframe-toggle").addEventListener("click", e => {
-if (e.target.tagName !== "BUTTON") return;
+if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
 document.querySelectorAll(".timeframe-toggle button").forEach(b => b.classList.remove("active"));
 e.target.classList.add("active");
 currentTimeframeDays = parseInt(e.target.dataset.days, 10);
 renderChart();
 });
+
+// How many days of REAL history the index actually has right now, based on
+// the oldest and newest points in indexHistory -- not on how many days it's
+// been live, so this stays correct however the backfill happens to land.
+function historySpanDays() {
+  if (indexHistory.length < 2) return 0;
+  const oldest = new Date(indexHistory[0].date + "T00:00:00");
+  const newest = new Date(indexHistory[indexHistory.length - 1].date + "T00:00:00");
+  return Math.round((newest - oldest) / 86400000);
+}
+
+// Grays out (and disables) any timeframe button whose window is wider than
+// the real history currently on hand -- e.g. 180D and 1Y stay disabled until
+// the index has actually been tracking that long. Un-grays automatically as
+// more days of real pricing accumulate, with no code change needed later.
+// If the active button becomes unavailable (shouldn't happen since the span
+// only grows over time, but just in case), falls back to the widest one
+// that IS available.
+function updateTimeframeAvailability() {
+  const span = historySpanDays();
+  let activeStillAvailable = false;
+  const buttons = [...document.querySelectorAll(".timeframe-toggle button")];
+  buttons.forEach(btn => {
+    const days = parseInt(btn.dataset.days, 10);
+    const available = span >= days;
+    btn.disabled = !available;
+    btn.title = available ? "" : `Needs ${days} days of price history — the index has ${span} so far`;
+    if (btn.classList.contains("active") && available) activeStillAvailable = true;
+  });
+  if (!activeStillAvailable) {
+    const fallback = [...buttons].reverse().find(b => !b.disabled) || buttons[0];
+    buttons.forEach(b => b.classList.remove("active"));
+    fallback.classList.add("active");
+    currentTimeframeDays = parseInt(fallback.dataset.days, 10);
+  }
+}
+
+// Keeps the caption honest about how much real history is actually behind
+// the chart right now, instead of a static claim that goes stale the moment
+// more days of pricing come in.
+function updateChartCaption() {
+  const captionEl = document.getElementById("chart-caption");
+  if (!indexHistory.length) {
+    captionEl.textContent = "";
+    return;
+  }
+  const span = historySpanDays();
+  const oldestDate = indexHistory[0].date;
+  const widest = [...document.querySelectorAll(".timeframe-toggle button")].filter(b => !b.disabled).pop();
+  const widestLabel = widest ? widest.textContent : "7D";
+  captionEl.textContent = span >= 1
+    ? `Chart reflects ${span} day${span === 1 ? "" : "s"} of real daily market pricing, back to ${oldestDate}. Longer views unlock automatically as more history accumulates — up to ${widestLabel} available today.`
+    : "Chart data is still backfilling — check back after the next daily refresh.";
+}
 
 function csvEscape(value) {
 const str = String(value ?? "");
@@ -457,6 +512,8 @@ indexHistory = Object.entries(dateMap)
 .map(([date, total]) => ({ date, total }))
 .sort((a, b) => new Date(a.date) - new Date(b.date));
 
+updateTimeframeAvailability();
+updateChartCaption();
 renderStats();
 renderChart();
 
