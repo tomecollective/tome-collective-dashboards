@@ -325,13 +325,16 @@
       <h2>Load Real Projections (Rotowire-sourced)</h2>
       <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
         BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
-        here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
-        upload (PITP, always) and its Proj falls back to the L10 average automatically.
+        here -- a manual, Rotowire-sourced upload. Pasting a full Rotowire table captures every
+        stat column it recognizes in one save (so both objectives on a two-objective day are
+        covered by a single paste, no need to change Stat and resubmit). Any stat with no
+        uploaded projection for a date shows Proj as TBD, except PITP, which always falls back
+        to the L10 average automatically (neither Rotowire nor standard sites project it).
       </p>
       <label>Date</label>
       <input type="date" id="proj-date">
 
-      <label>Stat</label>
+      <label>Stat (only used for a plain "Name, Value" paste below -- ignored for a full table paste, which auto-detects every stat column)</label>
       <select id="proj-stat">
         <option value="PTS">PTS</option>
         <option value="REB">REB</option>
@@ -349,7 +352,7 @@
         <option value="PITP">PITP</option>
       </select>
 
-        <label>Paste either "Name, Value" lines, or a full Rotowire table (tab-separated, with header row) -- the column matching the Stat picked above is pulled out automatically</label>
+        <label>Paste either "Name, Value" lines for the Stat picked above, or a full Rotowire table (tab-separated, with header row) -- every recognized stat column in the table is loaded at once</label>
         <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
       <button id="proj-save-btn">Load Projections</button>
       <div id="proj-status"></div>
@@ -595,7 +598,8 @@ function render() {
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
-      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${ov.proj ?? "--"}</td>`;
+      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
+      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
       html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
       html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
     });
@@ -629,7 +633,8 @@ function downloadCSV() {
     const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
     objCols.forEach((oc) => {
       const ov = p.objectives[oc.stat] || {};
-      row.push(ov.proj ?? "", ov.ytd ?? "", ov.l10 ?? "");
+      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "");
+      row.push(projText, ov.ytd ?? "", ov.l10 ?? "");
     });
     return row;
   });
@@ -733,39 +738,50 @@ const ROTOWIRE_HEADER_TO_STAT = {
   TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
 };
 
+// Returns { byStat: { STAT: [{name,value}, ...] }, errors: [] }. A full
+// Rotowire table paste captures EVERY column we track as a stat in one go
+// (not just whichever one happens to be selected in the Stat dropdown) --
+// that's what lets one paste cover both objectives on a two-objective day
+// without re-pasting and re-selecting per stat. The Stat dropdown only
+// matters for the plain "Name, Value" fallback below, where there's no
+// column header to identify the stat from.
 function parseProjRows(text, stat) {
   const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
-  if (!lines.length) return { rows: [], errors: [] };
+  if (!lines.length) return { byStat: {}, errors: [] };
 
   // Full Rotowire table paste: first line is a tab-separated header starting
-  // with "Player". Pull out just the column matching the selected stat.
+  // with "Player". Pull out every column that matches a stat we track.
   const headerCells = lines[0].split("\t").map((c) => c.trim());
   if (headerCells[0] === "Player" && headerCells.length > 2) {
-    const colIndex = headerCells.findIndex((h) => ROTOWIRE_HEADER_TO_STAT[h] === stat);
-    if (colIndex === -1) {
+    const statColumns = headerCells
+      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
+      .filter((c) => c.stat);
+    if (!statColumns.length) {
       return {
-        rows: [],
-        errors: [
-          `The pasted table has no column for ${stat} (columns found: ${headerCells.join(", ")}).`,
-        ],
+        byStat: {},
+        errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`],
       };
     }
-    const rows = [];
+    const byStat = {};
+    statColumns.forEach((c) => (byStat[c.stat] = []));
     const errors = [];
     lines.slice(1).forEach((line, i) => {
       const cells = line.split("\t").map((c) => c.trim());
       const name = cells[0];
-      const value = parseFloat(cells[colIndex]);
-      if (!name || Number.isNaN(value)) {
-        errors.push(`Row ${i + 2}: could not read a name and ${stat} value from "${line}"`);
-        return;
-      }
-      rows.push({ name, value });
+      statColumns.forEach(({ stat: colStat, colIndex }) => {
+        const value = parseFloat(cells[colIndex]);
+        if (!name || Number.isNaN(value)) {
+          errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
+          return;
+        }
+        byStat[colStat].push({ name, value });
+      });
     });
-    return { rows, errors };
+    return { byStat, errors };
   }
 
-  // Fallback: simple "Name, Value" per line.
+  // Fallback: simple "Name, Value" per line -- only identifies the single
+  // stat selected in the dropdown, since there's no header to read from.
   const rows = [];
   const errors = [];
   lines.forEach((line, i) => {
@@ -783,7 +799,7 @@ function parseProjRows(text, stat) {
     }
     rows.push({ name, value });
   });
-  return { rows, errors };
+  return { byStat: rows.length ? { [stat]: rows } : {}, errors };
 }
 
 document.getElementById("proj-save-btn").addEventListener("click", async () => {
@@ -801,31 +817,47 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
     return;
   }
 
-  const { rows, errors } = parseProjRows(rawText, stat);
+  const { byStat, errors } = parseProjRows(rawText, stat);
   if (errors.length) {
     statusEl.style.color = "#f87171";
     statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
     return;
   }
-  if (!rows.length) {
+  const stats = Object.keys(byStat);
+  if (!stats.length) {
     statusEl.style.color = "#f87171";
      statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
     return;
   }
 
-  try {
-    const res = await fetch(PROJECTIONS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-      body: JSON.stringify({ league: "WNBA", date, stat, projections: rows }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    statusEl.style.color = "#34d399";
-    statusEl.textContent = `Loaded ${rows.length} ${stat} projection(s) for ${date}. Takes effect immediately on next load.`;
-  } catch (err) {
+  // A full-table paste can carry every stat it recognizes in one submission
+  // (e.g. both 3PM and 3PA for a two-objective day) -- save each one with
+  // its own request against the same single-stat endpoint, then report a
+  // combined result. One request per stat either way; the difference is the
+  // admin no longer has to change the Stat dropdown and re-paste per stat.
+  const succeeded = [];
+  const failed = [];
+  for (const s of stats) {
+    try {
+      const res = await fetch(PROJECTIONS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
+        body: JSON.stringify({ league: "WNBA", date, stat: s, projections: byStat[s] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      succeeded.push(`${s} (${byStat[s].length})`);
+    } catch (err) {
+      failed.push(`${s}: ${err.message}`);
+    }
+  }
+
+  if (failed.length) {
     statusEl.style.color = "#f87171";
-    statusEl.textContent = `Failed to save: ${err.message}`;
+    statusEl.textContent = `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : "");
+  } else {
+    statusEl.style.color = "#34d399";
+    statusEl.textContent = `Loaded projections for ${date}: ${succeeded.join(", ")}. Takes effect immediately on next load.`;
   }
 });
 
