@@ -1,9 +1,15 @@
 // tome-fastbreak-refresh
 // Scheduled Worker: pulls live BALLDONTLIE data, builds the Fast Break dashboard
-// payload (schedule tiles, per-objective Proj/YTD/L10 + color tiers, weighted
-// Ovr Rank), and caches it in KV for the public-facing tome-fastbreak Worker to
-// serve. Also owns the admin objectives schedule (viewable by anyone, editable
-// only with the admin token) that this build reads from KV.
+// payload (schedule tiles, per-objective Proj/YTD/L10 + color tiers, auto-
+// weighted Ovr Rank), and caches it in KV for the public-facing tome-fastbreak
+// Worker to serve. Also owns the objectives schedule (viewable by anyone,
+// editable only with the admin password) that this build reads from KV.
+//
+// RUN model: objectives/games/badge info are scheduled per calendar date
+// across a multi-day "Run" (Run 10: Aug 19-30, 2026). Each date can carry a
+// separate Classic objective set and Pro objective set (Pro also carries an
+// optional Top Shot badge/set name). The frontend's day toggle asks this
+// Worker to build any date in that window on demand.
 
 const BALLDONTLIE_BASE = "https://api.balldontlie.io/wnba/v1";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -13,16 +19,29 @@ const RECENT_GAMES_LOOKBACK_DAYS = 45; // roughly weekly cadence + byes; combine
 const RECENT_GAMES_MAX_PAGES = 5; // safety cap on pagination (500 games) to bound subrequest cost
 const YTD_MAX_PAGES = 6; // safety cap on season-long game-id pagination for YTD
 
+// -- Run schedule --------------------------------------------------------------
+// Run 10: Day 1 = Aug 19, 2026 through Day 12 = Aug 30, 2026 (inclusive).
+const RUN_START = "2026-08-19";
+const RUN_END = "2026-08-30";
+
+function dayNumberForDate(dateStr) {
+  const start = new Date(`${RUN_START}T00:00:00Z`);
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return Math.round((d - start) / 86400000) + 1;
+}
+
+function isWithinRun(dateStr) {
+  return dateStr >= RUN_START && dateStr <= RUN_END;
+}
+
 // -- League / mode -----------------------------------------------------------
 // Only WNBA has live data right now. NBA (season not in progress) and Historic
-// (no historical pipeline built yet) are disabled in the frontend toggle; this
-// worker only ever builds WNBA. `mode` (Classic/Pro) is accepted and echoed
-// back but does not yet change which data is pulled -- both modes read the
-// same live BALLDONTLIE pipeline today.
-// TODO(mode): once Classic vs. Pro diverge in scope (e.g. Pro unlocking Top
-// Shot badge/set filtering once the Cadence/Flow moment-ownership integration
-// exists), branch on `mode` here.
+// (no historical pipeline built yet) are disabled in the frontend toggle.
+// Classic and Pro each carry their own objective set for a given date (see
+// objectivesForDate below) -- Pro additionally carries a Top Shot badge/set
+// requirement (badgeSetName).
 const SUPPORTED_LEAGUE = "WNBA";
+const SUPPORTED_MODES = ["Classic", "Pro"];
 
 // -- Objective -> stat field mapping ------------------------------------------
 // `source: "stats"` reads from /player_stats. `source: "advanced"` reads from
@@ -50,7 +69,11 @@ const STAT_FIELD_MAP = {
   },
 };
 
-const DEFAULT_OBJECTIVES = [{ stat: "PTS", label: "PTS", dailyTeamTarget: 80, weight: 1 }];
+// Defaults when a date in the run has no admin-set objectives yet.
+const DEFAULT_OBJECTIVES = {
+  Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 80 }],
+  Pro: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 80 }],
+};
 
 function bdlHeaders(env) {
   return { Authorization: env.BALLDONTLIE_API_KEY };
@@ -73,8 +96,8 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function getTodaysGames(env) {
-  const data = await bdlFetch(`/games?dates[]=${todayStr()}`, env);
+async function getGamesForDate(dateStr, env) {
+  const data = await bdlFetch(`/games?dates[]=${dateStr}`, env);
   return data.data || [];
 }
 
@@ -201,6 +224,11 @@ async function loadObjectivesSchedule(env) {
   }
 }
 
+// Weight is no longer entered manually -- see computeAutoWeights, which
+// derives it at build time from how many players are projected to clear
+// 100% of the per-player target. validateObjectives only checks the shape
+// of what an admin *can* set: stat code + a positive daily team target,
+// plus an optional badgeSetName string (Pro mode only).
 function validateObjectives(objectives) {
   if (!Array.isArray(objectives) || objectives.length < 1 || objectives.length > 2) {
     throw new Error("objectives must be an array of 1 or 2 entries");
@@ -212,25 +240,33 @@ function validateObjectives(objectives) {
     if (typeof o.dailyTeamTarget !== "number" || o.dailyTeamTarget <= 0) {
       throw new Error(`dailyTeamTarget must be a positive number for ${o.stat}`);
     }
-    if (typeof o.weight !== "number" || o.weight <= 0) {
-      throw new Error(`weight must be a positive number for ${o.stat}`);
-    }
-  }
-  if (objectives.length === 2) {
-    const sum = objectives[0].weight + objectives[1].weight;
-    // Weights are entered as e.g. 78.31 / 21.69 (percent) or 0.7831 / 0.2169
-    // (fraction) -- accept either, just require they sum close to "whole".
-    const wholeUnit = sum > 1.5 ? 100 : 1;
-    if (Math.abs(sum - wholeUnit) > 0.05 * wholeUnit) {
-      throw new Error(`objective weights must sum to ~100% (got ${sum})`);
-    }
   }
 }
 
-function normalizeWeights(objectives) {
-  if (objectives.length === 1) return [{ ...objectives[0], weight: 1 }];
-  const sum = objectives[0].weight + objectives[1].weight;
-  return objectives.map((o) => ({ ...o, weight: o.weight / sum }));
+// Auto-computed weighting: for a 2-objective day, the objective with FEWER
+// players projected at >=100% of their per-player target gets the HIGHER
+// weight (it's the harder objective to clear, so hitting it says more).
+// Example from spec: 3PM has 10/50 players clearing 100%, 3PA has 25/50 -->
+// 3PM (the rarer feat) gets the higher weight. A single-objective day is
+// always weight 1 (100%).
+function computeAutoWeights(objectives, playerBase) {
+  if (objectives.length === 1) {
+    return [{ ...objectives[0], weight: 1 }];
+  }
+  const total = playerBase.length || 1;
+  const fractions = objectives.map((o) => {
+    const hit = playerBase.filter((p) => {
+      const tier = p.objectives[o.stat]?.colorProj;
+      return tier === "dark-green" || tier === "light-green";
+    }).length;
+    return hit / total;
+  });
+  // Guard against a 0% fraction producing an infinite weight -- floor it at
+  // "as if 1 more player than actually cleared it" cleared it instead.
+  const epsilon = 1 / (2 * total);
+  const raw = fractions.map((f) => 1 / Math.max(f, epsilon));
+  const sum = raw[0] + raw[1];
+  return objectives.map((o, i) => ({ ...o, weight: raw[i] / sum, _hitFraction: fractions[i] }));
 }
 
 // -- Projections (manual, Rotowire-sourced where available) ------------------
@@ -266,7 +302,7 @@ async function upsertProjections(env, { league, date, stat, projections }) {
 
   const schedule = await loadObjectivesSchedule(env);
   if (!schedule[league]) schedule[league] = {};
-  if (!schedule[league][date]) schedule[league][date] = { objectives: DEFAULT_OBJECTIVES };
+  if (!schedule[league][date]) schedule[league][date] = { objectives: {} };
   if (!schedule[league][date].projections) schedule[league][date].projections = {};
   schedule[league][date].projections[stat] = values;
   await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
@@ -277,23 +313,40 @@ function projectionsForDate(schedule, league, date, stat) {
   return schedule?.[league]?.[date]?.projections?.[stat] || null;
 }
 
-async function upsertObjectivesDay(env, { league, date, objectives }) {
+async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeSetName }) {
   if (league !== SUPPORTED_LEAGUE) throw new Error(`unsupported league: ${league}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+  if (!SUPPORTED_MODES.includes(mode)) throw new Error(`mode must be one of ${SUPPORTED_MODES.join(", ")}`);
   validateObjectives(objectives);
 
   const schedule = await loadObjectivesSchedule(env);
   if (!schedule[league]) schedule[league] = {};
   const existing = schedule[league][date] || {};
-  schedule[league][date] = { ...existing, objectives: normalizeWeights(objectives) };
+  const existingObjectives = existing.objectives || {};
+  // Strip any legacy/incoming weight field -- weight is always recomputed.
+  const cleanObjectives = objectives.map(({ stat, label, dailyTeamTarget }) => ({
+    stat,
+    label: label || stat,
+    dailyTeamTarget,
+  }));
+  schedule[league][date] = {
+    ...existing,
+    objectives: { ...existingObjectives, [mode]: cleanObjectives },
+    badgeSetName: mode === "Pro" && badgeSetName ? badgeSetName : existing.badgeSetName || null,
+  };
   await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
   return schedule;
 }
 
-function objectivesForDate(schedule, league, date) {
+function objectivesForDate(schedule, league, date, mode) {
   const entry = schedule?.[league]?.[date];
-  if (entry?.objectives?.length) return normalizeWeights(entry.objectives);
-  return normalizeWeights(DEFAULT_OBJECTIVES);
+  const list = entry?.objectives?.[mode];
+  if (list && list.length) return list.map((o) => ({ ...o }));
+  return DEFAULT_OBJECTIVES[mode].map((o) => ({ ...o }));
+}
+
+function badgeSetNameForDate(schedule, league, date) {
+  return schedule?.[league]?.[date]?.badgeSetName || null;
 }
 
 // -- Ranking + color tiers -----------------------------------------------------
@@ -335,24 +388,23 @@ function colorTier(value, perPlayerTarget) {
 
 // -- Schedule tiles -------------------------------------------------------------
 
+// Eastern Time, with UTC in parentheses. Run 10 (Aug 19-30, 2026) falls
+// entirely in EDT (UTC-4), so a fixed offset is safe here without pulling in
+// a full timezone library.
+const ET_OFFSET_HOURS = -4;
+
 function formatGameTime(game) {
-  // BALLDONTLIE's WNBA game rows carry a pre-tip time in `status` (e.g. "7:00
-  // PM ET") until the game goes live, at which point `status` becomes an
-  // in-progress marker ("in") and score fields populate. Fall back to the
-  // ISO `date`/`datetime` field if `status` isn't a clock-like string.
-  if (game.status && /\d/.test(game.status) && /[ap]m/i.test(game.status)) {
-    return game.status;
-  }
+  const iso = game.datetime || game.date;
   if (game.status === "post") return "Final";
   if (game.status === "in") return "In Progress";
-  const iso = game.datetime || game.date;
   if (!iso) return "TBD";
   try {
-    return new Date(iso).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "TBD";
+    const et = new Date(d.getTime() + ET_OFFSET_HOURS * 3600 * 1000);
+    const etStr = et.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    const utcStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC", hour12: false });
+    return `${etStr} ET (${utcStr} UTC)`;
   } catch {
     return "TBD";
   }
@@ -374,28 +426,36 @@ function buildScheduleTiles(games) {
 
 // -- Main build -----------------------------------------------------------------
 
-async function buildDashboard(env) {
+async function buildDashboard(env, { date, mode } = {}) {
   let subrequests = 0;
+  const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
+  const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
   const today = todayStr();
   const schedule = await loadObjectivesSchedule(env);
-  const objectives = objectivesForDate(schedule, SUPPORTED_LEAGUE, today);
+  const objectives = objectivesForDate(schedule, SUPPORTED_LEAGUE, targetDate, targetMode);
+  const badgeSetName = targetMode === "Pro" ? badgeSetNameForDate(schedule, SUPPORTED_LEAGUE, targetDate) : null;
 
-  const games = await getTodaysGames(env);
+  const games = await getGamesForDate(targetDate, env);
   subrequests += 1;
 
   const teamIds = [...new Set(games.flatMap((g) => [g.home_team?.id, g.visitor_team?.id]).filter(Boolean))];
   const scheduleTiles = buildScheduleTiles(games);
 
+  const baseReturn = {
+    dashboard_name: "Fast Break Dashboard",
+    league: SUPPORTED_LEAGUE,
+    mode: targetMode,
+    date: targetDate,
+    dayNumber: dayNumberForDate(targetDate),
+    runLength: dayNumberForDate(RUN_END),
+    last_updated: today,
+    objectives,
+    badgeSetName,
+    games: scheduleTiles,
+  };
+
   if (teamIds.length === 0) {
-    return {
-      dashboard_name: "Tome Edge: Fast Break",
-      league: SUPPORTED_LEAGUE,
-      last_updated: today,
-      objectives,
-      games: [],
-      note: "No WNBA games scheduled today.",
-      players: [],
-    };
+    return { ...baseReturn, note: "No WNBA games scheduled on this date.", players: [] };
   }
 
   const opponentByTeam = new Map();
@@ -408,7 +468,10 @@ async function buildDashboard(env) {
   subrequests += 1;
   const season = currentSeason();
 
-  // Last-10 window (existing, confirmed-working approach).
+  // Last-10 / YTD windows are always computed relative to the REAL today
+  // (current known form), regardless of which scheduled date is being
+  // viewed -- a future run day shows today's YTD/L10 plus that day's games;
+  // BALLDONTLIE has no future stats to show.
   const recentEnd = new Date();
   const recentStart = new Date(recentEnd.getTime() - RECENT_GAMES_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const recentResult = await getGamesForTeamsInWindow(teamIds, env, {
@@ -453,7 +516,7 @@ async function buildDashboard(env) {
   }
 
   // BUG FIX (verified live 2026-08-21): a single combined query scoped to
-  // `allGameIds` (L10 ∪ YTD, i.e. the whole season) silently overflowed the
+  // `allGameIds` (L10 union YTD, i.e. the whole season) silently overflowed the
   // API's per_page=100 cap for any chunk with real game history -- and since
   // /player_stats and /player_game_advanced_stats return rows OLDEST-FIRST
   // (same ordering quirk documented above for /games), the surviving page-1
@@ -511,11 +574,11 @@ async function buildDashboard(env) {
     return typeof v === "number" ? v : null;
   }
 
-  // Load any admin-uploaded Rotowire projections for today's objective(s).
+  // Load any admin-uploaded Rotowire projections for this date's objective(s).
   // Keyed by stat -> { normalizedName: {name, value} }. See upsertProjections.
   const projectionOverrides = {};
   for (const obj of objectives) {
-    projectionOverrides[obj.stat] = projectionsForDate(schedule, SUPPORTED_LEAGUE, today, obj.stat) || {};
+    projectionOverrides[obj.stat] = projectionsForDate(schedule, SUPPORTED_LEAGUE, targetDate, obj.stat) || {};
   }
 
   const playerBase = playerIds.map((pid) => {
@@ -548,7 +611,6 @@ async function buildDashboard(env) {
       objectiveValues[obj.stat] = {
         stat: obj.stat,
         label: obj.label || obj.stat,
-        weight: obj.weight,
         dailyTeamTarget: obj.dailyTeamTarget,
         perPlayerTarget: round1(perPlayerTarget),
         proj,
@@ -571,15 +633,26 @@ async function buildDashboard(env) {
     };
   });
 
+  // Auto-computed weighting (replaces manual entry): derived from how many
+  // players are projected to clear >=100% of their per-player target for
+  // each objective. Rarer feat -> higher weight, relative to the other
+  // objective on a 2-objective day.
+  const weightedObjectives = computeAutoWeights(objectives, playerBase);
+  for (const p of playerBase) {
+    for (const wo of weightedObjectives) {
+      if (p.objectives[wo.stat]) p.objectives[wo.stat].weight = wo.weight;
+    }
+  }
+
   // Weighted Ovr Rank: rank players within each objective by Proj (desc,
   // standard competition ranking), then combine ranks using that day's
-  // objective weights. Lower combined score = better = Ovr Rank 1.
-  const rankMaps = objectives.map((obj) =>
+  // auto-computed objective weights. Lower combined score = better = Ovr Rank 1.
+  const rankMaps = weightedObjectives.map((obj) =>
     rankDescending(playerBase.map((p) => ({ id: p.id, value: p.objectives[obj.stat].proj })))
   );
 
   const combinedScores = playerBase.map((p) => {
-    const score = objectives.reduce((sum, obj, i) => sum + rankMaps[i].get(p.id) * obj.weight, 0);
+    const score = weightedObjectives.reduce((sum, obj, i) => sum + rankMaps[i].get(p.id) * obj.weight, 0);
     return { id: p.id, value: -score }; // negate: rankDescending expects "higher = better"
   });
   const ovrRankMap = rankDescending(combinedScores);
@@ -588,10 +661,10 @@ async function buildDashboard(env) {
   players.sort((a, b) => a.ovrRank - b.ovrRank);
 
   const baseNote =
-    "Live BALLDONTLIE data. YTD/L10 use trusted, client-sorted game windows (never API default ordering). PITP (when an objective) is derived from player_game_advanced_stats.stats.misc.points_paint. Proj uses admin-uploaded Rotowire projections where available for today's objective(s); it falls back to the L10 average only where no projection was uploaded (PITP's documented, intentional case) -- an in-house pace/matchup/usage-adjusted model to replace the manual upload process entirely is planned as a future, separately-scoped enhancement.";
+    "Live BALLDONTLIE data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected. PITP (when an objective) is derived from player_game_advanced_stats.stats.misc.points_paint. Proj uses admin-uploaded Rotowire projections where available; it falls back to the L10 average only where no projection was uploaded (PITP's documented, intentional case). Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight.";
 
   const notes = [baseNote];
-  for (const obj of objectives) {
+  for (const obj of weightedObjectives) {
     const overrides = projectionOverrides[obj.stat] || {};
     const overrideCount = Object.keys(overrides).length;
     if (overrideCount > 0) {
@@ -609,11 +682,8 @@ async function buildDashboard(env) {
   }
 
   return {
-    dashboard_name: "Tome Edge: Fast Break",
-    league: SUPPORTED_LEAGUE,
-    last_updated: today,
-    objectives,
-    games: scheduleTiles,
+    ...baseReturn,
+    objectives: weightedObjectives,
     note: notes.join(" "),
     players,
     _subrequests_used: subrequests,
@@ -622,7 +692,7 @@ async function buildDashboard(env) {
 }
 
 async function refreshAndStore(env) {
-  const dashboard = await buildDashboard(env);
+  const dashboard = await buildDashboard(env, { date: todayStr(), mode: "Classic" });
   await env.FASTBREAK_KV.put("fastbreak:latest", JSON.stringify(dashboard));
   return dashboard;
 }
@@ -647,20 +717,36 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Manual trigger for testing -- runs the same logic as the cron handler
-    // and returns the freshly built dashboard so it can be verified end to end.
+    // Live build for a given date/mode (defaults to today/Classic). Every hit
+    // here calls BALLDONTLIE live -- this is also what the cron handler uses,
+    // and what the frontend's Run day-toggle calls directly for any day in
+    // the Aug 19-30 window.
     if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/api/fastbreak") {
       try {
-        const dashboard = await refreshAndStore(env);
+        const date = url.searchParams.get("date") || todayStr();
+        const mode = url.searchParams.get("mode") || "Classic";
+        const dashboard = await buildDashboard(env, { date, mode });
+        if (date === todayStr() && mode === "Classic") {
+          await env.FASTBREAK_KV.put("fastbreak:latest", JSON.stringify(dashboard));
+        }
         return new Response(JSON.stringify(dashboard, null, 2), { headers: corsHeaders });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
       }
     }
 
+    // Run schedule metadata (start/end/day numbers) -- lets the frontend build
+    // its day toggle without hardcoding the run window.
+    if (url.pathname === "/api/fastbreak/run" && request.method === "GET") {
+      return new Response(
+        JSON.stringify({ runStart: RUN_START, runEnd: RUN_END, runLength: dayNumberForDate(RUN_END) }),
+        { headers: corsHeaders }
+      );
+    }
+
     // Admin objectives schedule: viewable by anyone (it's a locked *view*, not
-    // a secret), editable only with the admin token. Real edits happen through
-    // this upload/input endpoint, never by hand-editing page content.
+    // a secret), editable only with the admin password. Real edits happen
+    // through this upload/input endpoint, never by hand-editing page content.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
       const schedule = await loadObjectivesSchedule(env);
       return new Response(JSON.stringify({ league: SUPPORTED_LEAGUE, schedule }), { headers: corsHeaders });
@@ -668,7 +754,7 @@ export default {
 
     if (url.pathname === "/api/fastbreak/objectives/day" && request.method === "POST") {
       if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
           status: 401,
           headers: corsHeaders,
         });
@@ -678,7 +764,9 @@ export default {
         const schedule = await upsertObjectivesDay(env, {
           league: body.league || SUPPORTED_LEAGUE,
           date: body.date,
+          mode: body.mode || "Classic",
           objectives: body.objectives,
+          badgeSetName: body.badgeSetName,
         });
         return new Response(JSON.stringify({ ok: true, schedule }), { headers: corsHeaders });
       } catch (err) {
@@ -687,13 +775,13 @@ export default {
     }
 
     // Bulk-load real, manually-sourced (Rotowire) Proj values for one stat on
-    // one date. Admin-token gated, same as the objectives/day write above.
+    // one date. Admin-password gated, same as the objectives/day write above.
     // Never used for PITP -- there's no Rotowire (or standard WNBA stats
     // site) projection for it, so PITP intentionally has no override entries
     // and always falls back to the L10 average in buildDashboard.
     if (url.pathname === "/api/fastbreak/objectives/day/projections" && request.method === "POST") {
       if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
           status: 401,
           headers: corsHeaders,
         });
@@ -733,7 +821,7 @@ export const __testables__ = {
   round1,
   rankDescending,
   colorTier,
-  normalizeWeights,
+  computeAutoWeights,
   validateObjectives,
   objectivesForDate,
   formatGameTime,
@@ -742,4 +830,8 @@ export const __testables__ = {
   normalizePlayerName,
   upsertProjections,
   projectionsForDate,
+  dayNumberForDate,
+  isWithinRun,
+  RUN_START,
+  RUN_END,
 };
