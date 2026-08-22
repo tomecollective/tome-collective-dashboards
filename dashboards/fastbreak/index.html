@@ -53,8 +53,8 @@
   .toggle-group button:not(:disabled):not(.active):hover { color: var(--text); background:var(--surface2); }
   .toggle-note { font-size: 0.72rem; color: var(--text-3); }
 
-  .admin-link-btn { margin-left: auto; background: var(--surface); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 9px 16px; border-radius: 10px; font-size: 0.76rem; font-weight:600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
-  .admin-link-btn:hover { color: var(--text); border-color: var(--green); }
+  .admin-link-btn { margin-left: auto; background: none; border: none; color: var(--text-3); padding: 4px 2px; font-size: 0.68rem; font-weight:500; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; text-decoration: underline; text-decoration-color: transparent; transition: all .12s; opacity: 0.75; }
+  .admin-link-btn:hover { color: var(--text-2); text-decoration-color: var(--text-3); opacity: 1; }
 
   /* -- run (day) toggle --------------------------------------------------- */
   .run-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -114,28 +114,32 @@
 
   .note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
 
-  /* -- admin view -------------------------------------------------------- */
-  #view-admin { display: none; }
-  .admin-banner { display:flex; align-items:center; gap:8px; background: rgba(255,181,21,0.1); border: 0.5px solid rgba(255,181,21,0.35); color: var(--gold); padding: 10px 16px; border-radius: var(--r); font-size: 0.8rem; margin-bottom: 20px; }
+  /* -- admin view (kept deliberately small/quiet -- this is a tool for the
+     site owner, not viewer-facing content, so it should never compete
+     visually with the dashboard itself) ----------------------------------- */
+  #view-admin { display: none; font-size: 0.85em; }
+  #view-admin h2 { font-size: 0.92rem; color: var(--text-2); }
+  .admin-banner { display:flex; align-items:center; gap:6px; background: rgba(255,181,21,0.07); border: 0.5px solid rgba(255,181,21,0.25); color: var(--text-3); padding: 6px 12px; border-radius: var(--r); font-size: 0.7rem; margin-bottom: 14px; }
   .admin-table{width:100%;}
-  .admin-table th, .admin-table td { font-size: 0.8rem; }
-  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 22px 24px; margin-top: 22px; max-width: 520px; }
-  .admin-form h2{font-size:1.05rem;margin-bottom:4px;}
-  .admin-form label { display: block; font-size: 0.7rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 14px 0 5px; }
-  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
+  .admin-table th, .admin-table td { font-size: 0.7rem; }
+  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-top: 14px; max-width: 420px; }
+  .admin-form h2{font-size:0.82rem;margin-bottom:3px;}
+  .admin-form label { display: block; font-size: 0.62rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
+  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
   .admin-form input:focus, .admin-form select:focus{border-color:var(--green);}
-  .admin-form .obj-pair { display: flex; gap: 12px; }
+  .admin-form .obj-pair { display: flex; gap: 10px; }
   .admin-form .obj-pair > div { flex: 1; }
-  .admin-form button { margin-top: 20px; background: var(--green); border: none; color: #fff; padding: 10px 20px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.85rem; transition:background .12s; }
-  .admin-form button:hover { background: var(--green-lt); }
-  #admin-status { margin-top: 12px; font-size: 0.8rem; }
-  #proj-status { margin-top: 12px; font-size: 0.8rem; }
+  .admin-form button { margin-top: 14px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; transition:all .12s; }
+  .admin-form button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+  #admin-status { margin-top: 8px; font-size: 0.7rem; }
+  #proj-status { margin-top: 8px; font-size: 0.7rem; }
 
-  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r-lg); padding: 22px 24px; max-width: 380px; margin-top:22px; }
-  .admin-gate h2 { font-size: 1.05rem; margin-bottom: 10px; }
-  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
-  .admin-gate button { margin-top: 12px; background: var(--green); border: none; color: #fff; padding: 9px 18px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.82rem; }
-  #admin-gate-status { margin-top: 10px; font-size: 0.78rem; color: var(--dn); }
+  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r); padding: 14px 16px; max-width: 300px; margin-top:14px; }
+  .admin-gate h2 { font-size: 0.82rem; margin-bottom: 6px; }
+  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
+  .admin-gate button { margin-top: 8px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; }
+  .admin-gate button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+  #admin-gate-status { margin-top: 8px; font-size: 0.68rem; color: var(--dn); }
   #admin-locked-content { display:none; }
 
   ::-webkit-scrollbar{height:8px;width:8px;}
@@ -243,7 +247,7 @@
   <div id="admin-locked-content">
     <div class="admin-form">
       <h2>Set / Update a Day's Objectives</h2>
-      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
         Weight is no longer entered manually -- it's computed automatically from the share of
         players projected to clear 100% of each objective's target (the rarer feat carries more weight).
       </p>
@@ -319,7 +323,7 @@
 
     <div class="admin-form">
       <h2>Load Real Projections (Rotowire-sourced)</h2>
-      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
         BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
         here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
         upload (PITP, always) and its Proj falls back to the L10 average automatically.
