@@ -267,7 +267,8 @@
             <option value="STL">STL</option>
             <option value="BLK">BLK</option>
             <option value="TOV">TOV</option>
-            <option value="3PM">3PM</option>
+            <option value="FGM">FGM</option>
+            <option value="FGA">FGA</option>
             <option value="3PA">3PA</option>
             <option value="FTM">FTM</option>
             <option value="FTA">FTA</option>
@@ -292,6 +293,8 @@
             <option value="STL">STL</option>
             <option value="BLK">BLK</option>
             <option value="TOV">TOV</option>
+            <option value="FGM">FGM</option>
+            <option value="FGA">FGA</option>
             <option value="3PM">3PM</option>
             <option value="3PA">3PA</option>
             <option value="FTM">FTM</option>
@@ -331,6 +334,8 @@
         <option value="STL">STL</option>
         <option value="BLK">BLK</option>
         <option value="TOV">TOV</option>
+        <option value="FGM">FGM</option>
+        <option value="FGA">FGA</option>
         <option value="3PM">3PM</option>
         <option value="3PA">3PA</option>
         <option value="FTM">FTM</option>
@@ -441,7 +446,7 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
   e.target.classList.add("active");
   currentMode = e.target.dataset.mode;
   document.getElementById("mode-note").textContent =
-    currentMode === "Pro" ? "Pro: objectives include a required Top Shot badge/set." : "";
+          currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" : "";
   loadData();
 });
 
@@ -716,10 +721,10 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
 // -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
 // Rotowire's exported column header -> our internal stat code. Only stats we
 // actually track as objectives are listed; other Rotowire columns (Min, Pos,
-// FG%, FGM, FGA, DREB, 3P%, etc.) are simply ignored during table parsing.
+// FG%, DREB, 3P%, etc.) are simply ignored during table parsing.
 const ROTOWIRE_HEADER_TO_STAT = {
   PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
-  TO: "TOV", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
+  TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
 };
 
 function parseProjRows(text, stat) {
