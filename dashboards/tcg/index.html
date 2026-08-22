@@ -1,1137 +1,605 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Tome Vault: TCG Arbitrage — Tome Collective</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8">
+<title>Tome Vault: Pokemon Chase Modern EN 50</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{
-  --green:#d4a72c;--green-dark:#a3801e;--gold:#FFB515; /* --green is now the Vault brand gold (matches Chase Index #d4a72c) */
-  --bg:#f5f6f2;--surface:#fff;--surface2:#f0f1ec;--surface3:#e4e5e0;
-  --border:rgba(0,0,0,0.08);--border-md:rgba(0,0,0,0.13);--border-str:rgba(0,0,0,0.18);
-  --text:#18190f;--text-2:#484a40;--text-3:#787a6e;
-  --up:#059669;--dn:#dc2626;
-  --sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
-  --r:8px;--r-lg:14px;
-  --crack-bg:#fef3c7;--crack-fg:#92400e;--crack-bd:#fbbf24;
-  --grade-bg:#d1fae5;--grade-fg:#064e3b;--grade-bd:#6ee7b7;
-  --hold-bg:#ede9fe;--hold-fg:#4c1d95;--hold-bd:#c4b5fd;
-  --accum-bg:#dbeafe;--accum-fg:#1e3a8a;--accum-bd:#93c5fd;
-  --skip-bg:#f1f5f9;--skip-fg:#64748b;--skip-bd:#cbd5e1;
-  --ts-e-bg:#d1fae5;--ts-e-fg:#064e3b;--ts-s-bg:#dbeafe;--ts-s-fg:#1e3a8a;
-  --ts-w-bg:#fef9c3;--ts-w-fg:#713f12;--ts-x-bg:#f1f5f9;--ts-x-fg:#64748b;
-}
-@media(prefers-color-scheme:dark){:root{
-  --bg:#0f1009;--surface:#181910;--surface2:#1e201a;--surface3:#262820;
-  --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);--border-str:rgba(255,255,255,0.18);
-  --text:#eaecdf;--text-2:#a8aa9c;--text-3:#6a6c60;
-  --crack-bg:#422006;--crack-fg:#fcd34d;--crack-bd:#92400e;
-  --grade-bg:#052e16;--grade-fg:#6ee7b7;--grade-bd:#064e3b;
-  --hold-bg:#1e1040;--hold-fg:#c4b5fd;--hold-bd:#4c1d95;
-  --accum-bg:#0f1f40;--accum-fg:#93c5fd;--accum-bd:#1e3a8a;
-  --skip-bg:#1e2029;--skip-fg:#94a3b8;--skip-bd:#334155;
-  --ts-e-bg:#052e16;--ts-e-fg:#6ee7b7;--ts-s-bg:#0f1f40;--ts-s-fg:#93c5fd;
-  --ts-w-bg:#2d1a00;--ts-w-fg:#fcd34d;--ts-x-bg:#1e2029;--ts-x-fg:#94a3b8;
-}}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;}
-
-/* Header */
-.hdr{background:var(--green);height:50px;display:flex;align-items:center;padding:0 1.5rem;gap:12px;position:sticky;top:0;z-index:300;}
-.hdr-logo{display:flex;align-items:center;gap:7px;text-decoration:none;}
-.hdr-dot{width:7px;height:7px;border-radius:50%;background:#1a1a1a;}
-.hdr-name{font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-0.2px;}
-.hdr-div{width:1px;height:18px;background:rgba(26,26,26,0.2);}
-.hdr-product{font-size:13px;font-weight:500;color:rgba(26,26,26,0.75);}
-.hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
-.hdr-pill{font-size:11px;background:rgba(26,26,26,0.85);color:#d4a72c;font-weight:600;padding:3px 10px;border-radius:20px;}
-
-/* Layout */
-.wrap{max-width:1320px;margin:0 auto;padding:1.25rem 1.25rem 4rem;}
-.pg-hd{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:1rem;}
-.pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
-.pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
-.pg-sub{font-size:13px;color:var(--text-3);margin-top:3px;max-width:640px;line-height:1.5;}
-.pg-meta{font-size:11px;color:var(--text-3);text-align:right;}
-.pg-meta strong{color:var(--text-2);display:block;font-size:13px;}
-
-/* Quick-sort chips */
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;}
-.chip{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 18px;border-radius:10px;border:1px solid var(--border-str);background:var(--surface);color:var(--text-2);cursor:pointer;transition:all 0.12s;display:flex;align-items:center;gap:7px;}
-.chip:hover{border-color:var(--green);color:var(--green);transform:translateY(-1px);}
-.chip.active{background:var(--green);color:#1a1a1a;border-color:var(--green);box-shadow:0 2px 8px rgba(212,167,44,0.25);}
-.chip .chip-icon{font-size:15px;}
-.chip .chip-count{font-size:10px;font-weight:700;background:rgba(0,0,0,0.08);padding:2px 7px;border-radius:10px;font-family:var(--mono);}
-.chip.active .chip-count{background:rgba(255,255,255,0.2);}
-
-/* Filter bar */
-.fbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:0.75rem;padding:0.7rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);}
-.fgroup{display:flex;align-items:center;gap:6px;}
-.flbl{font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;}
-.seg{display:flex;gap:3px;}
-.sb{font-family:var(--sans);font-size:12px;font-weight:500;padding:5px 11px;border-radius:16px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;white-space:nowrap;}
-.sb:hover{border-color:var(--green);color:var(--green);}
-.sb.active{background:var(--green);color:#1a1a1a;border-color:var(--green);}
-.fdiv{width:1px;height:22px;background:var(--border-md);}
-.sw{position:relative;min-width:150px;flex:1;max-width:220px;}
-.sw svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3);pointer-events:none;}
-.sw input{width:100%;padding:6px 10px 6px 29px;border:0.5px solid var(--border-str);border-radius:var(--r);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
-.sw input:focus{border-color:var(--green);background:var(--surface);}
-select{padding:6px 9px;border:0.5px solid var(--border-str);border-radius:var(--r);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;height:31px;outline:none;cursor:pointer;}
-select:focus{border-color:var(--green);}
-.clear-btn{font-family:var(--sans);font-size:11px;font-weight:500;color:var(--text-3);background:none;border:0.5px solid var(--border-md);border-radius:var(--r);padding:5px 10px;cursor:pointer;margin-left:auto;}
-.clear-btn:hover{border-color:var(--dn);color:var(--dn);}
-.fcount{font-size:11px;color:var(--text-3);padding:4px 9px;background:var(--surface3);border-radius:16px;white-space:nowrap;}
-
-/* Profit controls bar */
-.pbar{display:flex;align-items:center;gap:10px;margin-bottom:0.875rem;padding:0.55rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);flex-wrap:wrap;}
-.plbl{font-size:11px;font-weight:500;color:var(--text-2);}
-.fee-btn{font-family:var(--sans);font-size:11px;font-weight:500;padding:4px 10px;border-radius:6px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;}
-.fee-btn:hover{border-color:var(--green);color:var(--green);}
-.fee-btn.active{background:var(--green);color:#1a1a1a;border-color:var(--green);}
-input[type=range]{accent-color:var(--green);cursor:pointer;}
-.pnote{font-size:10px;color:var(--text-3);margin-left:auto;}
-
-/* Stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:1rem;}
-.stat{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:0.6rem 0.8rem;}
-.stat-lbl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:3px;}
-.stat-val{font-size:19px;font-weight:700;line-height:1;}
-.stat-sub{font-size:10px;color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-
-/* Pagination */
-.pagebar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:0.75rem;padding:0.6rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);}
-.pg-size{display:flex;align-items:center;gap:6px;}
-.pg-nav{display:flex;align-items:center;gap:8px;}
-.pg-btn{font-family:var(--sans);font-size:12px;font-weight:600;width:28px;height:26px;border-radius:6px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;}
-.pg-btn:hover:not(:disabled){border-color:var(--green);color:var(--green);}
-.pg-btn:disabled{opacity:0.35;cursor:default;}
-.pg-info{font-size:11px;color:var(--text-3);white-space:nowrap;min-width:150px;text-align:center;}
-
-/* Table */
-/* scroll-margin-top leaves room for the sticky green .hdr bar (50px) when something calls
-   scrollIntoView() on this element (e.g. the pagination Next/Prev buttons) — otherwise the
-   browser scrolls the table flush to the very top of the viewport, and the frozen table
-   header (itself sticky at top:0 *within* this box) ends up rendered right behind the green
-   bar, invisible, since the green bar sits on top at a higher z-index. */
-.tbl-outer{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;scroll-margin-top:60px;}
-/* overflow-x:auto alone silently makes overflow-y compute to auto too (CSS overflow spec),
-   which breaks position:sticky on the header (its "nearest scroll container" becomes a box
-   that never actually scrolls). Declaring both axes explicitly with a real max-height turns
-   this into a genuine scroll pane, so the sticky header works and — as a bonus — degrades
-   gracefully: with pagination keeping row counts low, most pages never need to scroll at all. */
-.tbl-scroll{overflow:auto;max-height:calc(100vh - 260px);}
-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1180px;}
-thead tr{background:var(--surface2);border-bottom:0.5px solid var(--border-str);}
-/* top:0 — thead is the first row in the table, so its natural (unscrolled) offset from the
-   scroll pane's own top is already 0. Any positive offset here (e.g. to dodge the green .hdr
-   bar above) forces the sticky constraint to activate immediately at rest, permanently
-   shoving the header down over row 1 even with no scrolling at all. top:0 keeps it flush
-   until the box is actually scrolled internally, which is when it should start "sticking". */
-th{padding:9px 10px;font-size:10px;font-weight:600;color:var(--text-3);text-align:left;white-space:nowrap;cursor:pointer;user-select:none;letter-spacing:0.5px;text-transform:uppercase;position:sticky;top:0;z-index:2;background:var(--surface2);box-shadow:0 1px 0 var(--border-str);}
-th:hover,th.sorted{color:var(--text);}
-th .arr{margin-left:3px;opacity:0.3;font-size:9px;}
-th.sorted .arr{opacity:1;color:var(--green);}
-th.ns{cursor:default;}
-tbody tr{border-bottom:0.5px solid var(--border);transition:background 0.08s;}
-tbody tr:last-child{border-bottom:none;}
-tbody tr:hover{background:var(--surface2);}
-td{padding:9px 10px;vertical-align:middle;}
-.rk{font-size:11px;font-weight:700;color:var(--text-3);text-align:center;}
-.cc{display:flex;align-items:center;gap:9px;min-width:150px;}
-.ci{width:32px;height:44px;border-radius:3px;border:0.5px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;object-fit:cover;}
-.ci-wrap{position:relative;flex-shrink:0;display:block;line-height:0;cursor:pointer;}
-#hoverPreview{display:none;position:fixed;width:180px;height:auto;border-radius:8px;border:1px solid var(--border-str);box-shadow:0 8px 28px rgba(0,0,0,0.35);z-index:9999;background:var(--surface);pointer-events:none;}
-@media(hover:none){#hoverPreview{display:none !important;}}
-
-/* Column info tooltips */
-.info-ic{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;width:13px;height:13px;border-radius:50%;background:var(--surface3);color:var(--text-3);font-size:9px;line-height:1;text-align:center;cursor:help;font-weight:700;vertical-align:middle;text-transform:none;letter-spacing:0;}
-.info-ic:hover{background:var(--green);color:#1a1a1a;}
-#infoTip{display:none;position:fixed;width:240px;font-size:11px;line-height:1.5;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-2);padding:9px 11px;border-radius:8px;border:1px solid var(--border-str);box-shadow:0 8px 28px rgba(0,0,0,0.35);z-index:9999;background:var(--surface);pointer-events:none;}
-@media(hover:none){#infoTip{display:none !important;}}
-.cn{font-weight:500;font-size:12px;line-height:1.3;}
-.cs{font-size:10px;color:var(--text-3);}
-.cnum{font-family:var(--mono);font-size:9px;color:var(--text-3);}
-.gt{display:inline-block;font-size:10px;font-weight:500;padding:2px 6px;border-radius:3px;}
-.gp{background:#fff3e0;color:#8b4000;}.gl{background:#e8f0fe;color:#1a3680;}.go{background:#fce7f3;color:#831843;}
-@media(prefers-color-scheme:dark){.gp{background:#3d2000;color:#ffb566;}.gl{background:#0d1f40;color:#7ab8f5;}.go{background:#3b0020;color:#f9a8d4;}}
-.era-tag{display:inline-block;font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:var(--surface3);color:var(--text-3);text-transform:uppercase;letter-spacing:0.3px;}
-.sig{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid;white-space:nowrap;}
-.s-crack{background:var(--crack-bg);color:var(--crack-fg);border-color:var(--crack-bd);}
-.s-grade{background:var(--grade-bg);color:var(--grade-fg);border-color:var(--grade-bd);}
-.s-hold{background:var(--hold-bg);color:var(--hold-fg);border-color:var(--hold-bd);}
-.s-accum{background:var(--accum-bg);color:var(--accum-fg);border-color:var(--accum-bd);}
-.s-skip{background:var(--skip-bg);color:var(--skip-fg);border-color:var(--skip-bd);}
-.ts-pill{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;width:38px;height:23px;border-radius:5px;font-family:var(--mono);}
-.ts-e{background:var(--ts-e-bg);color:var(--ts-e-fg);}
-.ts-s{background:var(--ts-s-bg);color:var(--ts-s-fg);}
-.ts-w{background:var(--ts-w-bg);color:var(--ts-w-fg);}
-.ts-x{background:var(--ts-x-bg);color:var(--ts-x-fg);}
-.pc{display:flex;flex-direction:column;gap:1px;}
-.pa{font-family:var(--mono);font-size:12px;font-weight:600;}
-.pl{font-size:9px;color:var(--text-3);}
-.pos{color:var(--up);}.neg{color:var(--dn);}
-.mono{font-family:var(--mono);font-size:11px;}
-.up{color:var(--up);}.dn{color:var(--dn);}.fl{color:var(--text-3);}
-.tcg-link{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;color:var(--green);text-decoration:none;padding:3px 7px;border-radius:4px;border:0.5px solid var(--green);transition:all 0.1s;white-space:nowrap;}
-.tcg-link:hover{background:var(--green);color:#1a1a1a;}
-
-.star-btn{background:none;border:none;font-size:15px;cursor:pointer;color:var(--text-3);padding:2px 4px;line-height:1;transition:color 0.1s,transform 0.1s;}
-.star-btn:hover{color:var(--gold);transform:scale(1.2);}
-.star-btn.starred{color:var(--gold);}
-.row-click{cursor:pointer;}
-
-/* Footer */
-.footer{text-align:center;font-size:11px;color:var(--text-3);padding:2rem 0 1rem;border-top:0.5px solid var(--border);margin-top:1.5rem;}
-.footer a{color:var(--green);text-decoration:none;}
-.disclaimer{font-size:10px;color:var(--text-3);max-width:660px;margin:0.5rem auto 0;line-height:1.6;}
-
-/* Mobile */
-@media(max-width:700px){
-  .wrap{padding:0.85rem 0.75rem 3rem;}
-  .hdr{padding:0 1rem;}
-  .pg-title{font-size:20px;}
-  .pg-hd{align-items:flex-start;}
-  .pg-meta{text-align:left;}
-  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
-  .chips::-webkit-scrollbar{height:0;}
-  .chip{flex-shrink:0;}
-  .fbar{padding:0.6rem;}
-  .fgroup{flex-wrap:wrap;}
-  .sw{max-width:none;min-width:120px;}
-  .clear-btn{margin-left:0;}
-  .pbar{gap:8px;}
-  .pnote{display:none;}
-  .stats{grid-template-columns:repeat(2,1fr);}
-  #drawer{width:100vw;}
-  .tbl-scroll{max-height:60vh;}
-  .pagebar{justify-content:center;}
-  .pg-size{width:100%;justify-content:center;}
-}
+body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+.page-wrap { padding: 40px; }
+.hdr { background: #d4a72c; height: 50px; display: flex; align-items: center; padding: 0 1.5rem; gap: 12px; position: sticky; top: 0; z-index: 300; font-family: Helvetica, Arial, sans-serif; }
+.hdr-logo { display: flex; align-items: center; gap: 7px; }
+.hdr-dot { width: 7px; height: 7px; border-radius: 50%; background: #1a1a1a; flex-shrink: 0; }
+.hdr-name { font-size: 14px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.2px; }
+.hdr-div { width: 1px; height: 18px; background: rgba(26,26,26,0.25); }
+.hdr-product { font-family: 'EB Garamond', Georgia, serif; font-size: 15px; font-weight: 600; color: #1a1a1a; }
+.hdr-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.hdr-pill { font-size: 11px; font-weight: 700; text-transform: uppercase; background: rgba(26,26,26,0.15); color: #1a1a1a; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.4px; }
+.pg-eye { font-family: Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #d4a72c; margin-bottom: 6px; }
+h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; margin-top: 0; }
+h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #d4a72c; margin-top: 48px; }
+h3.era-heading { font-family: 'EB Garamond', Georgia, serif; font-size: 1.15rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1c2622; padding-bottom: 6px; margin: 32px 0 16px 0; }
+h3.era-heading:first-of-type { margin-top: 8px; }
+.subtitle { color: #8fa89f; margin-bottom: 32px; }
+.disclaimer { font-size: 0.8rem; color: #6b7d76; border-left: 2px solid #d4a72c; padding-left: 12px; margin-bottom: 32px; max-width: 640px; }
+#chart-container { max-width: 900px; margin-bottom: 24px; }
+.timeframe-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+.timeframe-toggle button { background: transparent; border: 1px solid #1c2622; color: #8fa89f; padding: 6px 14px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+.timeframe-toggle button.active { background: #d4a72c; border-color: #d4a72c; color: #1a1a1a; }
+.timeframe-toggle button:hover:not(.active):not(:disabled) { border-color: #d4a72c; color: #f5f5f0; }
+.timeframe-toggle button:disabled { opacity: 0.4; color: #4a554f; cursor: not-allowed; }
+.index-stats { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 20px; }
+.index-stats .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8fa89f; margin-bottom: 2px; }
+.index-stats .stat-value { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #f5f5f0; }
+.index-stats .stat-value.up { color: #3ea86b; }
+.index-stats .stat-value.down { color: #c0392b; }
+.index-stats .stat-value.flat { color: #8fa89f; }
+.index-stats .stat-sub { font-size: 0.72rem; color: #6b7d76; margin-top: 2px; }
+.change-up { color: #3ea86b; }
+.change-down { color: #c0392b; }
+.change-flat { color: #8fa89f; }
+.legend { display: flex; gap: 24px; font-size: 0.8rem; color: #8fa89f; margin-bottom: 32px; flex-wrap: wrap; }
+.legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; margin-bottom: 8px; }
+.set-card { background: #10160f0f; border: 1px solid #1c2622; border-radius: 8px; padding: 16px 20px; }
+.set-card h4 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.1rem; margin: 0 0 4px 0; color: #f5f5f0; }
+.set-card .release-date { font-size: 0.7rem; color: #6b7d76; margin-bottom: 10px; }
+.set-card .ineligible-note { font-size: 0.72rem; color: #b8892c; background: rgba(212, 167, 44, 0.08); border-left: 2px solid #d4a72c; padding: 6px 8px; margin-bottom: 10px; line-height: 1.35; }
+.set-card ol { margin: 0; padding-left: 20px; }
+.set-card li { padding: 4px 0; color: #8fa89f; font-size: 0.82rem; }
+.set-card li.tier-gold { color: #d4a72c; font-weight: bold; }
+.set-card li.tier-green { color: #0C7958; }
+.set-card li.tier-gray { color: #6b7d76; }
+.set-card .price { float: right; color: #8fa89f; font-weight: normal; }
+table { width: 100%; max-width: 900px; border-collapse: collapse; margin-bottom: 40px; font-size: 0.82rem; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #1c2622; }
+th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
+.unverified { color: #8fa89f; font-style: italic; }
+.explainer { color: #8fa89f; margin-bottom: 32px; max-width: 640px; line-height: 1.5; }
+.export-btn { background: #d4a72c; color: #1a1a1a; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
+.export-btn:hover { background: #e0b53f; }
 </style>
 </head>
 <body>
-
-<header class="hdr">
-  <a class="hdr-logo" href="https://tomecollective.com" target="_blank">
-    <div class="hdr-dot"></div><span class="hdr-name">Tome Collective</span>
-  </a>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-dot"></span>
+    <span class="hdr-name">Tome Collective</span>
+  </div>
   <div class="hdr-div"></div>
-  <span class="hdr-product">Tome Vault: TCG Arbitrage</span>
-  <div class="hdr-right"><span class="hdr-pill">VAULT</span></div>
-</header>
-
-<div class="wrap">
-
-  <div class="pg-hd">
-    <div>
-      <div class="pg-eye">Tome Collective · TCG · Market Intelligence</div>
-      <div class="pg-title">Tome Vault: TCG Arbitrage</div>
-      <div class="pg-sub">Cross-game TCG pricing intelligence across Pokémon, Lorcana, and One Piece, with grading and crack-profit analysis.</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Powered by Tome Analytics</div>
-      <div style="margin-top:6px;font-size:11px;color:var(--text-3);background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--gold);border-radius:6px;padding:6px 10px;max-width:640px;">
-      <strong style="color:var(--text-2)">Beta note:</strong> raw prices and 30-day momentum are live from JustTCG. PSA 8/9/10 values and population are era-calibrated model estimates until graded-data integration ships — treat crack and grade signals as directional.
-    </div>
-    </div>
-    <div class="pg-meta"><strong id="dateLabel"></strong>Live pricing · <span style="color:var(--gold);font-weight:600">BETA</span></div>
+  <span class="hdr-product">Tome Vault: Pokemon Chase Modern EN 50</span>
+  <div class="hdr-right">
+    <span class="hdr-pill">Vault</span>
   </div>
+</div>
+<div class="page-wrap">
+<div class="pg-eye">Tome Collective &middot; Pokemon TCG &middot; Chase Index</div>
+<h1>Tome Vault: Pokemon Chase Modern EN 50</h1>
+<p class="subtitle" id="subtitle">Pokemon TCG chase card index, XY forward.</p>
+<p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
+<p class="explainer">This index tracks the top 50 US English Pokemon chase cards — the rarest,
+highest-value chase pulls — from modern and current-era sets, spanning XY forward.</p>
 
-  <!-- Quick-sort chips -->
-  <div class="chips" id="chips">
-    <button class="chip active" data-preset="holds"><span class="chip-icon">💎</span>Best Holds<span class="chip-count" id="cHolds">—</span></button>
-    <button class="chip" data-preset="cracks"><span class="chip-icon">🔨</span>Best Cracks<span class="chip-count" id="cCracks">—</span></button>
-    <button class="chip" data-preset="grades"><span class="chip-icon">🎯</span>Best Grades<span class="chip-count" id="cGrades">—</span></button>
-    <button class="chip" data-preset="movers"><span class="chip-icon">📈</span>Biggest Movers<span class="chip-count" id="cMovers">—</span></button>
-    <button class="chip" id="watchChip"><span class="chip-icon">⭐</span>My Cards<span class="chip-count" id="cWatch">0</span></button>
-  </div>
+<h2>Index Trend</h2>
+<div class="index-stats" id="index-stats"></div>
+<div class="timeframe-toggle" id="timeframe-toggle">
+<button data-days="7" class="active">7D</button>
+<button data-days="30">30D</button>
+<button data-days="90">90D</button>
+<button data-days="180">180D</button>
+<button data-days="365">1Y</button>
+</div>
+<div id="chart-container"><canvas id="indexChart"></canvas></div>
+<p id="chart-caption" style="font-size: 0.75rem; color: #8fa89f; margin-top: 8px;"></p>
+<p class="disclaimer">This index is informational only and does not constitute investment advice.
+Card values reflect secondary-market trading activity and can be volatile. Tome Collective does
+not recommend buying, selling, or holding any card based on this index.</p>
 
-  <!-- Filters -->
-  <div class="fbar">
-    <div class="fgroup"><span class="flbl">Game</span>
-      <div class="seg" id="gameSeg">
-        <button class="sb active" data-v="">All</button>
-        <button class="sb" data-v="Pokemon">Pokémon</button>
-        <button class="sb" data-v="Lorcana">Lorcana</button>
-        <button class="sb" data-v="One Piece">One Piece</button>
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <div class="fgroup"><span class="flbl">Era</span>
-      <div class="seg" id="eraSeg">
-        <button class="sb active" data-v="">All</button>
-        <button class="sb" data-v="vintage">Vintage</button>
-        <button class="sb" data-v="modern">Modern</button>
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <div class="fgroup"><span class="flbl">Min Price</span>
-      <div class="seg" id="priceSeg">
-        <button class="sb active" data-v="25">$25</button>
-        <button class="sb" data-v="50">$50</button>
-        <button class="sb" data-v="100">$100</button>
-        <button class="sb" data-v="250">$250</button>
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <select id="setFilter"><option value="">All Sets</option></select>
-    <select id="sigFilter">
-      <option value="">All Signals</option>
-      <option value="Crack & Flip">Crack &amp; Flip</option>
-      <option value="Grade Raw">Grade Raw</option>
-      <option value="Hold">Hold</option>
-      <option value="Accumulate">Accumulate</option>
-      <option value="Skip">Skip</option>
-    </select>
-    <div class="sw">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="search" placeholder="Card, set, or number…"/>
-    </div>
-    <span class="fcount" id="fcount">—</span>
-    <button class="clear-btn" id="clearBtn">Clear</button>
-  </div>
+<h2>Index Holdings</h2>
+<button class="export-btn" id="export-csv-btn">Download CSV</button>
+<table>
+<thead>
+<tr><th>Card</th><th>Set</th><th>Rarity</th><th>Price</th><th>1D Δ</th><th>7D Δ</th></tr>
+</thead>
+<tbody id="holdings-body"></tbody>
+</table>
 
-  <!-- Profit controls -->
-  <div class="pbar">
-    <span class="plbl">PSA fee:</span>
-    <div class="seg" id="feeBtns">
-      <button class="fee-btn active" data-fee="25">Value $25</button>
-      <button class="fee-btn" data-fee="75">Regular $75</button>
-      <button class="fee-btn" data-fee="150">Express $150</button>
-    </div>
-    <span style="width:1px;height:18px;background:var(--border-md);"></span>
-    <span class="plbl">Net sale rate:</span>
-    <input type="range" id="saleSlider" min="60" max="90" value="80" step="5" style="width:100px;">
-    <span class="plbl mono" id="saleLbl" style="min-width:32px;">80%</span>
-    <span style="width:1px;height:18px;background:var(--border-md);"></span>
-    <span class="plbl">Crack vs:</span>
-    <div class="seg" id="crackSeg">
-      <button class="fee-btn" data-v="9">PSA 9</button>
-      <button class="fee-btn active" data-v="8">PSA 8</button>
-      <button class="fee-btn" data-v="best">Best</button>
-    </div>
-    <span class="pnote">eBay ~85% · TCGPlayer ~87% · Buylist ~65% · Crack yields: PSA 9→92.5% NM, PSA 8→77.5% NM</span>
-  </div>
-
-  <!-- Stats -->
-  <div class="stats">
-    <div class="stat"><div class="stat-lbl">Showing</div><div class="stat-val" id="sTot">—</div><div class="stat-sub">after filters</div></div>
-    <div class="stat"><div class="stat-lbl">Crack targets</div><div class="stat-val" id="sCrack" style="color:var(--crack-fg)">—</div><div class="stat-sub">net positive</div></div>
-    <div class="stat"><div class="stat-lbl">Grade targets</div><div class="stat-val" id="sGrade" style="color:var(--grade-fg)">—</div><div class="stat-sub">clears fee</div></div>
-    <div class="stat"><div class="stat-lbl">Holds</div><div class="stat-val" id="sHold" style="color:var(--hold-fg)">—</div><div class="stat-sub">Tome Score 75+</div></div>
-    <div class="stat"><div class="stat-lbl">Best crack</div><div class="stat-val" id="sBC" style="color:var(--crack-fg)">—</div><div class="stat-sub" id="sBCN"></div></div>
-    <div class="stat"><div class="stat-lbl">Best grade ROI</div><div class="stat-val" id="sBG" style="color:var(--grade-fg)">—</div><div class="stat-sub" id="sBGN"></div></div>
-  </div>
-
-  <!-- Table -->
-  <div class="tbl-outer"><div class="tbl-scroll">
-    <table>
-      <thead><tr>
-        <th class="ns" style="width:30px">#</th>
-        <th class="ns" style="width:30px">⭐</th>
-        <th data-col="name" style="width:175px">Card<span class="arr">↕</span></th>
-        <th data-col="set" style="width:130px">Set<span class="arr">↕</span></th>
-        <th data-col="num" style="width:70px">Card #<span class="arr">↕</span></th>
-        <th data-col="game" style="width:74px">Game<span class="arr">↕</span></th>
-        <th data-col="era" style="width:66px">Era<span class="arr">↕</span></th>
-        <th data-col="tomeScore" class="sorted" style="width:76px">Tome Score<span class="info-ic" data-tip="Tome Score (0–100) ranks how attractive a card is to hold. It weighs three things: estimated dollar upside from grading, 30-day price momentum, and entry price — higher scores mean stronger hold candidates. The exact weighting is proprietary and keeps evolving as our data improves." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↓</span></th>
-        <th data-col="signal" style="width:112px">Signal<span class="arr">↕</span></th>
-        <th data-col="raw" style="width:64px">Raw NM<span class="arr">↕</span></th>
-        <th data-col="p8" style="width:58px">PSA 8 est.<span class="arr">↕</span></th>
-        <th data-col="p9" style="width:58px">PSA 9 est.<span class="arr">↕</span></th>
-        <th data-col="p10" style="width:62px">PSA 10 est.<span class="arr">↕</span></th>
-        <th data-col="dispCrack" style="width:96px">Crack Profit<span class="info-ic" data-tip="Profit from buying the PSA slab at its estimated price, cracking it out of the holder, and reselling the card raw. Accounts for crack yield loss (PSA 9 → ~92.5% NM, PSA 8 → ~77.5% NM) and your selected net sale rate. Basis follows the Crack vs. toggle above." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="gradeProfit" style="width:100px">Grade Profit<span class="info-ic" data-tip="Profit from buying this card raw now, sending it to PSA to grade, and it coming back a PSA 10. Sale proceeds at your net sale rate, minus the raw cost and the selected PSA grading fee." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="gradeROI" style="width:76px">Grade ROI<span class="arr">↕</span></th>
-        <th data-col="mom" style="width:66px">30d Chg<span class="arr">↕</span></th>
-        <th class="ns" style="width:72px">7d Trend</th>
-        <th class="ns" style="width:80px">TCGPlayer</th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div></div>
-
-  <!-- Pagination -->
-  <div class="pagebar" id="pagebar">
-    <div class="pg-size">
-      <span class="plbl">Rows per page:</span>
-      <div class="seg" id="pageSizeSeg">
-        <button class="sb" data-v="10">10</button>
-        <button class="sb active" data-v="25">25</button>
-        <button class="sb" data-v="50">50</button>
-        <button class="sb" data-v="100">100</button>
-        <button class="sb" data-v="all">All</button>
-      </div>
-    </div>
-    <div class="pg-nav">
-      <button class="pg-btn" id="pgFirst" title="First page">«</button>
-      <button class="pg-btn" id="pgPrev" title="Previous page">‹</button>
-      <span class="pg-info" id="pgInfo">Page 1 of 1</span>
-      <button class="pg-btn" id="pgNext" title="Next page">›</button>
-      <button class="pg-btn" id="pgLast" title="Last page">»</button>
-    </div>
-  </div>
-
-  <!-- Detail drawer -->
-  <div id="drawerOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:400;"></div>
-  <div id="drawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);background:var(--surface);border-left:0.5px solid var(--border-str);z-index:401;overflow-y:auto;padding:1.25rem;box-shadow:-8px 0 30px rgba(0,0,0,0.15);"></div>
-  <img id="hoverPreview" alt=""/>
-  <div id="infoTip"></div>
-
-  <div class="footer">
-    <div>© Tome Collective · <a href="https://tomecollective.com" target="_blank">tomecollective.com</a> · Pricing data provided by <a href="https://justtcg.com" target="_blank" rel="noopener">JustTCG</a></div>
-    <div class="disclaimer">Informational only — not investment or financial advice. Grade profit assumes a PSA 10 result; outcomes vary by card condition and centering. Cracking slabs is irreversible. Crack values apply condition haircuts (PSA 9 → ~92.5% of NM raw, PSA 8 → ~77.5%) and your selected net sale rate. Cards under $10 are excluded. Era classifications (Vintage / Modern) follow our published <a href="era-methodology.html" style="color:var(--green)">era methodology</a> — Modern is XY forward, Vintage is anything before XY. TCGPlayer links are affiliate links — Tome Collective may earn a commission at no additional cost to you. Verify all prices before acting.</div>
-  </div>
+<h2>Full Candidate Pool, By Set</h2>
+<p class="subtitle" style="max-width:700px">Top 5 chase-tier candidates per eligible set, spanning
+XY through Mega Evolution era. <span style="color:#d4a72c">Gold</span> marks cards that actually
+made the final 50-card index (capped at 3 per set). <span style="color:#0C7958">Green</span> marks
+the rest of that set's top 3 — shortlisted, but not in the final 50. Gray marks ranks 4-5, which
+are shown for context but were never in the running. A newly-released set's cards can still show up
+and rank here, but none can turn gold until the set has been out for more than 90 days.</p>
+<div class="legend">
+<span><span class="legend-swatch" style="background:#d4a72c"></span>In final index</span>
+<span><span class="legend-swatch" style="background:#0C7958"></span>Shortlisted (top 3 of 5), not in index</span>
+<span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
+</div>
+<div id="sets-by-era"></div>
 </div>
 
 <script>
-// ═══ CONFIG ════════════════════════════════════════════════════════════════════
-let SALE_RATE = 0.80;
-let PSA_FEE = 25;
-let CRACK_BASIS = '8';   // '9' | '8' | 'best' — which slab the Crack Profit column benchmarks
-const CRACK_YIELD_P9 = 0.925;  // cracked 9 markets as NM-/LP+
-const CRACK_YIELD_P8 = 0.775;  // cracked 8 markets as LP
-const HARD_PRICE_FLOOR = 10;   // cards below this are excluded at the data layer (matches the $10+ display floor)
+const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
+// Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
 
-const TCG = 'https://www.tcgplayer.com/search/all/product';
-const tcgHref = (n,g) => `${TCG}?q=${encodeURIComponent(n)}&utm_source=tomecollective&utm_medium=affiliate&utm_campaign=${g.toLowerCase().replace(/\s+/g,'')}`;
-// TCGPlayer's own product-image CDN, addressed by tcgplayerId — same photos shown on TCGPlayer.com.
-const tcgImg = (id, w) => `https://tcgplayer-cdn.tcgplayer.com/product/${id}_${w}w.jpg`;
+// A set can't contribute a gold ("in final index") card until it's been out
+// this many days. Cards can still be shown/ranked/shortlisted before that —
+// this only blocks the gold tier.
+const SET_ELIGIBILITY_DAYS = 90;
 
-// ═══ LIVE DATA — JustTCG via Cloudflare Worker proxy ═══════════════════════════
-const WORKER_URL = 'https://tome-proxy.tomecollective.workers.dev';
-const PER_GAME_LIMIT = 100;   // top cards per game by price (1 API call each; edge-cached 6h)
+// A set can never contribute more than this many cards to the final index,
+// no matter what the underlying data says.
+const MAX_GOLD_PER_SET = 3;
 
-// Era classification — mirrors the Pokemon Chase Index convention: Modern = XY forward,
-// Vintage = anything before XY. Boundary is XY Base Set's release date (2014-02-05), sourced
-// from JustTCG's /sets endpoint (release_date per set) rather than a hand-maintained keyword
-// list, so new sets classify correctly without code changes as they're added upstream.
-// Lorcana & One Piece launched well after XY, so every set in those games is "modern" — there's
-// no pre-XY era for them, same as the Chase Index treats non-Pokemon games.
-const XY_START = Date.parse('2014-02-05');
-let POKEMON_SET_ERA = new Map();          // set id -> 'vintage' | 'modern'
-let pokemonSetEraPromise = null;
+// Eras rendered oldest-first, closing the gap between the Vintage (WOTC)
+// index and this Modern one. Any era name in the data that isn't listed
+// here still renders, just after these in whatever order it was returned.
+const ERA_ORDER = ["XY", "Sun & Moon", "Sword & Shield", "Scarlet & Violet", "Mega Evolution"];
 
-function ensurePokemonSetEras() {
-  if (!pokemonSetEraPromise) {
-    pokemonSetEraPromise = (async () => {
-      try {
-        const res = await fetch(`${WORKER_URL}/sets?game=${encodeURIComponent(GAME_SLUGS['Pokemon'])}`);
-        if (res.ok) {
-          const json = await res.json();
-          (json.data || []).forEach(s => {
-            const t = s.release_date ? Date.parse(s.release_date) : NaN;
-            // Unknown release dates (mostly misc./promo products) default to 'modern' —
-            // the larger, more generic bucket, so an unclassified set never overstates Vintage.
-            POKEMON_SET_ERA.set(s.id, (!isNaN(t) && t < XY_START) ? 'vintage' : 'modern');
-          });
-        }
-      } catch (e) { /* era map stays empty — classifyEra falls back to modern below */ }
-    })();
-  }
-  return pokemonSetEraPromise;
+let currentTimeframeDays = 7;
+let indexHistory = []; // populated in loadIndex(), [{date, total}]
+let indexCards = []; // populated in loadIndex(), same data rendered into the Index Holdings table
+
+function daysSince(dateStr) {
+  const then = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  return (now - then) / 86400000;
 }
 
-function classifyEra(game, setId) {
-  if (game !== 'Pokemon') return 'modern';
-  return POKEMON_SET_ERA.get(setId) || 'modern';
+function isSetEligibleForGold(set) {
+  if (!set.release_date) return true; // no release date on record — don't block on missing data
+  return daysSince(set.release_date) > SET_ELIGIBILITY_DAYS;
 }
 
-// ── Graded-value estimation (BETA) ──────────────────────────────────────────────
-// PSA 8/9/10 prices and population are MODEL ESTIMATES until the graded-data
-// integration (PriceCharting) ships. Estimates are era-calibrated averages and
-// exist so the signal engine runs end-to-end; they are flagged in the UI.
-const EST = {
-  vintage: { p10: 7.0, p9: 2.1, p8: 1.25 },
-  modern:  { p10: 5.5, p9: 1.7, p8: 1.05 },
-};
-function estimateGraded(raw, era) {
-  const m = EST[era] || EST.modern;
-  return {
-    p10: parseFloat((raw * m.p10).toFixed(2)),
-    p9:  parseFloat((raw * m.p9).toFixed(2)),
-    p8:  parseFloat((raw * m.p8).toFixed(2)),
-  };
+function formatReleaseDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
-const GAME_EMOJI = { 'Pokemon':'🎴', 'Lorcana':'✨', 'One Piece':'⚔️' };
-
-// JustTCG game parameter slugs (from their documented valid values)
-const GAME_SLUGS = {
-  'Pokemon':   'pokemon',
-  'Lorcana':   'disney-lorcana',
-  'One Piece': 'one-piece-card-game',
-};
-
-function mapCard(apiCard, game) {
-  // Prefer the Near Mint variant; exclude Sealed products entirely
-  const variants = (apiCard.variants || []).filter(v => v.condition !== 'Sealed');
-  if (!variants.length) return null;
-  const nm = variants.find(v => v.condition === 'Near Mint') || variants[0];
-  const raw = parseFloat(nm.price);
-  if (!raw || raw < HARD_PRICE_FLOOR) return null;
-
-  const setName = apiCard.set_name || apiCard.set || '';
-  const era = classifyEra(game, apiCard.set);
-  const est = estimateGraded(raw, era);
-  const tpid = apiCard.tcgplayerId || null;
-
-  return {
-    id: apiCard.id,
-    tcgplayerId: tpid,
-    img: tpid ? tcgImg(tpid, 200) : null,
-    imgBig: tpid ? tcgImg(tpid, 400) : null,
-    game, era,
-    e: GAME_EMOJI[game] || '🃏',
-    name: apiCard.name,
-    set: setName,
-    num: apiCard.number && apiCard.number !== 'N/A' ? apiCard.number : '—',
-    raw,
-    p8: est.p8, p9: est.p9, p10: est.p10,
-    gem: null,
-    // JustTCG returns priceChange30d as a percentage; normalize to decimal. Kept as `null`
-    // (not coerced to 0) when JustTCG has no value — the old `|| 0` fallback made "no data"
-    // indistinguishable from "confirmed flat 0% price change", which silently treated every
-    // thinly-traded card (44% of the live catalog) as if its price hadn't moved at all,
-    // dragging its Tome Score down along with genuinely flat cards. Downstream, null mom
-    // renders as "—" instead of "+0%" and scores as neutral instead of "no momentum".
-    mom: (nm.priceChange30d != null && nm.priceChange30d !== '' && !isNaN(parseFloat(nm.priceChange30d)))
-      ? parseFloat(nm.priceChange30d) / 100 : null,
-    mom7: (parseFloat(nm.priceChange7d) || 0) / 100,
-    chgCount30d: nm.priceChangesCount30d || 0,
-    printing: nm.printing || 'Normal',
-    h7: (nm.priceHistory || []).map(pt => pt.p),          // 7d daily closes
-    min90: parseFloat(nm.minPrice90d) || null,
-    max90: parseFloat(nm.maxPrice90d) || null,
-    avg90: parseFloat(nm.avgPrice90d) || null,
-  };
-}
-
-let CARDS = [];
-
-// Per-game page caps sized to each game's $10+ universe (2,900 cards total).
-// Each cap is split across two passes: a cheapest-first pass and a priciest-first pass.
-// Why: under the current crack-profit model, crack economics get *worse* as raw price
-// rises (the estimated slab value scales faster than the cracked resale value), so the
-// cards most likely to show real crack profit sit at the low end of the $10+ universe —
-// exactly the cards a price-desc-only fetch would leave out of the 2,900-card cap.
-// The desc pass is kept to preserve Grade/Hold discovery, which favors higher-priced cards.
-const PAGE_CAP = { 'Pokemon': 20, 'Lorcana': 4, 'One Piece': 5 };
-const ASC_SHARE = 0.5;   // portion of each game's cap spent on the cheapest-first pass
-const UNIVERSE_FLOOR = 10;
-
-async function fetchPage(g, offset, order) {
-  const res = await fetch(
-    `${WORKER_URL}/cards?game=${encodeURIComponent(GAME_SLUGS[g] || g)}` +
-    `&condition=${encodeURIComponent('Near Mint')}` +    // server-side: singles only, no sealed
-    `&orderBy=price&order=${order}&limit=${PER_GAME_LIMIT}&offset=${offset}` +
-    `&include_price_history=true`                         // 7d daily points for sparklines
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `${g}: HTTP ${res.status}`);
-  }
-  const json = await res.json();
-  return (json.data || []).map(c => mapCard(c, g)).filter(Boolean);
-}
-
-async function loadLiveData() {
-  await ensurePokemonSetEras();   // needed before any Pokemon card is classified below
-  const games = ['Pokemon', 'Lorcana', 'One Piece'];
-  const results = await Promise.allSettled(games.map(async g => {
-    const cap = PAGE_CAP[g] || 3;
-    const ascPages = Math.max(1, Math.round(cap * ASC_SHARE));
-    const descPages = Math.max(0, cap - ascPages);
-    const seen = new Set();
-    const out = [];
-    const add = list => { for (const c of list) if (!seen.has(c.id)) { seen.add(c.id); out.push(c); } };
-
-    // Cheapest-first: best available crack-profit candidates.
-    for (let i = 0; i < ascPages; i++) {
-      const page = await fetchPage(g, i * PER_GAME_LIMIT, 'asc');
-      add(page);
-      if (!page.length) break;                                  // API exhausted
+// Finds the history point closest to `targetDate`, but only returns it if
+// it's within `toleranceDays` — otherwise a young index (with only a few
+// days of real history) would silently compare today's value against
+// whatever its very first data point happens to be and call that "YoY".
+function findClosestPoint(points, targetDate, toleranceDays) {
+  let best = null;
+  let bestDiff = Infinity;
+  points.forEach(p => {
+    const diff = Math.abs(new Date(p.date) - targetDate);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = p;
     }
-    // Priciest-first: best available grade/hold candidates (unchanged behavior).
-    for (let i = 0; i < descPages; i++) {
-      const page = await fetchPage(g, i * PER_GAME_LIMIT, 'desc');
-      if (!page.length) break;                                  // API exhausted
-      const cheapest = Math.min(...page.map(c => c.raw));
-      add(page);
-      if (cheapest < UNIVERSE_FLOOR) break;                     // below the $10+ universe
-    }
-    return out;
-  }));
-
-  const cards = [];
-  const errors = [];
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') cards.push(...r.value);
-    else errors.push(`${games[i]}: ${r.reason.message}`);
   });
-  return { cards, errors };
+  if (!best || bestDiff > toleranceDays * 86400000) return null;
+  return best;
 }
 
-// ═══ SCORING ═══════════════════════════════════════════════════════════════════
-// Piecewise-linear interpolation between anchor points (clamped at the ends), used
-// in place of hard tiers. Hard tiers meant any two cards landing in the same bucket
-// were mathematically identical no matter how different their real numbers were —
-// e.g. every vintage card scored the exact same "value" factor, and cards at +21%
-// vs. +127% momentum scored the exact same "momentum" factor. Interpolating between
-// the same anchor points keeps the original design's intent but lets nearby inputs
-// produce nearby (not identical) scores.
-function lerp(x, pts) {
-  if (x <= pts[0][0]) return pts[0][1];
-  const last = pts[pts.length - 1];
-  if (x >= last[0]) return last[1];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-    if (x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+function formatSignedDollars(delta) {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return sign + "$" + Math.abs(delta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatSignedPct(pct) {
+  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
+  return sign + Math.abs(pct).toFixed(2) + "%";
+}
+
+function directionClass(delta) {
+  return delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+}
+
+// Per-card version of the same daily/WoW logic used for the index-wide
+// stat tiles above — reads straight off that card's own `history` array
+// (same data the chart sums across cards), so it stays in sync with the
+// chart automatically once the Worker backfills more of a given card's
+// history. Returns { delta, pct } or null when there isn't a data point
+// far enough back yet (findClosestPoint's tolerance handles that).
+function cardChanges(card) {
+  const hist = (card.history || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (!hist.length) return { daily: null, wow: null };
+
+  const latest = hist[hist.length - 1];
+
+  let daily = null;
+  if (hist.length >= 2) {
+    const previous = hist[hist.length - 2];
+    const delta = latest.price - previous.price;
+    const pct = previous.price !== 0 ? (delta / previous.price) * 100 : 0;
+    daily = { delta, pct };
   }
-  return last[1];
-}
-// Value factor: dollar upside from grading (PSA10 est. x sale rate − raw − fee) —
-// NOT the raw/PSA10 ratio the v3 formula used. That ratio is a flat per-era constant
-// in the current estimation model (every vintage card is exactly 7.0x, every modern
-// card exactly 5.5x — see EST above), so it carried zero real information about any
-// individual card despite being 40% of the score's weight. Dollar upside scales with
-// raw price, so it actually varies card-to-card.
-// Log-spaced above $0 — real grading upside spans over two orders of magnitude in this
-// catalog (roughly $50 for a cheap modern card to $60k+ for the rarest vintage slabs), and
-// a linear scale either compresses the common range to nothing or clips the whole high end
-// to an identical ceiling. Logging the input keeps differentiation at both ends.
-const tsValue = gp => gp <= 0
-  ? lerp(gp, [[-500,2],[0,15]])
-  : lerp(Math.log1p(gp), [[Math.log1p(0),15],[Math.log1p(50),40],[Math.log1p(200),63],[Math.log1p(1200),83],[Math.log1p(5000),93],[Math.log1p(15000),100]]);
-const tsMom   = m  => lerp(m,  [[-0.30,5],[-0.15,20],[-0.05,40],[0.05,60],[0.10,80],[0.20,100]]);
-const tsEnt   = p  => lerp(p,  [[0,100],[5,100],[15,80],[40,60],[100,40],[250,20],[600,5]]);
 
-function compute(r) {
-  const cv9 = r.raw * CRACK_YIELD_P9 * SALE_RATE;
-  const cv8 = r.raw * CRACK_YIELD_P8 * SALE_RATE;
-  const crackP9 = parseFloat((cv9 - r.p9).toFixed(2));
-  const crackP8 = parseFloat((cv8 - r.p8).toFixed(2));
-  const bestCrack = Math.max(crackP8, crackP9);
-  const crackFrom = bestCrack === crackP8 ? '8' : '9';
-  const gradeProfit = parseFloat(((r.p10 * SALE_RATE) - r.raw - PSA_FEE).toFixed(2));
-  const gradeROI = r.raw > 0 ? parseFloat((gradeProfit / r.raw * 100).toFixed(1)) : 0;
-  const mult = r.p10 / r.raw;
+  const weekAgo = new Date(latest.date + "T00:00:00");
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const wowPoint = findClosestPoint(hist, weekAgo, 2);
+  let wow = null;
+  if (wowPoint) {
+    const delta = latest.price - wowPoint.price;
+    const pct = wowPoint.price !== 0 ? (delta / wowPoint.price) * 100 : 0;
+    wow = { delta, pct };
+  }
 
-  // Three-factor Tome Score (v4): PSA 10 pop scoring removed entirely (population data
-  // isn't real yet, so it only ever contributed a fixed, non-discriminating value — which
-  // silently capped every card's ceiling well under the "Hold" threshold). Its weight is
-  // redistributed proportionally across the three factors that actually vary card-to-card.
-  // v4 also swaps the "value" factor from the raw/PSA10 ratio (a flat per-era constant,
-  // see tsValue above) to dollar grading upside, and all three factors are now continuous
-  // (lerp) instead of hard tiers, so cards with different underlying numbers don't collapse
-  // onto identical scores. Velocity remains excluded until a real sales-data source (eBay
-  // API) is integrated.
-  // Rounded to one decimal, not a whole integer — with the old hard-tier formula a decimal
-  // would never show anything but ".0" (every tier value was a multiple of 5 combined with
-  // 0.4/0.4/0.2 weights, so the weighted sum was mathematically guaranteed to be a whole
-  // number). The continuous formula actually produces fractional scores now, so keeping the
-  // decimal is what lets otherwise-close cards still show as distinguishable.
-  // Momentum is scored neutral (50 — the midpoint of tsMom's 5–100 range) when JustTCG has
-  // no 30-day figure at all, rather than running r.mom (now `null`, not a fake 0) through
-  // tsMom. That keeps "unknown" from ever being scored as either a confirmed win or loss,
-  // and decouples its treatment from wherever tsMom's own curve happens to sit at x=0 —
-  // which will drift as that curve gets retuned, but "no data = neutral" shouldn't.
-  const momScore = r.mom == null ? 50 : tsMom(r.mom);
-  const tomeScore = Math.round((
-    tsValue(gradeProfit) * 0.40 +
-    momScore * 0.40 +
-    tsEnt(r.raw) * 0.20
-  ) * 10) / 10;
-
-  // Column display follows the selected crack basis (must precede signal logic)
-  const dispCrack = CRACK_BASIS==='8' ? crackP8 : CRACK_BASIS==='9' ? crackP9 : bestCrack;
-  const dispFrom  = CRACK_BASIS==='8' ? '8' : CRACK_BASIS==='9' ? '9' : crackFrom;
-
-  let signal = 'Skip';
-  if (dispCrack > 0) signal = 'Crack & Flip';
-  else if (gradeProfit > 0) signal = 'Grade Raw';
-  else if (tomeScore >= 75) signal = 'Hold';
-  else if (tomeScore >= 55) signal = 'Accumulate';
-
-  return {...r, crackP8, crackP9, bestCrack, crackFrom, dispCrack, dispFrom, gradeProfit, gradeROI,
-          mult:parseFloat(mult.toFixed(1)), tomeScore, signal};
+  return { daily, wow };
 }
 
-// ═══ STATE ═════════════════════════════════════════════════════════════════════
-let WATCHLIST = new Set(JSON.parse(localStorage.getItem('tomeWatchlist') || '[]'));
-function toggleWatch(id) {
-  WATCHLIST.has(id) ? WATCHLIST.delete(id) : WATCHLIST.add(id);
-  localStorage.setItem('tomeWatchlist', JSON.stringify([...WATCHLIST]));
-  render();
-}
-let watchOnly = false;
-
-let DATA = CARDS.map(compute);
-let gameF='', eraF='', setF='', sigF='', searchF='', minPrice=25;
-let sortCol='tomeScore', sortDir=-1, activePreset='holds';
-let pageSize = 25, currentPage = 1;   // pageSize is a number, or 'all'
-
-const PRESETS = {
-  holds:  {col:'tomeScore',   dir:-1, sig:''},
-  cracks: {col:'dispCrack',   dir:-1, sig:''},
-  grades: {col:'gradeROI',    dir:-1, sig:''},
-  movers: {col:'mom',         dir:-1, sig:''},
-};
-
-// ═══ FILTER / SORT ═════════════════════════════════════════════════════════════
-function getFiltered() {
-  return DATA.filter(c => {
-    if (watchOnly && !WATCHLIST.has(c.id)) return false;
-    if (c.raw < minPrice) return false;
-    if (gameF && c.game !== gameF) return false;
-    if (eraF && c.era !== eraF) return false;
-    if (setF && c.set !== setF) return false;
-    if (sigF && c.signal !== sigF) return false;
-    if (searchF) {
-      const q = searchF.toLowerCase();
-      if (!c.name.toLowerCase().includes(q) && !c.set.toLowerCase().includes(q) && !c.num.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-}
-const getSorted = a => [...a].sort((x,y) => {
-  const av=x[sortCol], bv=y[sortCol];
-  return typeof av==='string' ? sortDir*av.localeCompare(bv) : sortDir*(av-bv);
-});
-
-// ═══ RENDER ════════════════════════════════════════════════════════════════════
-function sparkline(h) {
-  if (!h || h.length < 2) return '<span style="color:var(--text-3);font-size:10px">—</span>';
-  const w=64, ht=20, min=Math.min(...h), max=Math.max(...h), range=max-min || 1;
-  const pts = h.map((v,i)=>`${(i/(h.length-1)*w).toFixed(1)},${(ht-2-((v-min)/range)*(ht-4)).toFixed(1)}`).join(' ');
-  const up = h[h.length-1] >= h[0];
-  return `<svg width="${w}" height="${ht}" style="display:block"><polyline points="${pts}" fill="none" stroke="${up?'var(--up)':'var(--dn)'}" stroke-width="1.5"/></svg>`;
+// Renders a change object as the same "+$X.XX (+X.XX%)" / colored format
+// the index-wide stat tiles use, or an em dash when there's not yet enough
+// history for that card to compute it.
+function formatChangeCell(change) {
+  if (!change) return '<span class="unverified">—</span>';
+  return `<span class="change-${directionClass(change.delta)}">${formatSignedDollars(change.delta)} (${formatSignedPct(change.pct)})</span>`;
 }
 
-const f$ = n => (n<0?'-$':'$') + Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-const fPct = n => n==null ? '—' : (n>=0?'+':'')+(n*100).toFixed(0)+'%';
-const momCls = n => n==null ? 'fl' : n>.05?'up':n<-.05?'dn':'fl';
-const pCls = n => n>0?'pos':'neg';
-const tsCls = s => s>=75?'ts-e':s>=55?'ts-s':s>=35?'ts-w':'ts-x';
-const gameCls = g => g==='Pokemon'?'gp':g==='Lorcana'?'gl':'go';
-const SIG = {
-  'Crack & Flip':{c:'s-crack',i:'🔨'},'Grade Raw':{c:'s-grade',i:'🎯'},
-  'Hold':{c:'s-hold',i:'💎'},'Accumulate':{c:'s-accum',i:'📈'},'Skip':{c:'s-skip',i:'—'},
-};
-
-function updateChipCounts() {
-  const base = DATA.filter(c => c.raw >= minPrice);
-  document.getElementById('cHolds').textContent  = base.filter(c=>c.tomeScore>=75).length;
-  document.getElementById('cCracks').textContent = base.filter(c=>c.dispCrack>0).length;
-  document.getElementById('cGrades').textContent = base.filter(c=>c.gradeProfit>0).length;
-  document.getElementById('cMovers').textContent = base.filter(c=>c.mom!=null && Math.abs(c.mom)>=0.20).length;
-  document.getElementById('cWatch').textContent = WATCHLIST.size;
-}
-
-function updateStats(rows) {
-  document.getElementById('sTot').textContent = rows.length;
-  const cracks = rows.filter(c=>c.dispCrack>0), grades = rows.filter(c=>c.gradeProfit>0);
-  const holds = rows.filter(c=>c.tomeScore>=75);
-  document.getElementById('sCrack').textContent = cracks.length;
-  document.getElementById('sGrade').textContent = grades.length;
-  document.getElementById('sHold').textContent = holds.length;
-  const bc = cracks.sort((a,b)=>b.dispCrack-a.dispCrack)[0];
-  const bg = grades.sort((a,b)=>b.gradeROI-a.gradeROI)[0];
-  document.getElementById('sBC').textContent = bc?f$(bc.dispCrack):'—';
-  document.getElementById('sBCN').textContent = bc?bc.name:'';
-  document.getElementById('sBG').textContent = bg?'+'+bg.gradeROI+'%':'—';
-  document.getElementById('sBGN').textContent = bg?bg.name:'';
-  document.getElementById('fcount').textContent = rows.length + ' cards';
-}
-
-function cardThumb(c) {
-  // Real TCGPlayer product photo when we have a tcgplayerId; emoji placeholder otherwise
-  // (sealed-listing edge case, or an id TCGPlayer has no image for). Hover shows a larger
-  // preview; clicking goes straight to the card's TCGPlayer affiliate search link.
-  if (!c.img) return `<div class="ci">${c.e}</div>`;
-  return `<a class="ci-wrap" data-hover-src="${c.imgBig || c.img}" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
-    <img class="ci" src="${c.img}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ci',textContent:'${c.e}'}))">
-  </a>`;
-}
-
-function render() {
-  const allRows = getSorted(getFiltered());
-  updateStats(allRows);
-  updateChipCounts();
-
-  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(allRows.length / pageSize));
-  if (currentPage > totalPages) currentPage = totalPages;
-  if (currentPage < 1) currentPage = 1;
-
-  const tbody = document.getElementById('tbody');
-  if (!allRows.length) {
-    tbody.innerHTML = '<tr><td colspan="19" style="text-align:center;padding:2.5rem;color:var(--text-3);font-size:13px">No cards match your filters. Try lowering the minimum price or clearing filters.</td></tr>';
-    updatePagebar(0, totalPages);
+function renderStats() {
+  const statsEl = document.getElementById("index-stats");
+  if (!indexHistory.length) {
+    statsEl.innerHTML = "";
     return;
   }
 
-  const startIdx = pageSize === 'all' ? 0 : (currentPage - 1) * pageSize;
-  const rows = pageSize === 'all' ? allRows : allRows.slice(startIdx, startIdx + pageSize);
+  const latest = indexHistory[indexHistory.length - 1];
+  const blocks = [];
 
-  tbody.innerHTML = rows.map((c,i) => {
-    const s = SIG[c.signal];
-    const starred = WATCHLIST.has(c.id);
-    return `<tr data-id="${c.id}" class="row-click">
-      <td class="rk">${startIdx+i+1}</td>
-      <td><button class="star-btn ${starred?'starred':''}" data-star="${c.id}" title="${starred?'Remove from':'Add to'} My Cards">${starred?'★':'☆'}</button></td>
-      <td><div class="cc">${cardThumb(c)}<div><div class="cn">${c.name}</div><div class="cs">${c.set}</div></div></div></td>
-      <td style="font-size:11px;color:var(--text-2)">${c.set}</td>
-      <td class="mono" style="color:var(--text-3)">${c.num}</td>
-      <td><span class="gt ${gameCls(c.game)}">${c.game}</span></td>
-      <td><span class="era-tag">${c.era}</span></td>
-      <td><span class="ts-pill ${tsCls(c.tomeScore)}">${c.tomeScore.toFixed(1)}</span></td>
-      <td><span class="sig ${s.c}">${s.i} ${c.signal}</span></td>
-      <td class="mono">${f$(c.raw)}</td>
-      <td class="mono">${c.p8==null?'—':f$(c.p8)}</td>
-      <td class="mono">${c.p9==null?'—':f$(c.p9)}</td>
-      <td class="mono">${c.p10==null?'—':f$(c.p10)}</td>
-      <td>${c.dispCrack==null?'—':`<div class="pc"><span class="pa ${pCls(c.dispCrack)}">${f$(c.dispCrack)}</span><span class="pl">vs PSA ${c.dispFrom} slab</span></div>`}</td>
-      <td>${c.gradeProfit==null?'—':`<div class="pc"><span class="pa ${pCls(c.gradeProfit)}">${f$(c.gradeProfit)}</span><span class="pl">10 × ${(SALE_RATE*100).toFixed(0)}% − raw − $${PSA_FEE}</span></div>`}</td>
-      <td class="mono ${c.gradeROI>0?'up':c.gradeROI<0?'dn':'fl'}">${c.gradeROI==null?'—':(c.gradeROI>0?'+':'')+c.gradeROI+'%'}</td>
-      <td class="mono ${momCls(c.mom)}">${fPct(c.mom)}</td>
-      <td>${sparkline(c.h7)}</td>
-      <td><a class="tcg-link" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Buy Raw ↗</a></td>
-    </tr>`;
-  }).join('');
+  blocks.push(`
+    <div>
+      <div class="stat-label">Index Value</div>
+      <div class="stat-value">$${latest.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div class="stat-sub">as of ${latest.date}</div>
+    </div>
+  `);
 
-  updatePagebar(allRows.length, totalPages);
-}
-
-function updatePagebar(total, totalPages) {
-  const info = document.getElementById('pgInfo');
-  info.textContent = total ? `Page ${currentPage} of ${totalPages} · ${total.toLocaleString()} cards` : 'No results';
-  const atFirst = currentPage <= 1, atLast = currentPage >= totalPages;
-  document.getElementById('pgFirst').disabled = atFirst;
-  document.getElementById('pgPrev').disabled = atFirst;
-  document.getElementById('pgNext').disabled = atLast;
-  document.getElementById('pgLast').disabled = atLast;
-}
-
-function goToPage(p) {
-  currentPage = p;
-  render();
-  document.querySelector('.tbl-outer').scrollIntoView({behavior:'smooth', block:'start'});
-}
-document.getElementById('pgFirst').addEventListener('click', () => goToPage(1));
-document.getElementById('pgPrev').addEventListener('click', () => goToPage(currentPage - 1));
-document.getElementById('pgNext').addEventListener('click', () => goToPage(currentPage + 1));
-document.getElementById('pgLast').addEventListener('click', () => goToPage(Number.MAX_SAFE_INTEGER)); // clamped inside render()
-
-document.querySelectorAll('#pageSizeSeg .sb').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#pageSizeSeg .sb').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    pageSize = b.dataset.v === 'all' ? 'all' : parseInt(b.dataset.v);
-    currentPage = 1;
-    render();
-  });
-});
-
-function markSortedHeader() {
-  document.querySelectorAll('thead th').forEach(t=>{
-    t.classList.remove('sorted');
-    const a=t.querySelector('.arr'); if(a) a.textContent='↕';
-  });
-  const th=document.querySelector(`thead th[data-col="${sortCol}"]`);
-  if(th){th.classList.add('sorted');th.querySelector('.arr').textContent=sortDir===-1?'↓':'↑';}
-}
-
-// ═══ EVENTS ════════════════════════════════════════════════════════════════════
-document.querySelectorAll('.chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active');
-    activePreset = chip.dataset.preset;
-    const p = PRESETS[activePreset];
-    sortCol = p.col; sortDir = p.dir; sigF = p.sig;
-    document.getElementById('sigFilter').value = '';
-    markSortedHeader();
-    currentPage = 1;
-    render();
-  });
-});
-
-function segHandler(segId, setter) {
-  document.querySelectorAll(`#${segId} .sb`).forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll(`#${segId} .sb`).forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      setter(b.dataset.v);
-      currentPage = 1;
-      render();
-    });
-  });
-}
-segHandler('gameSeg', v=>gameF=v);
-segHandler('eraSeg',  v=>eraF=v);
-segHandler('priceSeg',v=>minPrice=parseInt(v));
-
-document.getElementById('setFilter').addEventListener('change', e=>{setF=e.target.value;currentPage=1;render();});
-document.getElementById('sigFilter').addEventListener('change', e=>{sigF=e.target.value;currentPage=1;render();});
-document.getElementById('search').addEventListener('input', e=>{searchF=e.target.value;currentPage=1;render();});
-
-document.getElementById('clearBtn').addEventListener('click', ()=>{
-  gameF='';eraF='';setF='';sigF='';searchF='';minPrice=25;
-  document.getElementById('search').value='';
-  document.getElementById('setFilter').value='';
-  document.getElementById('sigFilter').value='';
-  ['gameSeg','eraSeg'].forEach(id=>document.querySelectorAll(`#${id} .sb`).forEach((b,i)=>b.classList.toggle('active',i===0)));
-  document.querySelectorAll('#priceSeg .sb').forEach(b=>b.classList.toggle('active',b.dataset.v==='25'));
-  currentPage = 1;
-  render();
-});
-
-document.querySelectorAll('#feeBtns .fee-btn').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#feeBtns .fee-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    PSA_FEE = parseInt(b.dataset.fee);
-    DATA = CARDS.map(compute);
-    currentPage = 1;
-    render();
-  });
-});
-document.getElementById('saleSlider').addEventListener('input', e => {
-  SALE_RATE = parseInt(e.target.value)/100;
-  document.getElementById('saleLbl').textContent = e.target.value+'%';
-  DATA = CARDS.map(compute);
-  currentPage = 1;
-  render();
-});
-
-document.querySelectorAll('thead th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    sortDir = sortCol===col ? sortDir*-1 : (['name','set','num','game','era','signal'].includes(col)?1:-1);
-    sortCol = col;
-    markSortedHeader();
-    currentPage = 1;
-    render();
-  });
-});
-
-
-// Crack basis toggle
-document.querySelectorAll('#crackSeg .fee-btn').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#crackSeg .fee-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    CRACK_BASIS = b.dataset.v;
-    DATA = CARDS.map(compute);
-    currentPage = 1;
-    render();
-  });
-});
-
-// ═══ DETAIL DRAWER ═════════════════════════════════════════════════════════════
-const HISTORY_URL = WORKER_URL + '/history';
-
-function rangeBand(c) {
-  if (c.min90==null || c.max90==null) return '';
-  const range = c.max90 - c.min90 || 1;
-  const posPct = Math.min(Math.max((c.raw - c.min90)/range*100, 0), 100);
-  const avgPct = c.avg90!=null ? Math.min(Math.max((c.avg90 - c.min90)/range*100,0),100) : null;
-  return `<div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">90-Day Range</div>
-  <div style="position:relative;height:8px;background:var(--surface3);border-radius:4px;margin:8px 0 4px;">
-    ${avgPct!=null?`<div style="position:absolute;left:${avgPct}%;top:-2px;width:1.5px;height:12px;background:var(--text-3)"></div>`:''}
-    <div style="position:absolute;left:${posPct}%;top:-3px;width:10px;height:14px;background:var(--green);border-radius:3px;transform:translateX(-50%)"></div>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-family:var(--mono)">
-    <span>${f$(c.min90)}</span>${c.avg90!=null?`<span>avg ${f$(c.avg90)}</span>`:''}<span>${f$(c.max90)}</span>
-  </div>`;
-}
-
-function bigChart(points, label) {
-  if (!points || points.length < 2) return '';
-  const w=372, ht=120, pad=6;
-  const min=Math.min(...points), max=Math.max(...points), range=max-min||1;
-  const pts = points.map((v,i)=>`${(pad+i/(points.length-1)*(w-2*pad)).toFixed(1)},${(ht-pad-((v-min)/range)*(ht-2*pad)).toFixed(1)}`).join(' ');
-  const up = points[points.length-1] >= points[0];
-  return `<div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">${label}</div>
-  <svg width="${w}" height="${ht}" style="display:block;max-width:100%"><polyline points="${pts}" fill="none" stroke="${up?'var(--up)':'var(--dn)'}" stroke-width="2"/></svg>
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-family:var(--mono)"><span>${f$(min)}</span><span>${f$(max)}</span></div>`;
-}
-
-async function openDrawer(id) {
-  const c = DATA.find(x=>x.id===id);
-  if (!c) return;
-  const d = document.getElementById('drawer');
-  const o = document.getElementById('drawerOverlay');
-  const starred = WATCHLIST.has(c.id);
-  const feeRows = [25,75,150].map(f => {
-    const gp = c.p10==null?null:parseFloat(((c.p10*SALE_RATE)-c.raw-f).toFixed(2));
-    return `<tr><td style="padding:4px 8px;font-size:11px;color:var(--text-2)">$${f} fee</td><td style="padding:4px 8px;font-family:var(--mono);font-size:11px" class="${gp>0?'up':'dn'}">${gp==null?'—':f$(gp)}</td></tr>`;
-  }).join('');
-  d.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+  if (indexHistory.length >= 2) {
+    const previous = indexHistory[indexHistory.length - 2];
+    const delta = latest.total - previous.total;
+    const pct = previous.total !== 0 ? (delta / previous.total) * 100 : 0;
+    blocks.push(`
       <div>
-        <div style="font-size:17px;font-weight:700;line-height:1.25">${c.name}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${c.set} · #${c.num} · <span class="era-tag">${c.era}</span></div>
+        <div class="stat-label">Daily Change</div>
+        <div class="stat-value ${directionClass(delta)}">${formatSignedDollars(delta)} (${formatSignedPct(pct)})</div>
+        <div class="stat-sub">vs ${previous.date}</div>
       </div>
-      <button id="drawerClose" style="background:none;border:none;font-size:20px;color:var(--text-3);cursor:pointer;line-height:1">×</button>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-      <div style="font-size:24px;font-weight:700;font-family:var(--mono)">${f$(c.raw)}</div>
-      <span class="mono ${momCls(c.mom)}" style="font-size:13px">${fPct(c.mom)} 30d</span>
-      <button id="drawerStar" style="margin-left:auto;background:none;border:0.5px solid var(--border-str);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;color:${starred?'var(--gold)':'var(--text-2)'}">${starred?'★ Watching':'☆ Watch'}</button>
-    </div>
-    <div id="drawerChart">${bigChart(c.h7, '7-Day Trend')}</div>
-    ${rangeBand(c)}
-    ${c.p10!=null?`
-    <div style="margin:16px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Graded (est. until live)</div>
-    <div style="display:flex;gap:8px;font-family:var(--mono);font-size:12px;">
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 8</div>${f$(c.p8)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 9</div>${f$(c.p9)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 10</div>${f$(c.p10)}</div>
-    </div>
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Crack &amp; Flip</div>
-    <div style="display:flex;gap:8px;font-size:12px;">
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;"><div style="font-size:9px;color:var(--text-3)">via PSA 8</div><span class="mono ${pCls(c.crackP8)}">${f$(c.crackP8)}</span></div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;"><div style="font-size:9px;color:var(--text-3)">via PSA 9</div><span class="mono ${pCls(c.crackP9)}">${f$(c.crackP9)}</span></div>
-    </div>
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Grade Profit by Fee Tier</div>
-    <table style="width:100%;border-collapse:collapse;background:var(--surface2);border-radius:6px;overflow:hidden">${feeRows}</table>`:''}
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Data</div>
-    <div style="font-size:11px;color:var(--text-2);line-height:1.8">
-      Tome Score: <strong>${c.tomeScore!=null?c.tomeScore.toFixed(1):'—'}</strong> · Signal: <strong>${c.signal??'—'}</strong><br>
-      30d price updates: ${c.chgCount30d??'—'}
-    </div>
-    <a class="tcg-link" style="margin-top:16px;justify-content:center;display:flex;padding:9px" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener">Buy on TCGPlayer ↗</a>
-  `;
-  d.style.display='block'; o.style.display='block';
-  document.getElementById('drawerClose').onclick = closeDrawer;
-  document.getElementById('drawerStar').onclick = () => { toggleWatch(c.id); openDrawer(c.id); };
-  o.onclick = closeDrawer;
-  // Progressive: swap in true daily history once snapshots accumulate
-  try {
-    const res = await fetch(`${HISTORY_URL}?game=${encodeURIComponent(GAME_SLUGS[c.game]||c.game)}&id=${encodeURIComponent(c.id)}`);
-    if (res.ok) {
-      const hist = await res.json();
-      if (hist.prices && hist.prices.length > (c.h7?.length||0)) {
-        const el = document.getElementById('drawerChart');
-        if (el) el.innerHTML = bigChart(hist.prices.map(p=>p.price), `${hist.prices.length}-Day Trend`);
-      }
-    }
-  } catch(e) { /* history not yet available — 7d sparkline stands */ }
-}
-function closeDrawer(){ document.getElementById('drawer').style.display='none'; document.getElementById('drawerOverlay').style.display='none'; }
-
-// ═══ EVENT DELEGATION: stars + row clicks ══════════════════════════════════════
-document.getElementById('tbody').addEventListener('click', e => {
-  const star = e.target.closest('.star-btn');
-  if (star) { e.stopPropagation(); toggleWatch(star.dataset.star); return; }
-  const row = e.target.closest('tr[data-id]');
-  if (row) openDrawer(row.dataset.id);
-});
-
-document.getElementById('watchChip').addEventListener('click', () => {
-  watchOnly = !watchOnly;
-  document.getElementById('watchChip').classList.toggle('active', watchOnly);
-  currentPage = 1;
-  render();
-});
-
-// ═══ HOVER PREVIEW (fixed-position, viewport-clamped) ══════════════════════════
-// Positioned via JS rather than a pure-CSS absolute child, because the table's
-// scroll container clips vertical overflow — a CSS-only popup got cut off / hidden
-// behind the sticky header for rows near the top of the table.
-const hoverPreview = document.getElementById('hoverPreview');
-document.getElementById('tbody').addEventListener('mouseover', e => {
-  const wrap = e.target.closest('.ci-wrap');
-  if (!wrap || !wrap.dataset.hoverSrc) return;
-  hoverPreview.src = wrap.dataset.hoverSrc;
-  const r = wrap.getBoundingClientRect();
-  hoverPreview.style.display = 'block';
-  hoverPreview.style.left = (r.right + 8) + 'px';
-  hoverPreview.style.top = (r.top + r.height/2) + 'px';
-  hoverPreview.style.transform = 'translateY(-50%)';
-  requestAnimationFrame(() => {
-    const pw = hoverPreview.offsetWidth || 180, ph = hoverPreview.offsetHeight || 250;
-    let left = r.right + 8;
-    if (left + pw > window.innerWidth - 8) left = Math.max(8, r.left - pw - 8);
-    let top = r.top + r.height/2 - ph/2;
-    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
-    hoverPreview.style.left = left + 'px';
-    hoverPreview.style.top = top + 'px';
-    hoverPreview.style.transform = 'none';
-  });
-});
-document.getElementById('tbody').addEventListener('mouseout', e => {
-  const wrap = e.target.closest('.ci-wrap');
-  if (!wrap) return;
-  if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
-  hoverPreview.style.display = 'none';
-});
-
-// ═══ COLUMN INFO TOOLTIPS (fixed-position, viewport-clamped — same reasoning as the
-// hover preview above: the sticky thead sits inside a scroll pane, so a pure-CSS absolute
-// tooltip would get clipped for headers near the pane's edges) ═════════════════════════
-const infoTip = document.getElementById('infoTip');
-document.querySelectorAll('.info-ic').forEach(ic => {
-  ic.addEventListener('mouseover', () => {
-    infoTip.textContent = ic.dataset.tip;
-    const r = ic.getBoundingClientRect();
-    infoTip.style.display = 'block';
-    infoTip.style.left = (r.left) + 'px';
-    infoTip.style.top = (r.bottom + 8) + 'px';
-    requestAnimationFrame(() => {
-      const tw = infoTip.offsetWidth || 240, th = infoTip.offsetHeight || 60;
-      let left = r.left;
-      if (left + tw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - tw - 8);
-      let top = r.bottom + 8;
-      if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 8);
-      infoTip.style.left = left + 'px';
-      infoTip.style.top = top + 'px';
-    });
-  });
-  ic.addEventListener('mouseout', () => { infoTip.style.display = 'none'; });
-});
-
-// ═══ INIT ══════════════════════════════════════════════════════════════════════
-document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-
-document.getElementById('tbody').innerHTML =
-  '<tr><td colspan="19" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-  '<div style="width:26px;height:26px;border:2.5px solid var(--border-str);border-top-color:var(--green);border-radius:50%;animation:tspin 0.7s linear infinite;margin:0 auto 0.75rem"></div>' +
-  'Loading live pricing from JustTCG…</td></tr>' +
-  '<style>@keyframes tspin{to{transform:rotate(360deg)}}</style>';
-
-(async () => {
-  try {
-    const { cards, errors } = await loadLiveData();
-    if (!cards.length) {
-      document.getElementById('tbody').innerHTML =
-        '<tr><td colspan="19" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-        'Could not load card data.' + (errors.length ? '<br><span style="font-size:11px">' + errors.join(' · ') + '</span>' : '') +
-        '<br><span style="font-size:11px">Check the worker URL and try refreshing.</span></td></tr>';
-      return;
-    }
-    CARDS = cards;
-    DATA = CARDS.map(compute);
-    [...new Set(CARDS.map(c=>c.set))].sort().forEach(s=>{
-      const o=document.createElement('option');o.value=s;o.textContent=s;
-      document.getElementById('setFilter').appendChild(o);
-    });
-    markSortedHeader();
-    render();
-    if (errors.length) {
-      console.warn('Partial load:', errors);
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11px;color:var(--dn);padding:6px 10px;background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--dn);border-radius:6px;margin:8px 0;';
-      note.textContent = 'Partial data load — some games failed to fetch: ' + errors.join(' · ');
-      document.querySelector('.pg-hd').after(note);
-    }
-  } catch (err) {
-    document.getElementById('tbody').innerHTML =
-      '<tr><td colspan="19" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-      'Failed to load data: ' + err.message + '</td></tr>';
+    `);
+  } else {
+    blocks.push(`
+      <div>
+        <div class="stat-label">Daily Change</div>
+        <div class="stat-value flat">—</div>
+        <div class="stat-sub">need 2+ days of history</div>
+      </div>
+    `);
   }
-})();
+
+  // WoW for now — the index is only days old, so this is the longest
+  // lookback that's actually meaningful yet. Once there's enough history,
+  // add MoM (~30 days, tolerance ~4) and YoY (~365 days, tolerance ~10)
+  // as additional blocks using this same findClosestPoint() pattern.
+  const weekAgo = new Date(latest.date + "T00:00:00");
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const wowPoint = findClosestPoint(indexHistory, weekAgo, 2);
+  if (wowPoint) {
+    const delta = latest.total - wowPoint.total;
+    const pct = wowPoint.total !== 0 ? (delta / wowPoint.total) * 100 : 0;
+    blocks.push(`
+      <div>
+        <div class="stat-label">WoW Change</div>
+        <div class="stat-value ${directionClass(delta)}">${formatSignedDollars(delta)} (${formatSignedPct(pct)})</div>
+        <div class="stat-sub">vs ${wowPoint.date}</div>
+      </div>
+    `);
+  } else {
+    blocks.push(`
+      <div>
+        <div class="stat-label">WoW Change</div>
+        <div class="stat-value flat">—</div>
+        <div class="stat-sub">need 1W of history</div>
+      </div>
+    `);
+  }
+
+  statsEl.innerHTML = blocks.join("");
+}
+
+function renderChart() {
+const cutoff = new Date();
+cutoff.setDate(cutoff.getDate() - currentTimeframeDays);
+const filtered = indexHistory.filter(p => new Date(p.date) >= cutoff);
+
+const ctx = document.getElementById("indexChart");
+if (window._chaseChart) window._chaseChart.destroy();
+window._chaseChart = new Chart(ctx, {
+type: "line",
+data: {
+labels: filtered.map(p => p.date),
+datasets: [{
+label: "Tome Analytics: Pokemon Chase Modern EN 50 — Value ($)",
+data: filtered.map(p => p.total),
+borderColor: "#d4a72c",
+backgroundColor: "rgba(212, 167, 44, 0.15)",
+fill: true,
+tension: 0.2,
+pointRadius: 2,
+pointHoverRadius: 5,
+pointHoverBackgroundColor: "#d4a72c",
+pointHoverBorderColor: "#0a0f0d",
+}],
+},
+options: {
+interaction: { mode: "index", intersect: false },
+plugins: {
+legend: { display: false },
+tooltip: {
+enabled: true,
+backgroundColor: "#10160f",
+titleColor: "#d4a72c",
+bodyColor: "#f5f5f0",
+borderColor: "#d4a72c",
+borderWidth: 1,
+padding: 10,
+displayColors: false,
+titleFont: { family: "Helvetica, Arial, sans-serif", weight: "bold" },
+bodyFont: { family: "Helvetica, Arial, sans-serif" },
+callbacks: {
+label: ctx => "Index value: $" + ctx.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+},
+},
+},
+scales: {
+x: { ticks: { color: "#8fa89f", maxTicksLimit: 8 } },
+y: { ticks: { color: "#8fa89f" } },
+},
+},
+});
+}
+
+document.getElementById("timeframe-toggle").addEventListener("click", e => {
+if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
+document.querySelectorAll(".timeframe-toggle button").forEach(b => b.classList.remove("active"));
+e.target.classList.add("active");
+currentTimeframeDays = parseInt(e.target.dataset.days, 10);
+renderChart();
+});
+
+// How many days of REAL history the index actually has right now, based on
+// the oldest and newest points in indexHistory -- not on how many days it's
+// been live, so this stays correct however the backfill happens to land.
+function historySpanDays() {
+  if (indexHistory.length < 2) return 0;
+  const oldest = new Date(indexHistory[0].date + "T00:00:00");
+  const newest = new Date(indexHistory[indexHistory.length - 1].date + "T00:00:00");
+  return Math.round((newest - oldest) / 86400000);
+}
+
+// Grays out (and disables) any timeframe button whose window is wider than
+// the real history currently on hand -- e.g. 180D and 1Y stay disabled until
+// the index has actually been tracking that long. Un-grays automatically as
+// more days of real pricing accumulate, with no code change needed later.
+// If the active button becomes unavailable (shouldn't happen since the span
+// only grows over time, but just in case), falls back to the widest one
+// that IS available.
+function updateTimeframeAvailability() {
+  const span = historySpanDays();
+  let activeStillAvailable = false;
+  const buttons = [...document.querySelectorAll(".timeframe-toggle button")];
+  buttons.forEach(btn => {
+    const days = parseInt(btn.dataset.days, 10);
+    const available = span >= days;
+    btn.disabled = !available;
+    btn.title = available ? "" : `Needs ${days} days of price history — the index has ${span} so far`;
+    if (btn.classList.contains("active") && available) activeStillAvailable = true;
+  });
+  if (!activeStillAvailable) {
+    const fallback = [...buttons].reverse().find(b => !b.disabled) || buttons[0];
+    buttons.forEach(b => b.classList.remove("active"));
+    fallback.classList.add("active");
+    currentTimeframeDays = parseInt(fallback.dataset.days, 10);
+  }
+}
+
+// Keeps the caption honest about how much real history is actually behind
+// the chart right now, instead of a static claim that goes stale the moment
+// more days of pricing come in.
+function updateChartCaption() {
+  const captionEl = document.getElementById("chart-caption");
+  if (!indexHistory.length) {
+    captionEl.textContent = "";
+    return;
+  }
+  const span = historySpanDays();
+  const oldestDate = indexHistory[0].date;
+  const widest = [...document.querySelectorAll(".timeframe-toggle button")].filter(b => !b.disabled).pop();
+  const widestLabel = widest ? widest.textContent : "7D";
+  captionEl.textContent = span >= 1
+    ? `Chart reflects ${span} day${span === 1 ? "" : "s"} of real daily market pricing, back to ${oldestDate}. Longer views unlock automatically as more history accumulates — up to ${widestLabel} available today.`
+    : "Chart data is still backfilling — check back after the next daily refresh.";
+}
+
+function csvEscape(value) {
+const str = String(value ?? "");
+if (/[",\n]/.test(str)) {
+return '"' + str.replace(/"/g, '""') + '"';
+}
+return str;
+}
+
+function downloadHoldingsCSV() {
+const headers = ["Card", "Set", "Rarity", "Price", "Daily Change ($)", "Daily Change (%)", "WoW Change ($)", "WoW Change (%)"];
+const rows = indexCards.map(card => {
+const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
+const { daily, wow } = cardChanges(card);
+return [
+card.name,
+card.set,
+card.rarity,
+priceDisplay,
+daily ? daily.delta.toFixed(2) : "",
+daily ? daily.pct.toFixed(2) : "",
+wow ? wow.delta.toFixed(2) : "",
+wow ? wow.pct.toFixed(2) : "",
+];
+});
+const csvLines = [headers.join(","), ...rows.map(row => row.map(csvEscape).join(","))];
+const csvContent = csvLines.join("\n");
+const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const today = new Date();
+const yyyy = today.getFullYear();
+const mm = String(today.getMonth() + 1).padStart(2, "0");
+const dd = String(today.getDate()).padStart(2, "0");
+const filename = `tome-vault-chase-modern-en-50-${yyyy}-${mm}-${dd}.csv`;
+const link = document.createElement("a");
+link.href = url;
+link.download = filename;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
+}
+
+document.getElementById("export-csv-btn").addEventListener("click", downloadHoldingsCSV);
+
+// Assigns each of a set's visible (top 5) candidates a tier — "gold", "green",
+// or "gray" — purely from rank position and the eligibility/cap rules below.
+// This is deliberately NOT just trusting each card's stored `shortlisted` /
+// `in_index` flags on their own: rank position always decides who's even in
+// the running (only ranks 1-3 of the 5 shown can ever be gold or green;
+// ranks 4-5 are always gray), and an explicit running counter caps gold at
+// MAX_GOLD_PER_SET even if the data flags more than that many cards
+// `in_index: true` for one set.
+function tierCandidates(visible, set) {
+const eligible = isSetEligibleForGold(set);
+let goldCount = 0;
+return visible.map((card, i) => {
+const isTopThree = i < 3; // rank 1-3 of the 5 shown
+let tier = "gray";
+if (isTopThree) {
+const canBeGold = card.in_index && eligible && goldCount < MAX_GOLD_PER_SET;
+if (canBeGold) {
+tier = "gold";
+goldCount += 1;
+} else {
+tier = "green";
+}
+}
+return { card, tier };
+});
+}
+
+async function loadIndex() {
+const res = await fetch(WORKER_URL);
+const data = await res.json();
+
+if (data.last_updated) {
+document.getElementById("subtitle").textContent =
+`Pokemon TCG chase card index, XY forward. Data as of ${formatReleaseDate(data.last_updated)}.`;
+}
+
+// Flatten in_index cards for the holdings table and to build the
+// index-value-over-time series from each card's daily history. The 3-per-set
+// cap and age-eligibility gate are enforced above in tierCandidates(), so a
+// card only ever lands here if it actually earned a gold slot — this stays
+// correct at 50 cards (or any count) once real research fills every set in.
+indexCards = [];
+data.sets.forEach(set => {
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+tiered.forEach(({ card, tier }) => {
+if (tier === "gold") indexCards.push({ ...card, set: set.set_name });
+});
+});
+
+// Highest value first — the Index Holdings table (and its CSV export, which
+// reads this same array) should read as a ranked list, not insertion order.
+indexCards.sort((a, b) => b.price - a.price);
+
+const tbody = document.getElementById("holdings-body");
+indexCards.forEach(card => {
+const row = document.createElement("tr");
+const priceDisplay = card.price !== null
+? "$" + card.price.toFixed(2)
+: '<span class="unverified">unverified</span>';
+const { daily, wow } = cardChanges(card);
+row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td><td>${formatChangeCell(daily)}</td><td>${formatChangeCell(wow)}</td>`;
+tbody.appendChild(row);
+});
+
+// Build index-value-over-time by summing each card's daily history on
+// matching dates. Once the real JustTCG history feed is wired into the
+// Worker (see worker/index.js), every card's `history` array will be
+// populated server-side and this just works without further changes.
+const dateMap = {};
+indexCards.forEach(card => {
+(card.history || []).forEach(point => {
+dateMap[point.date] = (dateMap[point.date] || 0) + point.price;
+});
+});
+indexHistory = Object.entries(dateMap)
+.map(([date, total]) => ({ date, total }))
+.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+updateTimeframeAvailability();
+updateChartCaption();
+renderStats();
+renderChart();
+
+// Full candidate pool by set, grouped by era, top 5 per set (no more
+// ranks-6-10 toggle — the pool only ever shows 5).
+const container = document.getElementById("sets-by-era");
+
+const byEra = new Map();
+data.sets.forEach(set => {
+if (!byEra.has(set.era)) byEra.set(set.era, []);
+byEra.get(set.era).push(set);
+});
+
+const eraNames = [...byEra.keys()].sort((a, b) => {
+const ai = ERA_ORDER.indexOf(a);
+const bi = ERA_ORDER.indexOf(b);
+if (ai === -1 && bi === -1) return a.localeCompare(b);
+if (ai === -1) return 1;
+if (bi === -1) return -1;
+return ai - bi;
+});
+
+eraNames.forEach(era => {
+const heading = document.createElement("h3");
+heading.className = "era-heading";
+heading.textContent = era;
+container.appendChild(heading);
+
+const grid = document.createElement("div");
+grid.className = "sets-grid";
+
+byEra.get(era).forEach(set => {
+const visible = set.top_5.slice(0, 5);
+const tiered = tierCandidates(visible, set);
+const eligible = isSetEligibleForGold(set);
+
+const items = tiered.map(({ card, tier }) => {
+const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
+return `<li class="tier-${tier}">${card.name} <span class="price">${priceDisplay}</span></li>`;
+}).join("");
+
+const releaseNote = set.release_date
+? `<div class="release-date">Released ${formatReleaseDate(set.release_date)}</div>`
+: "";
+
+const ineligibleNote = !eligible
+? `<div class="ineligible-note">Not yet eligible for gold: sets need ${SET_ELIGIBILITY_DAYS}+ days of trading history before any of their cards can enter the index. Cards here can still be shown, ranked, and shortlisted in the meantime.</div>`
+: "";
+
+const card = document.createElement("div");
+card.className = "set-card";
+card.innerHTML = `<h4>${set.set_name}</h4>${releaseNote}${ineligibleNote}<ol>${items}</ol>`;
+grid.appendChild(card);
+});
+
+container.appendChild(grid);
+});
+}
+
+loadIndex().catch(err => {
+document.body.innerHTML += "<p style='color:#c0392b'>Failed to load index data: " + err.message + "</p>";
+});
 </script>
+</body>
+</html>
