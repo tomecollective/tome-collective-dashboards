@@ -293,12 +293,12 @@
       <option value="3PA">3PA</option>
       <option value="FTM">FTM</option>
       <option value="FTA">FTA</option>
+      <option value="OREB">OREB</option>
       <option value="PITP">PITP</option>
     </select>
 
-    <label>Player, Proj (one per line -- e.g. "Rhyne Howard, 3.3")</label>
-    <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
-
+      <label>Paste either "Name, Value" lines, or a full Rotowire table (tab-separated, with header row) -- the column matching the Stat picked above is pulled out automatically</label>
+      <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
     <button id="proj-save-btn">Load Projections</button>
     <div id="proj-status"></div>
   </div>
