@@ -96,9 +96,61 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addDaysStr(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Derives a game's real ET calendar date from its tip-off datetime, using
+// the same fixed ET_OFFSET_HOURS used for display. Returns null when no
+// parseable datetime is available.
+function etDateStrForGame(g) {
+  const iso = g.datetime || g.date;
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const et = new Date(d.getTime() + ET_OFFSET_HOURS * 3600 * 1000);
+  return et.toISOString().slice(0, 10);
+}
+
+// BUG FIX (verified live 2026-08-22): BALLDONTLIE's `dates[]=` filter buckets
+// games by the UTC calendar date of their actual tip-off time, not by the
+// Run's ET calendar date. A 9-10pm ET game tips off after midnight UTC -- on
+// the *next* UTC date -- so a naive dates[]=dateStr query silently dropped
+// those late games from "today" (they surfaced under tomorrow's query
+// instead) and could pull in the tail end of a prior ET night's late game
+// that happened to cross into today's UTC date. Confirmed live: Aug 22's
+// true ET slate (IND@NY 7pm, CON@LAS 9pm, ATL@PHX 10pm) was split across the
+// Aug 22 and Aug 23 UTC-date queries, while a leftover Aug 21 late game
+// (POR@TOR) leaked into the Aug 22 UTC bucket.
+//
+// Fix: query both UTC dates a full ET day can straddle (dateStr and the day
+// after), then keep only games whose real ET calendar date -- derived from
+// their tip-off datetime -- actually equals dateStr. When a game has no
+// parseable datetime (defensive fallback only), trust whichever original
+// UTC-date query bucket it came from rather than dropping it.
 async function getGamesForDate(dateStr, env) {
-  const data = await bdlFetch(`/games?dates[]=${dateStr}`, env);
-  return data.data || [];
+  const nextDateStr = addDaysStr(dateStr, 1);
+  const [dataA, dataB] = await Promise.all([
+    bdlFetch(`/games?dates[]=${dateStr}`, env),
+    bdlFetch(`/games?dates[]=${nextDateStr}`, env),
+  ]);
+  const seen = new Set();
+  const games = [];
+  for (const g of dataA.data || []) {
+    if (seen.has(g.id)) continue;
+    seen.add(g.id);
+    const etDate = etDateStrForGame(g);
+    if (etDate == null || etDate === dateStr) games.push(g);
+  }
+  for (const g of dataB.data || []) {
+    if (seen.has(g.id)) continue;
+    seen.add(g.id);
+    const etDate = etDateStrForGame(g);
+    if (etDate === dateStr) games.push(g);
+  }
+  return games;
 }
 
 async function getTeamRosters(teamIds, env) {
@@ -436,7 +488,7 @@ async function buildDashboard(env, { date, mode } = {}) {
   const badgeSetName = targetMode === "Pro" ? badgeSetNameForDate(schedule, SUPPORTED_LEAGUE, targetDate) : null;
 
   const games = await getGamesForDate(targetDate, env);
-  subrequests += 1;
+  subrequests += 2; // two UTC-date queries -- see getGamesForDate's ET-bucketing fix
 
   const teamIds = [...new Set(games.flatMap((g) => [g.home_team?.id, g.visitor_team?.id]).filter(Boolean))];
   const scheduleTiles = buildScheduleTiles(games);
@@ -834,4 +886,7 @@ export const __testables__ = {
   isWithinRun,
   RUN_START,
   RUN_END,
+  getGamesForDate,
+  etDateStrForGame,
+  addDaysStr,
 };
