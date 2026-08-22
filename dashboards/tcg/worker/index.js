@@ -79,6 +79,17 @@ const SELF_URL = "https://tome-tcg.tomecollective.workers.dev"; // used by sched
 // several chained invocations instead of exceeding the limit in one.
 const BATCH_SIZE = 12;
 
+// If more than this fraction of cards fail to refresh in a run (e.g. the
+// JustTCG API key is rejected, or the API is down), the run's result is
+// mostly-empty/placeholder data, not a real daily update. Publishing it
+// anyway would stamp today's date on the index and overwrite the accumulated
+// price history with the failed run's near-empty state -- worse than just
+// leaving yesterday's good data live for one more day. See freshProgress()
+// and the publish gate at the end of processBatch().
+const MAX_FAILURE_RATE_TO_PUBLISH = 0.5;
+
+const KEY_LAST_STATUS = "refresh:last_status"; // small always-written diagnostic record, see processBatch()
+
 function resolveKey(name, setName) {
   return `${RESOLVE_PREFIX}${name}|${setName}`;
 }
@@ -311,9 +322,28 @@ function flattenRefs(sets) {
   return refs;
 }
 
-function freshProgress() {
+// Starting point for a brand-new run's working data. Prefers the last
+// SUCCESSFULLY PUBLISHED payload in KV -- so a card that fails to refresh
+// today keeps yesterday's real price/history instead of being reset to the
+// bundled seed's static placeholder (price stub, empty history). Only falls
+// back to the raw seed if KV has never been populated yet (first deploy).
+async function freshProgress(env) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (env.CHASE_INDEX_KV) {
+    const publishedRaw = await env.CHASE_INDEX_KV.get(CACHE_KEY_LATEST);
+    if (publishedRaw) {
+      try {
+        const published = JSON.parse(publishedRaw);
+        if (Array.isArray(published.sets)) {
+          return { today, sets: published.sets, offset: 0, failures: [] };
+        }
+      } catch {
+        // fall through to seed below -- malformed KV value shouldn't crash the run
+      }
+    }
+  }
   return {
-    today: new Date().toISOString().slice(0, 10),
+    today,
     // Deep clone so this run's edits don't mutate the imported seed module
     // (which stays shared across invocations in the same isolate).
     sets: JSON.parse(JSON.stringify(chaseIndexData.sets)),
@@ -328,7 +358,7 @@ function freshProgress() {
 // recomputes the index and publishes the final payload to KV.
 async function processBatch(env, origin, resume, ctx) {
   let progress = resume ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
-  if (!progress) progress = freshProgress();
+  if (!progress) progress = await freshProgress(env);
 
   const refs = flattenRefs(progress.sets);
   const total = refs.length;
@@ -359,6 +389,35 @@ async function processBatch(env, origin, resume, ctx) {
   }
 
   recomputeIndex(progress.sets, progress.today);
+
+  const failureRate = total > 0 ? progress.failures.length / total : 0;
+  const status = {
+    ranAt: progress.today,
+    total,
+    failed: progress.failures.length,
+    failureRate: Math.round(failureRate * 100) / 100,
+    sampleFailures: progress.failures.slice(0, 5),
+  };
+
+  // Guard: a run where most cards failed (bad/expired API key, JustTCG
+  // outage, etc.) produces mostly placeholder data, not a real update.
+  // Publishing it would stamp today's date on the index AND overwrite the
+  // good, accumulated history from previous runs -- turning a one-day API
+  // outage into a permanent data loss. Skip the publish and leave the last
+  // good payload live instead; `refresh:last_status` still records that this
+  // run happened and failed, so it's visible via GET /api/refresh-status
+  // instead of silently vanishing.
+  if (failureRate > MAX_FAILURE_RATE_TO_PUBLISH) {
+    await env.CHASE_INDEX_KV.put(KEY_LAST_STATUS, JSON.stringify({ ...status, published: false }));
+    await env.CHASE_INDEX_KV.delete(KEY_PROGRESS);
+    return {
+      done: true,
+      published: false,
+      reason: `${progress.failures.length}/${total} cards failed to refresh (>${Math.round(MAX_FAILURE_RATE_TO_PUBLISH * 100)}% threshold) -- kept yesterday's published data instead of overwriting it`,
+      status,
+    };
+  }
+
   const payload = {
     index_name: chaseIndexData.index_name,
     last_updated: progress.today,
@@ -373,8 +432,9 @@ async function processBatch(env, origin, resume, ctx) {
         : ""),
   };
   await env.CHASE_INDEX_KV.put(CACHE_KEY_LATEST, JSON.stringify(payload));
+  await env.CHASE_INDEX_KV.put(KEY_LAST_STATUS, JSON.stringify({ ...status, published: true }));
   await env.CHASE_INDEX_KV.delete(KEY_PROGRESS);
-  return { done: true, total, payload };
+  return { done: true, total, published: true, payload };
 }
 
 export default {
@@ -468,6 +528,14 @@ export default {
       return new Response(body, { status: res.status, headers: corsHeaders });
     }
 
+    // Quick health check for the daily refresh, independent of the cron's
+    // fire-and-forget ctx.waitUntil() (which has no other visible output).
+    // Written on every run, success or failure -- see processBatch().
+    if (url.pathname === "/api/refresh-status") {
+      const status = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_LAST_STATUS, "json") : null;
+      return new Response(JSON.stringify(status || { note: "no refresh has run yet" }), { headers: corsHeaders });
+    }
+
     if (url.pathname === "/api/refresh" && request.method === "POST") {
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set -- wrangler secret put JUSTTCG_API_KEY" }), {
@@ -494,7 +562,17 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(processBatch(env, SELF_URL, false, ctx));
+    // Cron runs every 30 minutes. If an earlier run today got cut off
+    // partway through (Cloudflare's per-invocation limits, a transient
+    // error, etc.), the next tick picks up where it stopped instead of
+    // restarting from card 0, so the run still reaches completion within
+    // the same day instead of endlessly resetting itself. (Merged in from
+    // a live-only edit made directly in the Cloudflare dashboard that had
+    // drifted out of sync with this repo -- see KEY_PROGRESS above.)
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
+    const resume = !!(existing && existing.today === today);
+    ctx.waitUntil(processBatch(env, SELF_URL, resume, ctx));
   },
 };
 
