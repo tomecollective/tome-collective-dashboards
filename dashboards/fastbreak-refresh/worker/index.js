@@ -54,6 +54,8 @@ const STAT_FIELD_MAP = {
   STL: { source: "stats", field: (s) => s.stl, label: "STL" },
   BLK: { source: "stats", field: (s) => s.blk, label: "BLK" },
   TOV: { source: "stats", field: (s) => s.turnover, label: "TOV" },
+  FGM: { source: "stats", field: (s) => s.fgm, label: "FGM" },
+  FGA: { source: "stats", field: (s) => s.fga, label: "FGA" },
   "3PM": { source: "stats", field: (s) => s.fg3m, label: "3PM" },
   "3PA": { source: "stats", field: (s) => s.fg3a, label: "3PA" },
   FTM: { source: "stats", field: (s) => s.ftm, label: "FTM" },
@@ -400,6 +402,20 @@ function objectivesForDate(schedule, league, date, mode) {
 function badgeSetNameForDate(schedule, league, date) {
   return schedule?.[league]?.[date]?.badgeSetName || null;
 }
+
+// FUTURE ENHANCEMENT (not built): badgeSetName is currently just an admin-
+// typed label ("Rookie Year") shown on the Pro objective tile -- it doesn't
+// know which *players* actually own a moment from that badge/set. Integrating
+// with Flow/Cadence (the blockchain NBA Top Shot moments live on) could let
+// this Worker look up real moment ownership per player and automatically
+// flag/filter who qualifies, instead of the badge/set name being purely
+// informational text.
+
+// FUTURE ENHANCEMENT (not built): NBA Top Shot's own Fast Break page surfaces
+// which players are being utilized most heavily (i.e. picked into the most
+// lineups). Worth investigating whether that utilization signal -- or a
+// Cadence/Flow-sourced equivalent -- could be captured and surfaced here as
+// a "Top 10 Players by Utilization" tile/graphic alongside the objectives.
 
 // -- Ranking + color tiers -----------------------------------------------------
 
