@@ -4,6 +4,11 @@
 // objectives-schedule endpoints from the same KV namespace. This Worker never
 // calls BALLDONTLIE directly -- it only ever reads/writes FASTBREAK_KV, so it
 // stays fast and cheap regardless of refresh cadence.
+//
+// NOTE: the frontend's live per-day/per-mode Run views call the
+// tome-fastbreak-refresh Worker directly (it can build any date on demand).
+// This Worker remains a cheap fallback that serves whatever the refresh
+// Worker's cron last cached under "fastbreak:latest" (today, Classic).
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,16 +19,20 @@ const corsHeaders = {
 
 const OBJECTIVES_KV_KEY = "fastbreak:objectives";
 const SUPPORTED_LEAGUE = "WNBA";
+const SUPPORTED_MODES = ["Classic", "Pro"];
 // Kept in sync with STAT_FIELD_MAP in the fastbreak-refresh Worker. Duplicated
 // here (rather than shared via an import) because these two Workers deploy
 // independently with no build step between them.
-const VALID_STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "3PM", "3PA", "FTM", "FTA", "PITP"];
+const VALID_STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "3PM", "3PA", "FTM", "FTA", "OREB", "PITP"];
 
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
   return Boolean(env.FASTBREAK_ADMIN_TOKEN) && token === env.FASTBREAK_ADMIN_TOKEN;
 }
 
+// Weight is no longer accepted here -- it's auto-computed by the refresh
+// Worker at build time from projected 100%-clear rates. This just validates
+// shape: stat code + a positive daily team target.
 function validateObjectivesPayload(objectives) {
   if (!Array.isArray(objectives) || objectives.length < 1 || objectives.length > 2) {
     throw new Error("objectives must be an array of 1 or 2 entries");
@@ -33,18 +42,6 @@ function validateObjectivesPayload(objectives) {
     if (typeof o.dailyTeamTarget !== "number" || o.dailyTeamTarget <= 0) {
       throw new Error(`dailyTeamTarget must be a positive number for ${o.stat}`);
     }
-    if (typeof o.weight !== "number" || o.weight <= 0) {
-      throw new Error(`weight must be a positive number for ${o.stat}`);
-    }
-  }
-  if (objectives.length === 2) {
-    const sum = objectives[0].weight + objectives[1].weight;
-    const wholeUnit = sum > 1.5 ? 100 : 1;
-    if (Math.abs(sum - wholeUnit) > 0.05 * wholeUnit) {
-      throw new Error(`objective weights must sum to ~100% (got ${sum})`);
-    }
-  } else {
-    objectives[0] = { ...objectives[0], weight: 1 };
   }
 }
 
@@ -72,7 +69,7 @@ export default {
 
     // Admin objectives schedule -- proxied straight through to the same KV
     // namespace the refresh Worker owns. GET is public (it's a locked *view*,
-    // not a secret); POST requires the admin token.
+    // not a secret); POST requires the admin password.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
       const raw = await env.FASTBREAK_KV.get(OBJECTIVES_KV_KEY);
       const schedule = raw ? JSON.parse(raw) : {};
@@ -81,7 +78,7 @@ export default {
 
     if (url.pathname === "/api/fastbreak/objectives/day" && request.method === "POST") {
       if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
           status: 401,
           headers: corsHeaders,
         });
@@ -95,13 +92,25 @@ export default {
         if (!body.date || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
           throw new Error("date must be YYYY-MM-DD");
         }
+        const mode = body.mode || "Classic";
+        if (!SUPPORTED_MODES.includes(mode)) throw new Error(`mode must be one of ${SUPPORTED_MODES.join(", ")}`);
         validateObjectivesPayload(body.objectives);
         const league = body.league || SUPPORTED_LEAGUE;
         const raw = await env.FASTBREAK_KV.get(OBJECTIVES_KV_KEY);
         const schedule = raw ? JSON.parse(raw) : {};
         if (!schedule[league]) schedule[league] = {};
         const existing = schedule[league][body.date] || {};
-        schedule[league][body.date] = { ...existing, objectives: body.objectives };
+        const existingObjectives = existing.objectives || {};
+        const cleanObjectives = body.objectives.map(({ stat, label, dailyTeamTarget }) => ({
+          stat,
+          label: label || stat,
+          dailyTeamTarget,
+        }));
+        schedule[league][body.date] = {
+          ...existing,
+          objectives: { ...existingObjectives, [mode]: cleanObjectives },
+          badgeSetName: mode === "Pro" && body.badgeSetName ? body.badgeSetName : existing.badgeSetName || null,
+        };
         await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
         return new Response(JSON.stringify({ ok: true, schedule }), { headers: corsHeaders });
       } catch (err) {
@@ -115,7 +124,7 @@ export default {
     // Worker's buildDashboard, which falls back to L10 when none exists).
     if (url.pathname === "/api/fastbreak/objectives/day/projections" && request.method === "POST") {
       if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
           status: 401,
           headers: corsHeaders,
         });
@@ -142,7 +151,7 @@ export default {
         const raw = await env.FASTBREAK_KV.get(OBJECTIVES_KV_KEY);
         const schedule = raw ? JSON.parse(raw) : {};
         if (!schedule[league]) schedule[league] = {};
-        if (!schedule[league][body.date]) schedule[league][body.date] = { objectives: [] };
+        if (!schedule[league][body.date]) schedule[league][body.date] = { objectives: {} };
         if (!schedule[league][body.date].projections) schedule[league][body.date].projections = {};
         schedule[league][body.date].projections[body.stat] = values;
         await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
