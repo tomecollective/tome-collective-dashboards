@@ -590,12 +590,51 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
 // -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
 const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
 
-function parseProjRows(text) {
+// Rotowire's exported column header -> our internal stat code. Only stats we
+// actually track as objectives are listed; other Rotowire columns (Min, Pos,
+// FG%, FGM, FGA, DREB, 3P%, etc.) are simply ignored during table parsing.
+const ROTOWIRE_HEADER_TO_STAT = {
+  PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
+  TO: "TOV", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
+};
+
+function parseProjRows(text, stat) {
+  const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
+  if (!lines.length) return { rows: [], errors: [] };
+
+  // Full Rotowire table paste: first line is a tab-separated header starting
+  // with "Player". Pull out just the column matching the selected stat.
+  const headerCells = lines[0].split("\t").map((c) => c.trim());
+  if (headerCells[0] === "Player" && headerCells.length > 2) {
+    const colIndex = headerCells.findIndex((h) => ROTOWIRE_HEADER_TO_STAT[h] === stat);
+    if (colIndex === -1) {
+      return {
+        rows: [],
+        errors: [
+          `The pasted table has no column for ${stat} (columns found: ${headerCells.join(", ")}).`,
+        ],
+      };
+    }
+    const rows = [];
+    const errors = [];
+    lines.slice(1).forEach((line, i) => {
+      const cells = line.split("\t").map((c) => c.trim());
+      const name = cells[0];
+      const value = parseFloat(cells[colIndex]);
+      if (!name || Number.isNaN(value)) {
+        errors.push(`Row ${i + 2}: could not read a name and ${stat} value from "${line}"`);
+        return;
+      }
+      rows.push({ name, value });
+    });
+    return { rows, errors };
+  }
+
+  // Fallback: simple "Name, Value" per line.
   const rows = [];
   const errors = [];
-  text.split("\n").forEach((line, i) => {
+  lines.forEach((line, i) => {
     const trimmed = line.trim();
-    if (!trimmed) return;
     const parts = trimmed.split(",");
     if (parts.length !== 2) {
       errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
@@ -628,7 +667,7 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
     return;
   }
 
-  const { rows, errors } = parseProjRows(rawText);
+  const { rows, errors } = parseProjRows(rawText, stat);
   if (errors.length) {
     statusEl.style.color = "#f87171";
     statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
@@ -636,7 +675,7 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
   }
   if (!rows.length) {
     statusEl.style.color = "#f87171";
-    statusEl.textContent = "Enter at least one \"Name, Value\" row.";
+     statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
     return;
   }
 
