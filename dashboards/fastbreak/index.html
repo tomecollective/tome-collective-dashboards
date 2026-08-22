@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Tome Edge: Fast Break</title>
+<title>Fast Break Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -38,11 +38,11 @@
 
   /* -- layout ------------------------------------------------------------ */
   .wrap{max-width:1320px;margin:0 auto;padding:1.5rem 1.5rem 4rem;}
-  .pg-hd{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:1.25rem;}
+  .pg-hd{margin-bottom:1.25rem;}
   .pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green-lt);margin-bottom:4px;}
   .pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
   .pg-sub{font-size:13px;color:var(--text-2);margin-top:5px;max-width:640px;line-height:1.5;}
-  .pg-meta{font-size:11px;color:var(--text-3);text-align:right;}
+  .pg-meta{font-size:11px;color:var(--text-3);margin-top:8px;}
 
   /* -- toggles ------------------------------------------------------- */
   .toggle-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
@@ -56,16 +56,31 @@
   .admin-link-btn { margin-left: auto; background: var(--surface); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 9px 16px; border-radius: 10px; font-size: 0.76rem; font-weight:600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
   .admin-link-btn:hover { color: var(--text); border-color: var(--green); }
 
+  /* -- run (day) toggle --------------------------------------------------- */
+  .run-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .run-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-3); }
+  .run-days { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+  .run-day-btn { flex-shrink:0; background:var(--surface); border:0.5px solid var(--border); color:var(--text-2); padding:7px 12px; border-radius:9px; font-size:0.72rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+  .run-day-btn.active { background:var(--green); color:#fff; border-color:var(--green); }
+  .run-day-btn:hover:not(.active) { color:var(--text); border-color:var(--border-str); }
+
   /* -- game tiles (ESPN-style schedule strip) --------------------------- */
-  .schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; }
-  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; }
+  .schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; justify-items:center; }
+  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; text-align:center; width:100%; }
   .game-tile .matchup { font-weight: 700; font-size: 0.92rem; letter-spacing:-0.1px; }
   .game-tile .time { color: var(--text-3); font-size: 0.72rem; margin-top: 4px; font-family:var(--mono); }
-  .schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); }
+  .schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); text-align:center; }
+
+  /* -- objective / badge tiles -------------------------------------------- */
+  .objective-row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:24px; }
+  .objective-tile { background:var(--surface2); border:0.5px solid var(--border-str); border-radius:var(--r); padding:10px 18px; text-align:center; min-width:120px; }
+  .objective-tile .val { font-size:1.15rem; font-weight:700; color:var(--text); }
+  .objective-tile .lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-3); margin-top:2px; }
+  .objective-tile.badge-tile .val { color:var(--gold); font-size:0.95rem; }
 
   /* -- toolbar (export + legend) ----------------------------------------- */
   .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:0.85rem;}
-  .export-btn { background: var(--green); color: #fff; border: none; padding: 9px 18px; border-radius: var(--r); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; transition: background .12s; }
+  .export-btn { background: var(--green); color: #fff; border: none; padding: 9px 18px; border-radius: var(--r); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; transition: background .12s; margin-left:auto; }
   .export-btn:hover { background: var(--green-lt); }
 
   .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.72rem; color: var(--text-2); }
@@ -87,7 +102,7 @@
   tbody tr:last-child td{border-bottom:none;}
   tbody tr:hover{background:var(--surface2);}
   td{font-family:var(--mono);font-size:12px;color:var(--text-2);}
-  td:first-child, td:nth-child(2), td:nth-child(3){font-family:var(--sans);color:var(--text);}
+  td:first-child, td:nth-child(2), td:nth-child(3), td:nth-child(4){font-family:var(--sans);color:var(--text);}
   td:first-child{font-weight:600;}
   td strong{color:var(--text);font-weight:700;}
 
@@ -114,6 +129,14 @@
   .admin-form button { margin-top: 20px; background: var(--green); border: none; color: #fff; padding: 10px 20px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.85rem; transition:background .12s; }
   .admin-form button:hover { background: var(--green-lt); }
   #admin-status { margin-top: 12px; font-size: 0.8rem; }
+  #proj-status { margin-top: 12px; font-size: 0.8rem; }
+
+  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r-lg); padding: 22px 24px; max-width: 380px; margin-top:22px; }
+  .admin-gate h2 { font-size: 1.05rem; margin-bottom: 10px; }
+  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
+  .admin-gate button { margin-top: 12px; background: var(--green); border: none; color: #fff; padding: 9px 18px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.82rem; }
+  #admin-gate-status { margin-top: 10px; font-size: 0.78rem; color: var(--dn); }
+  #admin-locked-content { display:none; }
 
   ::-webkit-scrollbar{height:8px;width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
@@ -129,18 +152,16 @@
   <div class="hdr-div"></div>
   <span class="hdr-product">Tome Edge: Fast Break</span>
   <div class="hdr-right">
-    <span class="hdr-pill" id="mode-badge">WNBA · Classic</span>
+    <span class="hdr-pill">Edge</span>
   </div>
 </div>
 
 <div class="wrap">
 
 <div class="pg-hd">
-  <div>
-    <div class="pg-eye">Tome Collective · Fast Break</div>
-    <h1 class="pg-title">Today's Fast Break Objectives</h1>
-    <p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
-  </div>
+  <div class="pg-eye">Tome Collective &middot; NBA Top Shot &middot; Run 10</div>
+  <h1 class="pg-title">Fast Break Dashboard</h1>
+  <p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
   <div class="pg-meta">Powered by Tome Analytics</div>
 </div>
 
@@ -155,15 +176,21 @@
     <button data-mode="Historic" disabled title="Not built yet">Historic</button>
   </div>
   <span class="toggle-note" id="mode-note"></span>
-  <button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin →</button>
+  <button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin &rarr;</button>
 </div>
 
 <div id="view-main">
 
+  <div class="run-row">
+    <span class="run-label">Run 10</span>
+    <div class="run-days" id="run-days"></div>
+  </div>
+
   <div id="schedule-tiles" class="schedule-row"></div>
 
+  <div id="objective-tiles" class="objective-row"></div>
+
   <div class="toolbar">
-    <button class="export-btn" id="export-csv-btn">Download CSV</button>
     <div class="legend" id="color-legend">
       <span><span class="swatch" style="background:var(--tier1-bg)"></span>&ge;125% of target</span>
       <span><span class="swatch" style="background:var(--tier2-bg)"></span>&ge;100%</span>
@@ -171,6 +198,7 @@
       <span><span class="swatch" style="background:var(--tier4-bg)"></span>&ge;75%</span>
       <span>no fill: below 75%</span>
     </div>
+    <button class="export-btn" id="export-csv-btn">Download CSV</button>
   </div>
 
   <div class="tbl-outer">
@@ -188,145 +216,216 @@
 <div id="view-admin">
   <h2>Objectives Schedule (Admin)</h2>
   <div class="admin-banner">
-    This view is visible to anyone, but read-only at this layer — the schedule can only be
-    changed through the form below, which requires the admin token. Nothing here is editable
-    by clicking on the page content itself.
+    This view is visible to anyone, but read-only at this layer -- the schedule can only be
+    changed through the forms below, which are locked behind the admin password. Nothing
+    here is editable by clicking on the page content itself.
   </div>
 
   <div class="tbl-outer">
     <div class="tbl-scroll">
       <table class="admin-table">
         <thead>
-          <tr><th>Date</th><th>Objective 1</th><th>Target 1</th><th>Weight 1</th><th>Objective 2</th><th>Target 2</th><th>Weight 2</th></tr>
+          <tr><th>Date</th><th>Classic</th><th>Pro</th><th>Badge/Set</th></tr>
         </thead>
         <tbody id="admin-schedule-body"></tbody>
       </table>
     </div>
   </div>
 
-  <div class="admin-form">
-    <h2>Set / Update a Day's Objectives</h2>
-    <label>Admin Token</label>
-    <input type="password" id="admin-token" placeholder="Required to save changes">
-
-    <label>Date</label>
-    <input type="date" id="admin-date">
-
-    <div class="obj-pair">
-      <div>
-        <label>Objective 1</label>
-        <select id="admin-stat-1">
-          <option value="PTS">PTS</option>
-          <option value="REB">REB</option>
-          <option value="AST">AST</option>
-          <option value="STL">STL</option>
-          <option value="BLK">BLK</option>
-          <option value="TOV">TOV</option>
-          <option value="3PM">3PM</option>
-          <option value="3PA">3PA</option>
-          <option value="FTM">FTM</option>
-          <option value="FTA">FTA</option>
-          <option value="PITP">PITP</option>
-        </select>
-      </div>
-      <div>
-        <label>Daily Team Target</label>
-        <input type="number" id="admin-target-1" placeholder="e.g. 12">
-      </div>
-      <div>
-        <label>Weight %</label>
-        <input type="number" id="admin-weight-1" placeholder="100" value="100">
-      </div>
-    </div>
-
-    <label style="margin-top:20px;"><input type="checkbox" id="admin-has-second" style="width:auto;margin-right:6px;">Add a second objective for this day</label>
-    <div class="obj-pair" id="admin-second-row" style="display:none; margin-top:8px;">
-      <div>
-        <label>Objective 2</label>
-        <select id="admin-stat-2">
-          <option value="PTS">PTS</option>
-          <option value="REB">REB</option>
-          <option value="AST">AST</option>
-          <option value="STL">STL</option>
-          <option value="BLK">BLK</option>
-          <option value="TOV">TOV</option>
-          <option value="3PM">3PM</option>
-          <option value="3PA">3PA</option>
-          <option value="FTM">FTM</option>
-          <option value="FTA">FTA</option>
-          <option value="PITP">PITP</option>
-        </select>
-      </div>
-      <div>
-        <label>Daily Team Target</label>
-        <input type="number" id="admin-target-2" placeholder="e.g. 26">
-      </div>
-      <div>
-        <label>Weight %</label>
-        <input type="number" id="admin-weight-2" placeholder="e.g. 21.69">
-      </div>
-    </div>
-
-    <button id="admin-save-btn">Save Day</button>
-    <div id="admin-status"></div>
+  <div class="admin-gate" id="admin-gate">
+    <h2>Admin Tools</h2>
+    <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Password</label>
+    <input type="password" id="admin-password-input" placeholder="Required to unlock">
+    <button id="admin-unlock-btn">Unlock</button>
+    <div id="admin-gate-status"></div>
   </div>
 
-  <div class="admin-form">
-    <h2>Load Real Projections (Rotowire-sourced)</h2>
-    <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
-      BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
-      here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
-      upload (PITP, always) and its Proj falls back to the L10 average automatically.
-    </p>
-    <label>Date</label>
-    <input type="date" id="proj-date">
+  <div id="admin-locked-content">
+    <div class="admin-form">
+      <h2>Set / Update a Day's Objectives</h2>
+      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+        Weight is no longer entered manually -- it's computed automatically from the share of
+        players projected to clear 100% of each objective's target (the rarer feat carries more weight).
+      </p>
 
-    <label>Stat</label>
-    <select id="proj-stat">
-      <option value="PTS">PTS</option>
-      <option value="REB">REB</option>
-      <option value="AST">AST</option>
-      <option value="STL">STL</option>
-      <option value="BLK">BLK</option>
-      <option value="TOV">TOV</option>
-      <option value="3PM">3PM</option>
-      <option value="3PA">3PA</option>
-      <option value="FTM">FTM</option>
-      <option value="FTA">FTA</option>
-      <option value="OREB">OREB</option>
-      <option value="PITP">PITP</option>
-    </select>
+      <label>Mode</label>
+      <select id="admin-mode">
+        <option value="Classic">Classic</option>
+        <option value="Pro">Pro</option>
+      </select>
 
-      <label>Paste either "Name, Value" lines, or a full Rotowire table (tab-separated, with header row) -- the column matching the Stat picked above is pulled out automatically</label>
-      <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
-    <button id="proj-save-btn">Load Projections</button>
-    <div id="proj-status"></div>
+      <label>Date</label>
+      <input type="date" id="admin-date">
+
+      <div class="obj-pair">
+        <div>
+          <label>Objective 1</label>
+          <select id="admin-stat-1">
+            <option value="PTS">PTS</option>
+            <option value="REB">REB</option>
+            <option value="AST">AST</option>
+            <option value="STL">STL</option>
+            <option value="BLK">BLK</option>
+            <option value="TOV">TOV</option>
+            <option value="3PM">3PM</option>
+            <option value="3PA">3PA</option>
+            <option value="FTM">FTM</option>
+            <option value="FTA">FTA</option>
+            <option value="OREB">OREB</option>
+            <option value="PITP">PITP</option>
+          </select>
+        </div>
+        <div>
+          <label>Daily Team Target</label>
+          <input type="number" id="admin-target-1" placeholder="e.g. 12">
+        </div>
+      </div>
+
+      <label style="margin-top:20px;"><input type="checkbox" id="admin-has-second" style="width:auto;margin-right:6px;">Add a second objective for this day</label>
+      <div class="obj-pair" id="admin-second-row" style="display:none; margin-top:8px;">
+        <div>
+          <label>Objective 2</label>
+          <select id="admin-stat-2">
+            <option value="PTS">PTS</option>
+            <option value="REB">REB</option>
+            <option value="AST">AST</option>
+            <option value="STL">STL</option>
+            <option value="BLK">BLK</option>
+            <option value="TOV">TOV</option>
+            <option value="3PM">3PM</option>
+            <option value="3PA">3PA</option>
+            <option value="FTM">FTM</option>
+            <option value="FTA">FTA</option>
+            <option value="OREB">OREB</option>
+            <option value="PITP">PITP</option>
+          </select>
+        </div>
+        <div>
+          <label>Daily Team Target</label>
+          <input type="number" id="admin-target-2" placeholder="e.g. 26">
+        </div>
+      </div>
+
+      <label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only)</label>
+      <input type="text" id="admin-badge-name" placeholder="e.g. Rookie Year" style="display:none;">
+
+      <button id="admin-save-btn">Save Day</button>
+      <div id="admin-status"></div>
+    </div>
+
+    <div class="admin-form">
+      <h2>Load Real Projections (Rotowire-sourced)</h2>
+      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+        BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
+        here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
+        upload (PITP, always) and its Proj falls back to the L10 average automatically.
+      </p>
+      <label>Date</label>
+      <input type="date" id="proj-date">
+
+      <label>Stat</label>
+      <select id="proj-stat">
+        <option value="PTS">PTS</option>
+        <option value="REB">REB</option>
+        <option value="AST">AST</option>
+        <option value="STL">STL</option>
+        <option value="BLK">BLK</option>
+        <option value="TOV">TOV</option>
+        <option value="3PM">3PM</option>
+        <option value="3PA">3PA</option>
+        <option value="FTM">FTM</option>
+        <option value="FTA">FTA</option>
+        <option value="OREB">OREB</option>
+        <option value="PITP">PITP</option>
+      </select>
+
+        <label>Paste either "Name, Value" lines, or a full Rotowire table (tab-separated, with header row) -- the column matching the Stat picked above is pulled out automatically</label>
+        <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
+      <button id="proj-save-btn">Load Projections</button>
+      <div id="proj-status"></div>
+    </div>
   </div>
 </div>
 
 </div>
 
 <script>
-const WORKER_BASE = "https://tome-fastbreak.tomecollective.workers.dev";
+const WORKER_BASE = "https://tome-fastbreak-refresh.tomecollective.workers.dev";
 const WORKER_URL = WORKER_BASE + "/api/fastbreak";
 const OBJECTIVES_URL = WORKER_BASE + "/api/fastbreak/objectives";
 const OBJECTIVES_DAY_URL = WORKER_BASE + "/api/fastbreak/objectives/day";
+const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
 
-let dashboard = { objectives: [], games: [], players: [], note: "" };
+// Run 10: Day 1 = Aug 19, 2026 through Day 12 = Aug 30, 2026 (inclusive).
+// Kept in sync with RUN_START/RUN_END in the refresh Worker.
+const RUN_START = "2026-08-19";
+const RUN_END = "2026-08-30";
+
+// The admin password gate. Whatever is entered here is also sent as the
+// X-Admin-Token header -- Cloudflare's FASTBREAK_ADMIN_TOKEN secret must be
+// set to this same value on the refresh Worker for saves to succeed.
+const ADMIN_PASSWORD = "T0ME!";
+let adminPassword = null;
+
+let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName: null };
 
 let sortKey = "base:ovrRank";
 let sortDir = 1;
 
 // -- League / Mode toggle ---------------------------------------------------
-// Only WNBA has a live data pipeline right now; NBA (season not in progress)
-// and Historic (no historical pipeline built yet) stay disabled. Classic/Pro
-// both read the same live data today -- see TODO(mode) in the refresh
-// Worker's source for where that will eventually branch.
 let currentLeague = "WNBA";
 let currentMode = "Classic";
+let selectedDate = null; // set by initRunDays()
 
-function updateModeBadge() {
-  document.getElementById("mode-badge").textContent = `${currentLeague} · ${currentMode}`;
+function ymd(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+// -- Run day toggle -----------------------------------------------------------
+// A day stays selectable through 10:00 AM ET the following calendar day, then
+// falls off the front of the list. Run 10 is entirely within EDT (UTC-4), so
+// a fixed offset is safe here.
+function earliestSelectableRunDate() {
+  const nowUtc = new Date();
+  const etNow = new Date(nowUtc.getTime() - 4 * 3600 * 1000);
+  const etDateStr = ymd(etNow);
+  const etHour = etNow.getUTCHours(); // etNow's "UTC" fields are really ET after the shift above
+  let earliest;
+  if (etHour < 10) {
+    const prev = new Date(`${etDateStr}T00:00:00Z`);
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    earliest = ymd(prev);
+  } else {
+    earliest = etDateStr;
+  }
+  if (earliest < RUN_START) earliest = RUN_START;
+  if (earliest > RUN_END) earliest = RUN_END;
+  return earliest;
+}
+
+function initRunDays() {
+  const earliest = earliestSelectableRunDate();
+  selectedDate = earliest;
+  const container = document.getElementById("run-days");
+  container.innerHTML = "";
+  const start = new Date(`${RUN_START}T00:00:00Z`);
+  let dayNum = 1;
+  for (let d = new Date(`${RUN_START}T00:00:00Z`); ymd(d) <= RUN_END; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
+    const dateStr = ymd(d);
+    if (dateStr < earliest) continue;
+    const btn = document.createElement("button");
+    btn.className = "run-day-btn" + (dateStr === selectedDate ? " active" : "");
+    btn.dataset.date = dateStr;
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    btn.textContent = `Day ${dayNum} - ${label}`;
+    btn.addEventListener("click", () => {
+      selectedDate = dateStr;
+      container.querySelectorAll(".run-day-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadData();
+    });
+    container.appendChild(btn);
+  }
 }
 
 document.getElementById("league-toggle").addEventListener("click", (e) => {
@@ -334,7 +433,6 @@ document.getElementById("league-toggle").addEventListener("click", (e) => {
   document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
   e.target.classList.add("active");
   currentLeague = e.target.dataset.league;
-  updateModeBadge();
 });
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
@@ -343,10 +441,8 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
   e.target.classList.add("active");
   currentMode = e.target.dataset.mode;
   document.getElementById("mode-note").textContent =
-    currentMode === "Pro" ? "Pro: Top Shot badge/set filtering planned once moment-ownership data exists." : "";
-  updateModeBadge();
-  // TODO(mode): Classic and Pro currently read the same live data from the
-  // Worker; once it branches by mode, re-fetch here instead of just re-labeling.
+    currentMode === "Pro" ? "Pro: objectives include a required Top Shot badge/set." : "";
+  loadData();
 });
 
 // -- Admin view toggle --------------------------------------------------------
@@ -356,7 +452,7 @@ document.getElementById("admin-toggle-btn").addEventListener("click", () => {
   const showingAdmin = adminView.style.display === "block";
   mainView.style.display = showingAdmin ? "block" : "none";
   adminView.style.display = showingAdmin ? "none" : "block";
-  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin →" : "← Back to Dashboard";
+  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
   if (!showingAdmin) loadAdminSchedule();
 });
 
@@ -364,12 +460,32 @@ document.getElementById("admin-has-second").addEventListener("change", (e) => {
   document.getElementById("admin-second-row").style.display = e.target.checked ? "flex" : "none";
 });
 
+document.getElementById("admin-mode").addEventListener("change", (e) => {
+  const isPro = e.target.value === "Pro";
+  document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
+  document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
+});
+
+// -- Admin password gate -------------------------------------------------------
+document.getElementById("admin-unlock-btn").addEventListener("click", () => {
+  const entered = document.getElementById("admin-password-input").value;
+  const statusEl = document.getElementById("admin-gate-status");
+  if (entered === ADMIN_PASSWORD) {
+    adminPassword = entered;
+    document.getElementById("admin-gate").style.display = "none";
+    document.getElementById("admin-locked-content").style.display = "block";
+    statusEl.textContent = "";
+  } else {
+    statusEl.textContent = "Incorrect password.";
+  }
+});
+
 // -- Schedule tiles -----------------------------------------------------------
 function renderScheduleTiles() {
   const row = document.getElementById("schedule-tiles");
   row.innerHTML = "";
   if (!dashboard.games || !dashboard.games.length) {
-    row.innerHTML = '<div class="schedule-empty">No games scheduled today.</div>';
+    row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
     return;
   }
   dashboard.games.forEach((g) => {
@@ -378,6 +494,24 @@ function renderScheduleTiles() {
     tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}</div>`;
     row.appendChild(tile);
   });
+}
+
+// -- Objective / badge tiles ---------------------------------------------------
+function renderObjectiveTiles() {
+  const row = document.getElementById("objective-tiles");
+  row.innerHTML = "";
+  (dashboard.objectives || []).forEach((o) => {
+    const tile = document.createElement("div");
+    tile.className = "objective-tile";
+    tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
+    row.appendChild(tile);
+  });
+  if (currentMode === "Pro" && dashboard.badgeSetName) {
+    const tile = document.createElement("div");
+    tile.className = "objective-tile badge-tile";
+    tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
+    row.appendChild(tile);
+  }
 }
 
 // -- Main table -----------------------------------------------------------------
@@ -389,14 +523,14 @@ function objectiveColumns() {
 function buildHeader() {
   const thead = document.getElementById("table-head");
   const objCols = objectiveColumns();
-  let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th>`;
+  let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
   objCols.forEach((oc, i) => {
-    const groupStart = i === 0 ? ' class="obj-group-start"' : "";
-    row += `<th data-key="obj:${oc.index}:proj"${groupStart}>${oc.label} Proj</th>`;
+    const groupStart = ' class="obj-group-start"';
+    row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
     row += `<th data-key="obj:${oc.index}:ytd">${oc.label} YTD</th>`;
     row += `<th data-key="obj:${oc.index}:l10">${oc.label} L10</th>`;
   });
-  row += `<th data-key="base:ovrRank" class="obj-group-start">Ovr Rank</th></tr>`;
+  row += `</tr>`;
   thead.innerHTML = row;
 
   thead.querySelectorAll("th[data-key]").forEach((th) => {
@@ -446,15 +580,14 @@ function render() {
 
   sorted.forEach((p) => {
     const row = document.createElement("tr");
-    let html = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp || "—"}</td>`;
+    let html = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
-      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${ov.proj ?? "—"}</td>`;
-      html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "—"}</td>`;
-      html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "—"}</td>`;
+      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${ov.proj ?? "--"}</td>`;
+      html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
+      html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
     });
-    html += `<td class="obj-group-start"><strong>${p.ovrRank ?? "—"}</strong></td>`;
     row.innerHTML = html;
     tbody.appendChild(row);
   });
@@ -466,7 +599,7 @@ function render() {
 
   const objLabel = objCols.map((o) => `${o.label} (target ${dashboard.objectives[o.index].dailyTeamTarget}, weight ${(dashboard.objectives[o.index].weight * 100).toFixed(2)}%)`).join(" + ");
   document.getElementById("dashboard-note").textContent =
-    (objLabel ? `Today's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
+    (objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
 }
 
 // -- CSV export -----------------------------------------------------------------
@@ -478,17 +611,15 @@ function csvEscape(value) {
 
 function downloadCSV() {
   const objCols = objectiveColumns();
-  const headers = ["Player", "Team", "Opp"];
+  const headers = ["Player", "Team", "Opp", "Ovr Rank"];
   objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
-  headers.push("Ovr Rank");
 
   const rows = getSorted().map((p) => {
-    const row = [p.name, p.team, p.opp || ""];
+    const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
     objCols.forEach((oc) => {
       const ov = p.objectives[oc.stat] || {};
       row.push(ov.proj ?? "", ov.ytd ?? "", ov.l10 ?? "");
     });
-    row.push(p.ovrRank ?? "");
     return row;
   });
 
@@ -510,46 +641,42 @@ document.getElementById("export-csv-btn").addEventListener("click", downloadCSV)
 // -- Admin: view schedule -----------------------------------------------------
 async function loadAdminSchedule() {
   const tbody = document.getElementById("admin-schedule-body");
-  tbody.innerHTML = `<tr><td colspan="7">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
   try {
     const res = await fetch(OBJECTIVES_URL);
     const data = await res.json();
     const days = Object.entries(data.schedule?.WNBA || {}).sort(([a], [b]) => a.localeCompare(b));
     if (!days.length) {
-      tbody.innerHTML = `<tr><td colspan="7">No dates configured yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4">No dates configured yet.</td></tr>`;
       return;
     }
     tbody.innerHTML = days.map(([date, entry]) => {
-      const objs = entry.objectives || [];
-      const o1 = objs[0] || {};
-      const o2 = objs[1] || {};
+      const classic = (entry.objectives?.Classic || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
+      const pro = (entry.objectives?.Pro || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
       return `<tr>
         <td>${date}</td>
-        <td>${o1.label || o1.stat || "—"}</td>
-        <td>${o1.dailyTeamTarget ?? "—"}</td>
-        <td>${o1.weight != null ? (o1.weight <= 1 ? (o1.weight * 100).toFixed(2) + "%" : o1.weight + "%") : "—"}</td>
-        <td>${o2.label || o2.stat || "—"}</td>
-        <td>${o2.dailyTeamTarget ?? "—"}</td>
-        <td>${o2.weight != null ? (o2.weight <= 1 ? (o2.weight * 100).toFixed(2) + "%" : o2.weight + "%") : "—"}</td>
+        <td>${classic}</td>
+        <td>${pro}</td>
+        <td>${entry.badgeSetName || "--"}</td>
       </tr>`;
     }).join("");
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
   }
 }
 
-// -- Admin: save a day (locked behind the token, never a direct DOM edit) ----
+// -- Admin: save a day (locked behind the password, never a direct DOM edit) ----
 document.getElementById("admin-save-btn").addEventListener("click", async () => {
   const statusEl = document.getElementById("admin-status");
   statusEl.style.color = "#a8aa9c";
-  statusEl.textContent = "Saving…";
+  statusEl.textContent = "Saving...";
 
-  const token = document.getElementById("admin-token").value;
+  const mode = document.getElementById("admin-mode").value;
   const date = document.getElementById("admin-date").value;
   const stat1 = document.getElementById("admin-stat-1").value;
   const target1 = parseFloat(document.getElementById("admin-target-1").value);
-  const weight1 = parseFloat(document.getElementById("admin-weight-1").value || "100");
   const hasSecond = document.getElementById("admin-has-second").checked;
+  const badgeSetName = document.getElementById("admin-badge-name").value.trim();
 
   if (!date || !target1) {
     statusEl.style.color = "#f87171";
@@ -557,29 +684,28 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
     return;
   }
 
-  const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1, weight: hasSecond ? weight1 : 100 }];
+  const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1 }];
   if (hasSecond) {
     const stat2 = document.getElementById("admin-stat-2").value;
     const target2 = parseFloat(document.getElementById("admin-target-2").value);
-    const weight2 = parseFloat(document.getElementById("admin-weight-2").value);
-    if (!target2 || !weight2) {
+    if (!target2) {
       statusEl.style.color = "#f87171";
-      statusEl.textContent = "Objective 2 target and weight are required when adding a second objective.";
+      statusEl.textContent = "Objective 2 target is required when adding a second objective.";
       return;
     }
-    objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2, weight: weight2 });
+    objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2 });
   }
 
   try {
     const res = await fetch(OBJECTIVES_DAY_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
-      body: JSON.stringify({ league: "WNBA", date, objectives }),
+      headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
+      body: JSON.stringify({ league: "WNBA", date, mode, objectives, badgeSetName: mode === "Pro" ? badgeSetName : undefined }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     statusEl.style.color = "#34d399";
-    statusEl.textContent = `Saved ${date}. It will take effect on the dashboard's next refresh.`;
+    statusEl.textContent = `Saved ${date} (${mode}). It will take effect immediately on next load.`;
     loadAdminSchedule();
   } catch (err) {
     statusEl.style.color = "#f87171";
@@ -588,8 +714,6 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
 });
 
 // -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
-const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
-
 // Rotowire's exported column header -> our internal stat code. Only stats we
 // actually track as objectives are listed; other Rotowire columns (Min, Pos,
 // FG%, FGM, FGA, DREB, 3P%, etc.) are simply ignored during table parsing.
@@ -654,9 +778,8 @@ function parseProjRows(text, stat) {
 document.getElementById("proj-save-btn").addEventListener("click", async () => {
   const statusEl = document.getElementById("proj-status");
   statusEl.style.color = "#a8aa9c";
-  statusEl.textContent = "Saving…";
+  statusEl.textContent = "Saving...";
 
-  const token = document.getElementById("admin-token").value;
   const date = document.getElementById("proj-date").value;
   const stat = document.getElementById("proj-stat").value;
   const rawText = document.getElementById("proj-rows").value;
@@ -682,13 +805,13 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
   try {
     const res = await fetch(PROJECTIONS_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": token },
+      headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
       body: JSON.stringify({ league: "WNBA", date, stat, projections: rows }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     statusEl.style.color = "#34d399";
-    statusEl.textContent = `Loaded ${rows.length} ${stat} projection(s) for ${date}. Takes effect on the dashboard's next refresh.`;
+    statusEl.textContent = `Loaded ${rows.length} ${stat} projection(s) for ${date}. Takes effect immediately on next load.`;
   } catch (err) {
     statusEl.style.color = "#f87171";
     statusEl.textContent = `Failed to save: ${err.message}`;
@@ -697,21 +820,26 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
 
 // -- Load ------------------------------------------------------------------------
 async function loadData() {
+  const existingBanner = document.getElementById("data-error-banner");
+  if (existingBanner) existingBanner.remove();
   try {
-    const res = await fetch(WORKER_URL);
+    const res = await fetch(`${WORKER_URL}?date=${selectedDate}&mode=${currentMode}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     dashboard = data;
   } catch (err) {
     const banner = document.createElement("p");
+    banner.id = "data-error-banner";
     banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
     banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
-    document.getElementById("view-main").insertBefore(banner, document.getElementById("schedule-tiles"));
+    document.getElementById("view-main").insertBefore(banner, document.getElementById("run-days").closest(".run-row"));
   }
   renderScheduleTiles();
+  renderObjectiveTiles();
   render();
 }
 
+initRunDays();
 loadData();
 </script>
 </body>
