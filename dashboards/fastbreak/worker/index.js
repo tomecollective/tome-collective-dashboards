@@ -23,8 +23,7 @@ const SUPPORTED_MODES = ["Classic", "Pro"];
 // Kept in sync with STAT_FIELD_MAP in the fastbreak-refresh Worker. Duplicated
 // here (rather than shared via an import) because these two Workers deploy
 // independently with no build step between them.
-const VALID_STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "3PM", "3PA", "FTM", "FTA", "OREB", "PITP"];
-
+const VALID_STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "3PM", "3PA", "FTM", "FTA", "OREB", "PITP"];
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
   return Boolean(env.FASTBREAK_ADMIN_TOKEN) && token === env.FASTBREAK_ADMIN_TOKEN;
