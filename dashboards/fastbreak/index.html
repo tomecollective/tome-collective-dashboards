@@ -439,7 +439,7 @@ document.getElementById("league-toggle").addEventListener("click", (e) => {
   document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
   e.target.classList.add("active");
   currentLeague = e.target.dataset.league;
- document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
+  document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
 });
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
@@ -448,7 +448,7 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
   e.target.classList.add("active");
   currentMode = e.target.dataset.mode;
   document.getElementById("mode-note").textContent =
-      currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" : "";
+    currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" : "";
   loadData();
 });
 
