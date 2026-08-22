@@ -5,8 +5,18 @@
 <title>Tome Vault: Pokemon Chase Modern EN 50</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
-h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; }
+body { background: #0a0f0d; color: #f5f5f0; font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+.page-wrap { padding: 40px; }
+.hdr { background: #8a6a17; height: 50px; display: flex; align-items: center; padding: 0 1.5rem; gap: 12px; position: sticky; top: 0; z-index: 300; font-family: Helvetica, Arial, sans-serif; }
+.hdr-logo { display: flex; align-items: center; gap: 7px; }
+.hdr-dot { width: 7px; height: 7px; border-radius: 50%; background: #d4a72c; flex-shrink: 0; }
+.hdr-name { font-size: 14px; font-weight: 600; color: #fff; letter-spacing: -0.2px; }
+.hdr-div { width: 1px; height: 18px; background: rgba(255,255,255,0.25); }
+.hdr-product { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); }
+.hdr-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.hdr-pill { font-size: 11px; font-weight: 700; text-transform: uppercase; background: rgba(0,0,0,0.2); color: #fff; padding: 3px 10px; border-radius: 20px; letter-spacing: 0.4px; }
+.pg-eye { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #d4a72c; margin-bottom: 6px; }
+h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 2.2rem; margin-bottom: 4px; margin-top: 0; }
 h2 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.5rem; color: #d4a72c; margin-top: 48px; }
 h3.era-heading { font-family: 'EB Garamond', Georgia, serif; font-size: 1.15rem; color: #8fa89f; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #1c2622; padding-bottom: 6px; margin: 32px 0 16px 0; }
 h3.era-heading:first-of-type { margin-top: 8px; }
@@ -51,6 +61,19 @@ th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacin
 </style>
 </head>
 <body>
+<div class="hdr">
+  <div class="hdr-logo">
+    <span class="hdr-dot"></span>
+    <span class="hdr-name">Tome Collective</span>
+  </div>
+  <div class="hdr-div"></div>
+  <span class="hdr-product">Tome Vault: Pokemon Chase Modern EN 50</span>
+  <div class="hdr-right">
+    <span class="hdr-pill">Vault</span>
+  </div>
+</div>
+<div class="page-wrap">
+<div class="pg-eye">Tome Collective &middot; Pokemon TCG &middot; Chase Index</div>
 <h1>Tome Vault: Pokemon Chase Modern EN 50</h1>
 <p class="subtitle" id="subtitle">Pokemon TCG chase card index, XY forward.</p>
 <p style="font-size:0.7rem;color:#6b7d76;margin-top:-8px;">Powered by Tome Analytics</p>
@@ -94,6 +117,7 @@ and rank here, but none can turn gold until the set has been out for more than 9
 <span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
 </div>
 <div id="sets-by-era"></div>
+</div>
 
 <script>
 const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
