@@ -159,7 +159,7 @@
 <div class="wrap">
 
 <div class="pg-hd">
-  <div class="pg-eye">Tome Collective &middot; NBA Top Shot &middot; Run 10</div>
+  <div class="pg-eye" id="pg-eye">Tome Collective &middot; WNBA &middot; Fast Break</div>
   <h1 class="pg-title">Tome Edge: Fast Break</h1>
   <p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
   <div class="pg-meta">Powered by Tome Analytics</div>
@@ -439,6 +439,7 @@ document.getElementById("league-toggle").addEventListener("click", (e) => {
   document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
   e.target.classList.add("active");
   currentLeague = e.target.dataset.league;
+ document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
 });
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
