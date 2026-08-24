@@ -364,18 +364,22 @@ function computeTeamScoring(games) {
   const byTeam = new Map(); // team id -> {abbr, name, ptsFor:[], ptsAgainst:[]}
   for (const g of games) {
     if (g.status !== "post") continue;
-    if (typeof g.home_team_score !== "number" || typeof g.visitor_team_score !== "number") continue;
+    // BALLDONTLIE's WNBA game schema uses home_score/away_score (confirmed
+    // against the live openapi/wnba.yml spec) -- not home_team_score/
+    // visitor_team_score, which silently returned undefined and made this
+    // function (and the schedule tiles below) always skip every game.
+    if (typeof g.home_score !== "number" || typeof g.away_score !== "number") continue;
     const home = g.home_team;
     const away = g.visitor_team;
     if (home?.id != null) {
       if (!byTeam.has(home.id)) byTeam.set(home.id, { abbr: home.abbreviation, name: home.full_name, ptsFor: [], ptsAgainst: [] });
-      byTeam.get(home.id).ptsFor.push(g.home_team_score);
-      byTeam.get(home.id).ptsAgainst.push(g.visitor_team_score);
+      byTeam.get(home.id).ptsFor.push(g.home_score);
+      byTeam.get(home.id).ptsAgainst.push(g.away_score);
     }
     if (away?.id != null) {
       if (!byTeam.has(away.id)) byTeam.set(away.id, { abbr: away.abbreviation, name: away.full_name, ptsFor: [], ptsAgainst: [] });
-      byTeam.get(away.id).ptsFor.push(g.visitor_team_score);
-      byTeam.get(away.id).ptsAgainst.push(g.home_team_score);
+      byTeam.get(away.id).ptsFor.push(g.away_score);
+      byTeam.get(away.id).ptsAgainst.push(g.home_score);
     }
   }
   const result = {};
@@ -781,8 +785,8 @@ function buildScheduleTiles(games) {
     homeName: g.home_team?.full_name || "",
     time: formatGameTime(g),
     status: g.status || "pre",
-    awayScore: g.visitor_team_score ?? null,
-    homeScore: g.home_team_score ?? null,
+    awayScore: g.away_score ?? null,
+    homeScore: g.home_score ?? null,
   }));
 }
 
