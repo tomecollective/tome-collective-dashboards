@@ -105,7 +105,11 @@
   td:first-child, td:nth-child(2), td:nth-child(3), td:nth-child(4){font-family:var(--sans);color:var(--text);}
   td:first-child{font-weight:600;}
   td strong{color:var(--text);font-weight:700;}
-
+  /* -- Injury status pill (next to player name): red = Out, yellow = anything
+      else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
+   .injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
+   .injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
+   .injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
   /* -- 5-tier color coding (locked scheme, reused from WNBA Fast Break tables) */
   td.tier-dark-green   { background: var(--tier1-bg); color: #f2fdf9; font-weight: 700; }
   td.tier-light-green  { background: var(--tier2-bg); color: var(--text); }
@@ -585,6 +589,18 @@ function tierClass(tier) {
   return tier ? `tier-${tier}` : "";
 }
 
+// Red pill for Out, yellow for anything else the player_injuries endpoint
+ // reports (Day-To-Day, Questionable, Probable, etc). title=hover text shows
+ // the fuller injury note/return date when the API provides one.
+function injuryPillHtml(p) {
+  if (!p.injuryStatus) return "";
+  const status = String(p.injuryStatus);
+  const isOut = status.toLowerCase() === "out";
+  const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
+  const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
+  return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
+ }
+ 
 function render() {
   buildHeader();
   const tbody = document.getElementById("players-body");
@@ -594,7 +610,7 @@ function render() {
 
   sorted.forEach((p) => {
     const row = document.createElement("tr");
-    let html = `<td>${p.name}</td><td>${p.team}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
+    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${p.team}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
