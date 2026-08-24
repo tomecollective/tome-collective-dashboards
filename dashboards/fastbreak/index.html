@@ -53,8 +53,8 @@
   .toggle-group button:not(:disabled):not(.active):hover { color: var(--text); background:var(--surface2); }
   .toggle-note { font-size: 0.72rem; color: var(--text-3); }
 
-  .admin-link-btn { margin-left: auto; background: var(--surface); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 9px 16px; border-radius: 10px; font-size: 0.76rem; font-weight:600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
-  .admin-link-btn:hover { color: var(--text); border-color: var(--green); }
+  .admin-link-btn { margin-left: auto; background: none; border: none; color: var(--text-3); padding: 4px 2px; font-size: 0.68rem; font-weight:500; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; text-decoration: underline; text-decoration-color: transparent; transition: all .12s; opacity: 0.75; }
+  .admin-link-btn:hover { color: var(--text-2); text-decoration-color: var(--text-3); opacity: 1; }
 
   /* -- run (day) toggle --------------------------------------------------- */
   .run-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -105,13 +105,11 @@
   td:first-child, td:nth-child(2), td:nth-child(3), td:nth-child(4){font-family:var(--sans);color:var(--text);}
   td:first-child{font-weight:600;}
   td strong{color:var(--text);font-weight:700;}
-
   /* -- Injury status pill (next to player name): red = Out, yellow = anything
-     else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
-  .injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
-  .injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
-  .injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
-
+      else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
+   .injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
+   .injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
+   .injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
   /* -- 5-tier color coding (locked scheme, reused from WNBA Fast Break tables) */
   td.tier-dark-green   { background: var(--tier1-bg); color: #f2fdf9; font-weight: 700; }
   td.tier-light-green  { background: var(--tier2-bg); color: var(--text); }
@@ -131,28 +129,32 @@
   .team-hover { cursor: help; border-bottom: 1px dotted var(--text-3); }
   td.fd-group-start, th.fd-group-start { border-left: 0.5px solid var(--border-str); }
 
-  /* -- admin view -------------------------------------------------------- */
-  #view-admin { display: none; }
-  .admin-banner { display:flex; align-items:center; gap:8px; background: rgba(255,181,21,0.1); border: 0.5px solid rgba(255,181,21,0.35); color: var(--gold); padding: 10px 16px; border-radius: var(--r); font-size: 0.8rem; margin-bottom: 20px; }
+  /* -- admin view (kept deliberately small/quiet -- this is a tool for the
+     site owner, not viewer-facing content, so it should never compete
+     visually with the dashboard itself) ----------------------------------- */
+  #view-admin { display: none; font-size: 0.85em; }
+  #view-admin h2 { font-size: 0.92rem; color: var(--text-2); }
+  .admin-banner { display:flex; align-items:center; gap:6px; background: rgba(255,181,21,0.07); border: 0.5px solid rgba(255,181,21,0.25); color: var(--text-3); padding: 6px 12px; border-radius: var(--r); font-size: 0.7rem; margin-bottom: 14px; }
   .admin-table{width:100%;}
-  .admin-table th, .admin-table td { font-size: 0.8rem; }
-  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r-lg); padding: 22px 24px; margin-top: 22px; max-width: 520px; }
-  .admin-form h2{font-size:1.05rem;margin-bottom:4px;}
-  .admin-form label { display: block; font-size: 0.7rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 14px 0 5px; }
-  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
+  .admin-table th, .admin-table td { font-size: 0.7rem; }
+  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-top: 14px; max-width: 420px; }
+  .admin-form h2{font-size:0.82rem;margin-bottom:3px;}
+  .admin-form label { display: block; font-size: 0.62rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
+  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
   .admin-form input:focus, .admin-form select:focus{border-color:var(--green);}
-  .admin-form .obj-pair { display: flex; gap: 12px; }
+  .admin-form .obj-pair { display: flex; gap: 10px; }
   .admin-form .obj-pair > div { flex: 1; }
-  .admin-form button { margin-top: 20px; background: var(--green); border: none; color: #fff; padding: 10px 20px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.85rem; transition:background .12s; }
-  .admin-form button:hover { background: var(--green-lt); }
-  #admin-status { margin-top: 12px; font-size: 0.8rem; }
-  #proj-status { margin-top: 12px; font-size: 0.8rem; }
+  .admin-form button { margin-top: 14px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; transition:all .12s; }
+  .admin-form button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+  #admin-status { margin-top: 8px; font-size: 0.7rem; }
+  #proj-status { margin-top: 8px; font-size: 0.7rem; }
 
-  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r-lg); padding: 22px 24px; max-width: 380px; margin-top:22px; }
-  .admin-gate h2 { font-size: 1.05rem; margin-bottom: 10px; }
-  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 10px; border-radius: var(--r); font-family: inherit; font-size: 0.85rem; outline:none; }
-  .admin-gate button { margin-top: 12px; background: var(--green); border: none; color: #fff; padding: 9px 18px; border-radius: var(--r); font-weight: 700; cursor: pointer; font-family: inherit; font-size: 0.82rem; }
-  #admin-gate-status { margin-top: 10px; font-size: 0.78rem; color: var(--dn); }
+  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r); padding: 14px 16px; max-width: 300px; margin-top:14px; }
+  .admin-gate h2 { font-size: 0.82rem; margin-bottom: 6px; }
+  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
+  .admin-gate button { margin-top: 8px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; }
+  .admin-gate button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+  #admin-gate-status { margin-top: 8px; font-size: 0.68rem; color: var(--dn); }
   #admin-locked-content { display:none; }
 
   ::-webkit-scrollbar{height:8px;width:8px;}
@@ -286,7 +288,7 @@
   <div id="admin-locked-content">
     <div class="admin-form">
       <h2>Set / Update a Day's Objectives</h2>
-      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
         Weight is no longer entered manually -- it's computed automatically from the share of
         players projected to clear 100% of each objective's target (the rarer feat carries more weight).
       </p>
@@ -362,15 +364,18 @@
 
     <div class="admin-form">
       <h2>Load Real Projections (Rotowire-sourced)</h2>
-      <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:4px 0 0;">
+      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
         BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
-        here -- a manual, Rotowire-sourced upload, one stat at a time. Leave a stat with no
-        upload (PITP, always) and its Proj falls back to the L10 average automatically.
+        here -- a manual, Rotowire-sourced upload. Pasting a full Rotowire table captures every
+        stat column it recognizes in one save (so both objectives on a two-objective day are
+        covered by a single paste, no need to change Stat and resubmit). Any stat with no
+        uploaded projection for a date shows Proj as TBD, except PITP, which always falls back
+        to the L10 average automatically (neither Rotowire nor standard sites project it).
       </p>
       <label>Date</label>
       <input type="date" id="proj-date">
 
-      <label>Stat</label>
+      <label>Stat (only used for a plain "Name, Value" paste below -- ignored for a full table paste, which auto-detects every stat column)</label>
       <select id="proj-stat">
         <option value="PTS">PTS</option>
         <option value="REB">REB</option>
@@ -388,8 +393,8 @@
         <option value="PITP">PITP</option>
       </select>
 
-        <label>Paste either "Name, Value" lines, or a full Rotowire table (tab-separated, with header row) -- the column matching the Stat picked above is pulled out automatically</label>
-        <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
+        <label>Paste either "Name, Value" lines for the Stat picked above, or a full Rotowire table (tab-separated, with header row) -- every recognized stat column in the table is loaded at once</label>
+        <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
       <button id="proj-save-btn">Load Projections</button>
       <div id="proj-status"></div>
     </div>
@@ -542,7 +547,7 @@ document.getElementById("admin-toggle-btn").addEventListener("click", () => {
   } else {
     setActiveView("admin");
   }
-  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin →" : "← Back to Dashboard";
+  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
   if (!showingAdmin) loadAdminSchedule();
 });
 
@@ -661,9 +666,9 @@ function tierClass(tier) {
   return tier ? `tier-${tier}` : "";
 }
 
-// Red pill for "Out", yellow for anything else BALLDONTLIE's player_injuries
-// endpoint reports (Day-To-Day, Questionable, Probable, etc.). title=hover
-// text shows the fuller injury note/return date when the API provides one.
+// Red pill for Out, yellow for anything else the player_injuries endpoint
+ // reports (Day-To-Day, Questionable, Probable, etc). title=hover text shows
+ // the fuller injury note/return date when the API provides one.
 function injuryPillHtml(p) {
   if (!p.injuryStatus) return "";
   const status = String(p.injuryStatus);
@@ -671,8 +676,8 @@ function injuryPillHtml(p) {
   const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
   const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
   return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
-}
-
+ }
+ 
 function render() {
   buildHeader();
   const tbody = document.getElementById("players-body");
@@ -686,7 +691,8 @@ function render() {
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
-      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${ov.proj ?? "--"}</td>`;
+      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
+      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
       html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
       html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
     });
@@ -720,7 +726,8 @@ function downloadCSV() {
     const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
     objCols.forEach((oc) => {
       const ov = p.objectives[oc.stat] || {};
-      row.push(ov.proj ?? "", ov.ytd ?? "", ov.l10 ?? "");
+      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "");
+      row.push(projText, ov.ytd ?? "", ov.l10 ?? "");
     });
     return row;
   });
@@ -934,39 +941,50 @@ const ROTOWIRE_HEADER_TO_STAT = {
   TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
 };
 
+// Returns { byStat: { STAT: [{name,value}, ...] }, errors: [] }. A full
+// Rotowire table paste captures EVERY column we track as a stat in one go
+// (not just whichever one happens to be selected in the Stat dropdown) --
+// that's what lets one paste cover both objectives on a two-objective day
+// without re-pasting and re-selecting per stat. The Stat dropdown only
+// matters for the plain "Name, Value" fallback below, where there's no
+// column header to identify the stat from.
 function parseProjRows(text, stat) {
   const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
-  if (!lines.length) return { rows: [], errors: [] };
+  if (!lines.length) return { byStat: {}, errors: [] };
 
   // Full Rotowire table paste: first line is a tab-separated header starting
-  // with "Player". Pull out just the column matching the selected stat.
+  // with "Player". Pull out every column that matches a stat we track.
   const headerCells = lines[0].split("\t").map((c) => c.trim());
   if (headerCells[0] === "Player" && headerCells.length > 2) {
-    const colIndex = headerCells.findIndex((h) => ROTOWIRE_HEADER_TO_STAT[h] === stat);
-    if (colIndex === -1) {
+    const statColumns = headerCells
+      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
+      .filter((c) => c.stat);
+    if (!statColumns.length) {
       return {
-        rows: [],
-        errors: [
-          `The pasted table has no column for ${stat} (columns found: ${headerCells.join(", ")}).`,
-        ],
+        byStat: {},
+        errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`],
       };
     }
-    const rows = [];
+    const byStat = {};
+    statColumns.forEach((c) => (byStat[c.stat] = []));
     const errors = [];
     lines.slice(1).forEach((line, i) => {
       const cells = line.split("\t").map((c) => c.trim());
       const name = cells[0];
-      const value = parseFloat(cells[colIndex]);
-      if (!name || Number.isNaN(value)) {
-        errors.push(`Row ${i + 2}: could not read a name and ${stat} value from "${line}"`);
-        return;
-      }
-      rows.push({ name, value });
+      statColumns.forEach(({ stat: colStat, colIndex }) => {
+        const value = parseFloat(cells[colIndex]);
+        if (!name || Number.isNaN(value)) {
+          errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
+          return;
+        }
+        byStat[colStat].push({ name, value });
+      });
     });
-    return { rows, errors };
+    return { byStat, errors };
   }
 
-  // Fallback: simple "Name, Value" per line.
+  // Fallback: simple "Name, Value" per line -- only identifies the single
+  // stat selected in the dropdown, since there's no header to read from.
   const rows = [];
   const errors = [];
   lines.forEach((line, i) => {
@@ -984,7 +1002,7 @@ function parseProjRows(text, stat) {
     }
     rows.push({ name, value });
   });
-  return { rows, errors };
+  return { byStat: rows.length ? { [stat]: rows } : {}, errors };
 }
 
 document.getElementById("proj-save-btn").addEventListener("click", async () => {
@@ -1002,31 +1020,47 @@ document.getElementById("proj-save-btn").addEventListener("click", async () => {
     return;
   }
 
-  const { rows, errors } = parseProjRows(rawText, stat);
+  const { byStat, errors } = parseProjRows(rawText, stat);
   if (errors.length) {
     statusEl.style.color = "#f87171";
     statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
     return;
   }
-  if (!rows.length) {
+  const stats = Object.keys(byStat);
+  if (!stats.length) {
     statusEl.style.color = "#f87171";
      statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
     return;
   }
 
-  try {
-    const res = await fetch(PROJECTIONS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-      body: JSON.stringify({ league: "WNBA", date, stat, projections: rows }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    statusEl.style.color = "#34d399";
-    statusEl.textContent = `Loaded ${rows.length} ${stat} projection(s) for ${date}. Takes effect immediately on next load.`;
-  } catch (err) {
+  // A full-table paste can carry every stat it recognizes in one submission
+  // (e.g. both 3PM and 3PA for a two-objective day) -- save each one with
+  // its own request against the same single-stat endpoint, then report a
+  // combined result. One request per stat either way; the difference is the
+  // admin no longer has to change the Stat dropdown and re-paste per stat.
+  const succeeded = [];
+  const failed = [];
+  for (const s of stats) {
+    try {
+      const res = await fetch(PROJECTIONS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
+        body: JSON.stringify({ league: "WNBA", date, stat: s, projections: byStat[s] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      succeeded.push(`${s} (${byStat[s].length})`);
+    } catch (err) {
+      failed.push(`${s}: ${err.message}`);
+    }
+  }
+
+  if (failed.length) {
     statusEl.style.color = "#f87171";
-    statusEl.textContent = `Failed to save: ${err.message}`;
+    statusEl.textContent = `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : "");
+  } else {
+    statusEl.style.color = "#34d399";
+    statusEl.textContent = `Loaded projections for ${date}: ${succeeded.join(", ")}. Takes effect immediately on next load.`;
   }
 });
 
