@@ -66,7 +66,7 @@
 
   /* -- game tiles (ESPN-style schedule strip) --------------------------- */
   .schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; justify-items:center; }
-  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; text-align:center; width:100%; }
+  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; text-align:center; width:100%; cursor: help; }
   .game-tile .matchup { font-weight: 700; font-size: 0.92rem; letter-spacing:-0.1px; }
   .game-tile .time { color: var(--text-3); font-size: 0.72rem; margin-top: 4px; font-family:var(--mono); }
   .schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); text-align:center; }
@@ -238,12 +238,17 @@
   <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:0 0 16px;">
     L10 and YTD averages across every Fast Break-relevant box-score stat, for every active WNBA
     player -- not just the day's objective(s) or today's slate. Rebuilds roughly once a day.
-    Hover a team abbreviation for that team's PPG/PAPG. Click any column header to sort.
+    Switch to the Teams tab for season/YTD team averages. Click any column header to sort.
   </p>
 
   <div class="fd-toolbar">
+    <div class="toggle-group" id="fd-subtab-toggle">
+      <button data-fdtab="players" class="active">Players</button>
+      <button data-fdtab="teams">Teams</button>
+    </div>
     <input type="text" class="fd-search" id="fd-search" placeholder="Search player or team...">
     <span class="fd-meta" id="fd-meta"></span>
+    <button class="export-btn" id="fd-export-csv-btn">Download CSV</button>
   </div>
 
   <div class="tbl-outer">
@@ -422,18 +427,21 @@ const RUN_END = "2026-08-30";
 const ADMIN_PASSWORD = "T0ME!";
 let adminPassword = null;
 
-let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName: null };
+let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName: null, teamAdvanced: {} };
 
 let sortKey = "base:ovrRank";
 let sortDir = 1;
 
 // -- Full Data (leaguewide L10/YTD, all stats) -------------------------------
-let fullData = { players: [], teams: {}, statCodes: [], note: "", generated_at: null };
+let fullData = { players: [], teams: {}, teamsDetail: {}, statCodes: [], note: "", generated_at: null };
 let fullDataLoaded = false;
 let fullDataLoading = false;
 let fdSortKey = "name";
 let fdSortDir = 1;
 let fdSearchTerm = "";
+let fdSubTab = "players"; // "players" | "teams"
+let fdTeamSortKey = "team";
+let fdTeamSortDir = 1;
 
 // -- View switching (main dashboard / admin / full data) ----------------------
 let activeView = "main";
@@ -576,6 +584,23 @@ document.getElementById("admin-unlock-btn").addEventListener("click", () => {
 });
 
 // -- Schedule tiles -----------------------------------------------------------
+// L10 advanced-metrics tooltip for a matchup tile (computed server-side by
+// computeTeamAdvancedMetrics -- reuses data already fetched for the day's
+// slate, zero extra BALLDONTLIE calls). Pace is raw estimated possessions/
+// game (WNBA plays 40-minute games, not the NBA's 48); OREB% is an estimate
+// (own missed shots as a proxy for true opponent-DREB data, which isn't
+// fetchable within the subrequest budget) -- both are labeled as such.
+function teamAdvancedTooltip(abbr) {
+  const t = dashboard.teamAdvanced?.[abbr];
+  if (!t) return `${abbr}: L10 advanced data unavailable`;
+  return (
+    `${abbr}  (L10 ${t.record ?? "--"})\n` +
+    `PPG ${t.l10Ppg ?? "--"}  ·  PAPG ${t.l10Papg ?? "--"}\n` +
+    `ORtg ${t.offRtg ?? "--"}  ·  DRtg ${t.defRtg ?? "--"}  ·  Pace ${t.pace ?? "--"}\n` +
+    `eFG% ${t.efgPct ?? "--"}  ·  TOV% ${t.tovPct ?? "--"}  ·  OREB% (est.) ${t.orebPctEst ?? "--"}`
+  );
+}
+
 function renderScheduleTiles() {
   const row = document.getElementById("schedule-tiles");
   row.innerHTML = "";
@@ -587,6 +612,7 @@ function renderScheduleTiles() {
     const tile = document.createElement("div");
     tile.className = "game-tile";
     tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}</div>`;
+    tile.title = `${teamAdvancedTooltip(g.awayAbbr)}\n\n${teamAdvancedTooltip(g.homeAbbr)}`;
     row.appendChild(tile);
   });
 }
@@ -819,7 +845,7 @@ function getFullDataFiltered() {
   return players;
 }
 
-function renderFullData() {
+function renderFullDataPlayers() {
   buildFullDataHeader();
   const tbody = document.getElementById("fd-players-body");
   tbody.innerHTML = "";
@@ -828,7 +854,10 @@ function renderFullData() {
 
   rows.forEach((p) => {
     const row = document.createElement("tr");
-    let html = `<td>${p.name}</td><td>${teamCellHtml(p.team)}</td>`;
+    // Full Data's Players tab shows the team abbreviation as plain text --
+    // the team-level hover tooltip now lives on the daily schedule tiles
+    // instead (see teamAdvancedTooltip / renderScheduleTiles above).
+    let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
     cols.forEach((c, i) => {
       const s = p.stats[c.code] || {};
       const groupStart = i === 0 ? " fd-group-start" : "";
@@ -852,10 +881,159 @@ function renderFullData() {
   document.getElementById("fd-note").textContent = fullData.note || "";
 }
 
+// -- Full Data: Teams sub-tab ---------------------------------------------------
+// One row per team: season/YTD PPG, PAPG, REB, OREB, AST, STL, TO, BLK, FGM,
+// FGA, FG%, 3PM, 3PA, 3P% -- sourced from teamsDetail (built server-side by
+// advanceFullDataBuild's teamBoxSums accumulation).
+const FD_TEAM_COLUMNS = [
+  { key: "ppg", label: "PPG" },
+  { key: "papg", label: "PAPG" },
+  { key: "reb", label: "REB" },
+  { key: "oreb", label: "OREB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "tov", label: "TO" },
+  { key: "blk", label: "BLK" },
+  { key: "fgm", label: "FGM" },
+  { key: "fga", label: "FGA" },
+  { key: "fgPct", label: "FG%" },
+  { key: "fg3m", label: "3PM" },
+  { key: "fg3a", label: "3PA" },
+  { key: "fg3Pct", label: "3P%" },
+];
+
+function buildFullDataTeamsHeader() {
+  const thead = document.getElementById("fd-table-head");
+  let row = `<tr><th data-fd-team-key="team">Team</th><th data-fd-team-key="gamesPlayed">GP</th>`;
+  FD_TEAM_COLUMNS.forEach((c, i) => {
+    const groupStart = i === 0 ? ' class="fd-group-start"' : "";
+    row += `<th data-fd-team-key="${c.key}"${groupStart}>${c.label}</th>`;
+  });
+  row += `</tr>`;
+  thead.innerHTML = row;
+
+  thead.querySelectorAll("th[data-fd-team-key]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.fdTeamKey;
+      fdTeamSortDir = fdTeamSortKey === key ? -fdTeamSortDir : 1;
+      fdTeamSortKey = key;
+      renderFullDataTeams();
+    });
+  });
+}
+
+function getFullDataTeamsFiltered() {
+  const term = fdSearchTerm.trim().toLowerCase();
+  const teamsDetail = fullData.teamsDetail || {};
+  let teams = Object.entries(teamsDetail).map(([abbr, t]) => ({ abbr, ...t }));
+  if (term) {
+    teams = teams.filter((t) => t.abbr.toLowerCase().includes(term) || (t.team || "").toLowerCase().includes(term));
+  }
+  teams.sort((a, b) => {
+    const key = fdTeamSortKey === "team" ? "abbr" : fdTeamSortKey;
+    let av = a[key];
+    let bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdTeamSortDir;
+    return String(av).localeCompare(String(bv)) * fdTeamSortDir;
+  });
+  return teams;
+}
+
+function renderFullDataTeams() {
+  buildFullDataTeamsHeader();
+  const tbody = document.getElementById("fd-players-body");
+  tbody.innerHTML = "";
+  const rows = getFullDataTeamsFiltered();
+
+  rows.forEach((t) => {
+    const row = document.createElement("tr");
+    let html = `<td>${t.abbr}</td><td>${t.gamesPlayed ?? "--"}</td>`;
+    FD_TEAM_COLUMNS.forEach((c, i) => {
+      const groupStart = i === 0 ? " fd-group-start" : "";
+      html += `<td class="${groupStart}">${t[c.key] ?? "--"}</td>`;
+    });
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
+
+  document.querySelectorAll("#fd-table-head th").forEach((th) => {
+    th.classList.remove("sorted-asc", "sorted-desc");
+    if (th.dataset.fdTeamKey === fdTeamSortKey) th.classList.add(fdTeamSortDir === 1 ? "sorted-asc" : "sorted-desc");
+  });
+
+  const metaEl = document.getElementById("fd-meta");
+  if (metaEl) {
+    const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
+    metaEl.textContent = `${rows.length} of ${Object.keys(fullData.teamsDetail || {}).length} teams · last generated ${generated}`;
+  }
+  document.getElementById("fd-note").textContent = fullData.note || "";
+}
+
+function renderFullData() {
+  if (fdSubTab === "teams") renderFullDataTeams();
+  else renderFullDataPlayers();
+}
+
 document.getElementById("fd-search").addEventListener("input", (e) => {
   fdSearchTerm = e.target.value;
   renderFullData();
 });
+
+document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    fdSubTab = btn.dataset.fdtab;
+    document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b === btn));
+    renderFullData();
+  });
+});
+
+// -- Full Data: CSV export (whichever sub-tab -- Players or Teams -- is active) --
+function downloadFullDataCSV() {
+  const today = new Date();
+  const dateSuffix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  if (fdSubTab === "teams") {
+    const headers = ["Team", "GP", ...FD_TEAM_COLUMNS.map((c) => c.label)];
+    const rows = getFullDataTeamsFiltered().map((t) => [t.abbr, t.gamesPlayed ?? "", ...FD_TEAM_COLUMNS.map((c) => t[c.key] ?? "")]);
+    const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+    const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `tome-edge-fastbreak-fulldata-teams-${dateSuffix}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const cols = fdColumns();
+  const headers = ["Player", "Team"];
+  cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
+  const rows = getFullDataFiltered().map((p) => {
+    const row = [p.name, p.team];
+    cols.forEach((c) => {
+      const s = p.stats[c.code] || {};
+      row.push(s.l10 ?? "", s.ytd ?? "");
+    });
+    return row;
+  });
+  const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+  const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tome-edge-fastbreak-fulldata-players-${dateSuffix}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+document.getElementById("fd-export-csv-btn").addEventListener("click", downloadFullDataCSV);
 
 // -- Admin: view schedule -----------------------------------------------------
 async function loadAdminSchedule() {
