@@ -302,6 +302,10 @@ const FULLDATA_ROSTER_MAX_PAGES = 4; // safety cap: 4 * per_page(100) = room for
 // player_game_advanced_stats endpoint and would double the per-chunk request
 // cost across the whole league roster).
 const FULLDATA_STAT_CODES = Object.keys(STAT_FIELD_MAP).filter((code) => STAT_FIELD_MAP[code].source === "stats");
+// Box-score codes summed per-team (YTD) to build the Team Data tab's season
+// averages (REB, OREB, AST, STL, BLK, TOV, FGM, FGA, 3PM, 3PA) -- FG%/3P% are
+// derived from these sums at finish time rather than averaged directly.
+const TEAM_BOX_CODES = ["REB", "OREB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "3PM", "3PA"];
 
 // All active players leaguewide (no team filter), paginated -- a full WNBA
 // roster is 150-200+ active players, well past the per_page=100 cap that the
@@ -482,6 +486,7 @@ async function advanceFullDataBuild(env, budget) {
       teamScoring,
       pendingChunks: chunk(playerIds, PLAYER_CHUNK_SIZE),
       results: {},
+      teamBoxSums: {},
       truncatedRoster: rosterResult.truncated,
       truncatedRecent: recentResult.truncated,
       truncatedYtd: ytdResult.truncated,
@@ -533,6 +538,27 @@ async function advanceFullDataBuild(env, budget) {
         };
       }
       state.results[pid] = { id: pid, name: player.name, team: player.team, stats };
+
+      // Accumulate this player's raw YTD box-score totals into their roster
+      // team's running sums (used to build season/YTD team averages at
+      // finish time). Summing raw per-game values across all of a team's
+      // players' rows and dividing by the team's games-played (from
+      // teamScoring) yields the team's per-game average -- no extra
+      // BALLDONTLIE subrequests needed since ytdRows is already fetched
+      // above for this player's own L10/YTD stat lines.
+      if (player.team) {
+        if (!state.teamBoxSums[player.team]) {
+          state.teamBoxSums[player.team] = { REB: 0, OREB: 0, AST: 0, STL: 0, BLK: 0, TOV: 0, FGM: 0, FGA: 0, "3PM": 0, "3PA": 0 };
+        }
+        const sums = state.teamBoxSums[player.team];
+        for (const code of TEAM_BOX_CODES) {
+          const def = STAT_FIELD_MAP[code];
+          for (const row of ytdRows) {
+            const v = def.field(row);
+            if (typeof v === "number") sums[code] += v;
+          }
+        }
+      }
     }
 
     processedChunks += 1;
@@ -541,6 +567,37 @@ async function advanceFullDataBuild(env, budget) {
   const finished = state.pendingChunks.length === 0;
   if (finished) {
     const players = Object.values(state.results).sort((a, b) => a.name.localeCompare(b.name));
+
+    // Combine teamScoring (PPG/PAPG from final scores) with teamBoxSums
+    // (season totals of box-score categories) into one per-team detail
+    // object for the Team Data tab. Averages = sum / gamesPlayed;
+    // percentages derived from the summed makes/attempts (not averaged
+    // per-player percentages, which would be mathematically wrong).
+    const teamsDetail = {};
+    for (const [abbr, scoring] of Object.entries(state.teamScoring)) {
+      const sums = state.teamBoxSums[abbr] || { REB: 0, OREB: 0, AST: 0, STL: 0, BLK: 0, TOV: 0, FGM: 0, FGA: 0, "3PM": 0, "3PA": 0 };
+      const gp = scoring.gamesPlayed || 0;
+      const perGame = (code) => (gp > 0 ? round1(sums[code] / gp) : null);
+      teamsDetail[abbr] = {
+        team: scoring.team,
+        gamesPlayed: gp,
+        ppg: scoring.ppg,
+        papg: scoring.papg,
+        reb: perGame("REB"),
+        oreb: perGame("OREB"),
+        ast: perGame("AST"),
+        stl: perGame("STL"),
+        blk: perGame("BLK"),
+        tov: perGame("TOV"),
+        fgm: perGame("FGM"),
+        fga: perGame("FGA"),
+        fgPct: sums.FGA > 0 ? round1((sums.FGM / sums.FGA) * 100) : null,
+        fg3m: perGame("3PM"),
+        fg3a: perGame("3PA"),
+        fg3Pct: sums["3PA"] > 0 ? round1((sums["3PM"] / sums["3PA"]) * 100) : null,
+      };
+    }
+
     const payload = {
       dashboard_name: "Fast Break Full Data",
       league: SUPPORTED_LEAGUE,
@@ -548,6 +605,7 @@ async function advanceFullDataBuild(env, budget) {
       generated_at: new Date().toISOString(),
       statCodes: FULLDATA_STAT_CODES,
       teams: state.teamScoring,
+      teamsDetail,
       players,
       note:
         "Leaguewide L10/YTD for every active WNBA player across all Fast Break-relevant box-score stats. PITP is intentionally excluded here (it lives under a separate advanced-stats endpoint) to stay within the ALL-STAR-tier BALLDONTLIE key's subrequest budget across the full roster. Team PPG/PAPG are computed directly from this season's final scores, not from BALLDONTLIE's GOAT-tier team season stats endpoints." +
@@ -790,6 +848,116 @@ function buildScheduleTiles(games) {
   }));
 }
 
+// L10 advanced team metrics (ORtg/DRtg/Pace/eFG%/TOV%/OREB%(est.)/record) for
+// the day's playing teams, shown on the daily schedule-matchup hover. Computed
+// entirely from data buildDashboard already fetches for its own player-level
+// purposes (recentResult.games + statsByPlayer) -- zero extra BALLDONTLIE
+// subrequests. Possessions are estimated per-game via the standard formula
+// (FGA - OREB + TOV + 0.44*FTA); OREB% has no true opponent-DREB data
+// available within budget, so it is approximated as
+// OREB / (FGA - FGM) (offensive rebounds per own missed shot) and must be
+// labeled "(est.)" wherever it's surfaced. Pace is raw estimated possessions
+// per game (WNBA plays 40-minute games, not the NBA's 48) -- do not label it
+// as a standard "per-48" pace stat.
+function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames, last10GameIds) {
+  const result = {};
+  const rosterByTeam = new Map();
+  for (const p of roster) {
+    const tid = p.team?.id;
+    if (tid == null) continue;
+    if (!rosterByTeam.has(tid)) rosterByTeam.set(tid, []);
+    rosterByTeam.get(tid).push(p.id);
+  }
+
+  for (const teamId of teamIds) {
+    const teamGames = recentGames
+      .filter(
+        (g) =>
+          g.status === "post" &&
+          last10GameIds.has(g.id) &&
+          (g.home_team?.id === teamId || g.visitor_team?.id === teamId)
+      )
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10);
+
+    if (teamGames.length === 0) continue;
+
+    const abbr =
+      teamGames[0].home_team?.id === teamId
+        ? teamGames[0].home_team?.abbreviation
+        : teamGames[0].visitor_team?.abbreviation;
+    const teamPlayerIds = rosterByTeam.get(teamId) || [];
+
+    let sumTeamPts = 0;
+    let sumOppPts = 0;
+    let sumPoss = 0;
+    let sumFGM = 0;
+    let sumFGA = 0;
+    let sumFG3M = 0;
+    let sumOREB = 0;
+    let sumTOV = 0;
+    let wins = 0;
+    let losses = 0;
+    let gamesCounted = 0;
+
+    for (const g of teamGames) {
+      if (typeof g.home_score !== "number" || typeof g.away_score !== "number") continue;
+      const isHome = g.home_team?.id === teamId;
+      const teamPts = isHome ? g.home_score : g.away_score;
+      const oppPts = isHome ? g.away_score : g.home_score;
+
+      let gFGM = 0;
+      let gFGA = 0;
+      let gFG3M = 0;
+      let gOREB = 0;
+      let gTOV = 0;
+      let gFTA = 0;
+      for (const pid of teamPlayerIds) {
+        const byGame = statsByPlayer.get(pid);
+        const row = byGame?.get(g.id);
+        if (!row) continue;
+        if (typeof row.fgm === "number") gFGM += row.fgm;
+        if (typeof row.fga === "number") gFGA += row.fga;
+        if (typeof row.fg3m === "number") gFG3M += row.fg3m;
+        if (typeof row.oreb === "number") gOREB += row.oreb;
+        if (typeof row.turnover === "number") gTOV += row.turnover;
+        if (typeof row.fta === "number") gFTA += row.fta;
+      }
+      const gPoss = gFGA - gOREB + gTOV + 0.44 * gFTA;
+
+      sumTeamPts += teamPts;
+      sumOppPts += oppPts;
+      sumPoss += gPoss;
+      sumFGM += gFGM;
+      sumFGA += gFGA;
+      sumFG3M += gFG3M;
+      sumOREB += gOREB;
+      sumTOV += gTOV;
+      gamesCounted += 1;
+      if (teamPts > oppPts) wins += 1;
+      else if (teamPts < oppPts) losses += 1;
+    }
+
+    if (gamesCounted === 0) continue;
+
+    const missedFG = sumFGA - sumFGM;
+    result[abbr] = {
+      gamesPlayed: gamesCounted,
+      l10Ppg: round1(sumTeamPts / gamesCounted),
+      l10Papg: round1(sumOppPts / gamesCounted),
+      offRtg: sumPoss > 0 ? round1((100 * sumTeamPts) / sumPoss) : null,
+      defRtg: sumPoss > 0 ? round1((100 * sumOppPts) / sumPoss) : null,
+      pace: round1(sumPoss / gamesCounted),
+      efgPct: sumFGA > 0 ? round1(((sumFGM + 0.5 * sumFG3M) / sumFGA) * 100) : null,
+      tovPct: sumPoss > 0 ? round1((sumTOV / sumPoss) * 100) : null,
+      orebPctEst: missedFG > 0 ? round1((sumOREB / missedFG) * 100) : null,
+      record: `${wins}-${losses}`,
+    };
+  }
+
+  return result;
+}
+
 // -- Main build -----------------------------------------------------------------
 
 async function buildDashboard(env, { date, mode } = {}) {
@@ -929,6 +1097,11 @@ async function buildDashboard(env, { date, mode } = {}) {
     }
   }
 
+  // L10 advanced team metrics for the daily schedule-matchup hover -- reuses
+  // recentResult.games and statsByPlayer already fetched above, so this adds
+  // zero BALLDONTLIE subrequests.
+  const teamAdvanced = computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentResult.games, last10GameIds);
+
   const rosterById = new Map(roster.map((p) => [p.id, p]));
 
   function rowsForObjective(stat, pid) {
@@ -1058,6 +1231,7 @@ async function buildDashboard(env, { date, mode } = {}) {
     objectives: weightedObjectives,
     note: notes.join(" "),
     players,
+    teamAdvanced,
     _subrequests_used: subrequests,
     _generated_at: new Date().toISOString(),
   };
@@ -1273,9 +1447,11 @@ export const __testables__ = {
   etDateStrForGame,
   addDaysStr,
   computeTeamScoring,
+  computeTeamAdvancedMetrics,
   advanceFullDataBuild,
   loadFullDataBuildState,
   FULLDATA_STAT_CODES,
+  TEAM_BOX_CODES,
   FULLDATA_KV_KEY,
   FULLDATA_BUILD_KV_KEY,
 };
