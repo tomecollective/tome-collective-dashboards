@@ -165,6 +165,24 @@ async function getTeamRosters(teamIds, env) {
   return data.data || [];
 }
 
+// Current injury reports for the teams playing today. player_injuries always
+// returns live data (never historical), and status values seen in the wild
+// include Out, Day-To-Day, and Questionable -- the frontend maps those
+// to a red (Out) or yellow (everything else, i.e. probable/questionable/
+// day-to-day) pill next to the player name. Requires ALL-STAR tier or higher
+// on the BALLDONTLIE key; if the key lacks access, this fails soft (empty
+// map) rather than breaking the whole dashboard build.
+async function getInjuriesForTeams(teamIds, env) {
+  const qs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
+  try {
+    const data = await bdlFetch(`/player_injuries?${qs}&per_page=100`, env);
+    return data.data || [];
+  } catch (err) {
+    console.error(`player_injuries fetch failed (continuing without injury data): ${err.message}`);
+    return [];
+  }
+}
+
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -534,6 +552,9 @@ async function buildDashboard(env, { date, mode } = {}) {
 
   const roster = await getTeamRosters(teamIds, env);
   subrequests += 1;
+  const injuries = await getInjuriesForTeams(teamIds, env);
+  subrequests += 1;
+  const injuryByPlayerId = new Map(injuries.map((inj) => [inj.player?.id, inj]));
   const season = currentSeason();
 
   // Last-10 / YTD windows are always computed relative to the REAL today
@@ -692,11 +713,14 @@ async function buildDashboard(env, { date, mode } = {}) {
       };
     }
 
+    const injury = injuryByPlayerId.get(pid);
     return {
       id: pid,
       name: playerName,
       team: player.team?.abbreviation || "",
       opp: opponentByTeam.get(player.team?.id) || "",
+      injuryStatus: injury?.status || null,
+      injuryNote: injury?.description || injury?.comment || injury?.return_date || null,
       objectives: objectiveValues,
     };
   });
