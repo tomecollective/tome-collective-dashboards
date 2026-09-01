@@ -61,6 +61,27 @@ th { color: #d4a72c; text-transform: uppercase; font-size: 0.7rem; letter-spacin
 .explainer { color: #8fa89f; margin-bottom: 32px; max-width: 640px; line-height: 1.5; }
 .export-btn { background: #d4a72c; color: #1a1a1a; border: none; padding: 8px 16px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; margin-bottom: 16px; }
 .export-btn:hover { background: #e0b53f; }
+.badge-icon { display: inline-flex; align-items: center; gap: 3px; margin-left: 7px; font-size: 0.72rem; cursor: help; vertical-align: middle; }
+.badge-icon svg { flex-shrink: 0; display: block; }
+.badge-stale { color: #b8892c; }
+.badge-newset { color: #6b93a8; }
+.set-card li .badge-icon { margin-left: 5px; }
+.page-footer { margin-top: 56px; padding-top: 28px; border-top: 1px solid #1c2622; }
+.page-footer h3 { font-family: 'EB Garamond', Georgia, serif; font-size: 1.05rem; color: #d4a72c; margin: 0 0 8px 0; }
+.footer-note { color: #8fa89f; font-size: 0.8rem; line-height: 1.55; max-width: 680px; margin: 0 0 24px 0; }
+.footer-note:last-child { margin-bottom: 0; }
+.footer-note .badge-icon { margin-left: 0; margin-right: 6px; }
+#history-section { margin-top: 8px; }
+.history-entry { border-left: 2px solid #1c2622; padding: 4px 0 18px 16px; margin-bottom: 4px; }
+.history-date { font-size: 0.78rem; color: #d4a72c; font-weight: bold; margin-bottom: 6px; }
+.history-note { font-size: 0.78rem; color: #8fa89f; margin-bottom: 8px; max-width: 640px; line-height: 1.5; }
+.history-cols { display: flex; gap: 32px; flex-wrap: wrap; }
+.history-col-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.history-col-label.added { color: #3ea86b; }
+.history-col-label.removed { color: #c0392b; }
+.history-col ul { margin: 0; padding-left: 16px; }
+.history-col li { font-size: 0.8rem; color: #f5f5f0; padding: 2px 0; }
+.history-empty { font-size: 0.8rem; color: #6b7d76; font-style: italic; }
 </style>
 </head>
 <body>
@@ -120,6 +141,16 @@ and rank here, but none can turn gold until the set has been out for more than 9
 <span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
 </div>
 <div id="sets-by-era"></div>
+
+<h2>Historical Changes</h2>
+<p class="subtitle" style="max-width:700px">Cards added to and removed from the index at each monthly update, most recent first.</p>
+<div id="history-section"></div>
+
+<div class="page-footer">
+  <h3>What the badges mean</h3>
+  <p class="footer-note"><span class="badge-icon badge-stale" id="footer-stale-icon"></span><strong>Stale price</strong> — this card's listed price hasn't changed in 5+ consecutive days because there's no newer completed sale to move it. That can mean the card genuinely isn't trading right now, or that a data pull hasn't caught a newer sale yet. Either way, treat a stale price as unconfirmed rather than live — the number next to the icon is how many days it's been flat.</p>
+  <p class="footer-note"><span class="badge-icon badge-newset" id="footer-newset-icon"></span><strong>New, not-yet-eligible set</strong> — a newly released set's cards can be shown, ranked, and shortlisted in the Full Candidate Pool right away, but none of them can enter the actual Top 50 index until the set has been out for more than 90 days. That's why a card can sit in its set's top 5 (even ranked gold-worthy on price) while this badge is showing, but won't appear in Index Holdings above until the set clears that 90-day mark.</p>
+</div>
 </div>
 
 <script>
@@ -134,6 +165,62 @@ const SET_ELIGIBILITY_DAYS = 90;
 // A set can never contribute more than this many cards to the final index,
 // no matter what the underlying data says.
 const MAX_GOLD_PER_SET = 3;
+
+// A card's price is flagged "stale" once it's gone this many consecutive
+// days without changing (see cardStaleness() below).
+const STALE_THRESHOLD_DAYS = 5;
+
+// Small inline icons for the two badge types. Kept as raw SVG strings (not
+// emoji) so they render consistently with the rest of the page's theme.
+// Full definitions live in the footer (#page-footer) rather than a
+// per-badge tooltip, to keep table rows uncluttered — each badge still
+// carries a short `title` attribute for hover/accessibility.
+const ICON_STALE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.5V8L10.3 9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_NEWSET_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M4 14H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 2C5 5 8 6 8 8C8 6 11 5 11 2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 14C5 11 8 10 8 8C8 10 11 11 11 14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+
+// Fill the two static footer icons once at load (they don't depend on data).
+document.addEventListener("DOMContentLoaded", () => {
+  const s = document.getElementById("footer-stale-icon");
+  const n = document.getElementById("footer-newset-icon");
+  if (s) s.innerHTML = ICON_STALE_SVG;
+  if (n) n.innerHTML = ICON_NEWSET_SVG;
+});
+
+// Walks a card's history backwards from the latest point and counts how
+// many consecutive days the price has been exactly unchanged. Returns
+// { streakDays, lastChangeDate } or null if there's no history to check.
+function cardStaleness(card) {
+  const hist = (card.history || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (!hist.length) return null;
+  const lastPrice = hist[hist.length - 1].price;
+  let streak = 1;
+  let lastChangeIdx = hist.length - 1;
+  for (let i = hist.length - 2; i >= 0; i--) {
+    if (hist[i].price === lastPrice) {
+      streak++;
+      lastChangeIdx = i;
+    } else {
+      break;
+    }
+  }
+  return { streakDays: streak, lastChangeDate: hist[lastChangeIdx].date };
+}
+
+// Icon + day-count only (e.g. "12d") — no "STALE" label, so it doesn't
+// crowd the Price column. Full definition lives in the page footer.
+function staleBadgeHTML(staleness) {
+  if (!staleness || staleness.streakDays < STALE_THRESHOLD_DAYS) return "";
+  return `<span class="badge-icon badge-stale" title="Price unchanged for ${staleness.streakDays} days — see &quot;What the badges mean&quot; below">${ICON_STALE_SVG}${staleness.streakDays}d</span>`;
+}
+
+// Small icon marking a candidate from a set that isn't old enough to earn
+// a gold (in-index) slot yet — see the eligibility gate explained in the
+// footer. Only shown in the Full Candidate Pool, never in Index Holdings
+// (every card there is, by definition, already eligible).
+function newSetBadgeHTML(eligible) {
+  if (eligible) return "";
+  return `<span class="badge-icon badge-newset" title="Set not yet eligible for the index — see &quot;What the badges mean&quot; below">${ICON_NEWSET_SVG}</span>`;
+}
 
 // Eras rendered oldest-first, closing the gap between the Vintage (WOTC)
 // index and this Modern one. Any era name in the data that isn't listed
@@ -521,7 +608,8 @@ const priceDisplay = card.price !== null
 ? "$" + card.price.toFixed(2)
 : '<span class="unverified">unverified</span>';
 const { daily, wow } = cardChanges(card);
-row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td><td>${formatChangeCell(daily)}</td><td>${formatChangeCell(wow)}</td>`;
+const staleBadge = staleBadgeHTML(cardStaleness(card));
+row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}${staleBadge}</td><td>${formatChangeCell(daily)}</td><td>${formatChangeCell(wow)}</td>`;
 tbody.appendChild(row);
 });
 
@@ -579,7 +667,8 @@ const eligible = isSetEligibleForGold(set);
 
 const items = tiered.map(({ card, tier }) => {
 const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : "unverified";
-return `<li class="tier-${tier}">${card.name} <span class="price">${priceDisplay}</span></li>`;
+const newSetBadge = newSetBadgeHTML(eligible);
+return `<li class="tier-${tier}">${card.name}${newSetBadge} <span class="price">${priceDisplay}</span></li>`;
 }).join("");
 
 const releaseNote = set.release_date
@@ -600,8 +689,56 @@ container.appendChild(grid);
 });
 }
 
+// Renders the Historical Changes section from data/index-history.json —
+// a snapshot recorded at each monthly update (see that file for how a new
+// entry gets appended). Newest entry first. Purely additive to the live
+// price data above; missing/unreachable file just leaves the section empty
+// rather than breaking the rest of the page.
+async function loadHistory() {
+  const container = document.getElementById("history-section");
+  let history;
+  try {
+    const res = await fetch("data/index-history.json");
+    if (!res.ok) throw new Error("status " + res.status);
+    history = await res.json();
+  } catch (err) {
+    container.innerHTML = '<p class="history-empty">Historical changes data isn\'t available right now.</p>';
+    return;
+  }
+
+  const updates = (history.updates || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!updates.length) {
+    container.innerHTML = '<p class="history-empty">No historical updates recorded yet.</p>';
+    return;
+  }
+
+  container.innerHTML = updates.map(u => {
+    const added = u.added || [];
+    const removed = u.removed || [];
+    const noteHTML = u.note ? `<div class="history-note">${u.note}</div>` : "";
+    const addedList = added.length
+      ? `<ul>${added.map(c => `<li>${c.name} <span style="color:#8fa89f">(${c.set})</span></li>`).join("")}</ul>`
+      : '<div class="history-empty">None</div>';
+    const removedList = removed.length
+      ? `<ul>${removed.map(c => `<li>${c.name} <span style="color:#8fa89f">(${c.set})</span></li>`).join("")}</ul>`
+      : '<div class="history-empty">None</div>';
+    return `
+      <div class="history-entry">
+        <div class="history-date">${formatReleaseDate(u.date)}</div>
+        ${noteHTML}
+        <div class="history-cols">
+          <div class="history-col"><div class="history-col-label added">Added</div>${addedList}</div>
+          <div class="history-col"><div class="history-col-label removed">Removed</div>${removedList}</div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
 loadIndex().catch(err => {
 document.body.innerHTML += "<p style='color:#c0392b'>Failed to load index data: " + err.message + "</p>";
+});
+loadHistory().catch(err => {
+document.getElementById("history-section").innerHTML = '<p class="history-empty">Historical changes data isn\'t available right now.</p>';
 });
 </script>
 </body>
