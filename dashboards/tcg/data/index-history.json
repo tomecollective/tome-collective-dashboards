@@ -1,0 +1,312 @@
+{
+  "updates": [
+    {
+      "date": "2026-09-01",
+      "note": "First snapshot recorded under the new historical-changes tracker. No prior snapshot exists to diff against, so this establishes the baseline \u2014 future monthly updates will show cards added to and removed from the index here.",
+      "added": [],
+      "removed": [],
+      "index_snapshot": [
+        {
+          "name": "Latias & Latios GX (Alternate Full Art) - 170/181",
+          "set": "Team Up",
+          "price": 3833.92,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Umbreon VMAX (Alternate Art Secret) - 215/203",
+          "set": "Evolving Skies",
+          "price": 2235.94,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Gengar & Mimikyu GX (Alternate Full Art) - 165/181",
+          "set": "Team Up",
+          "price": 1799.16,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "M Charizard EX (X) (Secret) - 108/106",
+          "set": "Flashfire",
+          "price": 1501.23,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Umbreon ex - 161/131",
+          "set": "Prismatic Evolutions",
+          "price": 1451.94,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Rayquaza VMAX (Alternate Art Secret) - 218/203",
+          "set": "Evolving Skies",
+          "price": 1249.33,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "M Rayquaza EX (Shiny Full Art) - 98/98",
+          "set": "Ancient Origins",
+          "price": 1069.91,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Pikachu ex - 276/217",
+          "set": "Ascended Heroes",
+          "price": 1033.08,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Gengar VMAX (Alternate Art Secret) - 271/264",
+          "set": "Fusion Strike",
+          "price": 1025.91,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Dialga EX (122 Secret Rare) - 122/119",
+          "set": "Phantom Forces",
+          "price": 1013.58,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Mega Gengar ex - 284/217",
+          "set": "Ascended Heroes",
+          "price": 952.95,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Mew ex - 232/091",
+          "set": "Paldean Fates",
+          "price": 923.82,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Magikarp & Wailord GX (Alternate Full Art) - 161/181",
+          "set": "Team Up",
+          "price": 843.13,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Giratina V (Alternate Full Art) - 186/196",
+          "set": "Lost Origin",
+          "price": 826.57,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Mewtwo GX (Secret Shining) - 78/73",
+          "set": "Shining Legends",
+          "price": 809.37,
+          "rarity": "Shiny Holo Rare"
+        },
+        {
+          "name": "Gengar EX (114 Full Art) - 114/119",
+          "set": "Phantom Forces",
+          "price": 768.15,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Mega Charizard X ex - 125/094",
+          "set": "Phantasmal Flames",
+          "price": 698.73,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Charizard GX (Secret) - 150/147",
+          "set": "Burning Shadows",
+          "price": 698.31,
+          "rarity": "Rainbow Rare"
+        },
+        {
+          "name": "Gardevoir & Sylveon GX (205) (Alternate Full Art) - 205/214",
+          "set": "Unbroken Bonds",
+          "price": 639.38,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Mega Dragonite ex - 290/217",
+          "set": "Ascended Heroes",
+          "price": 634.2,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Victini - 171/086",
+          "set": "Black Bolt",
+          "price": 623.52,
+          "rarity": "Black White Rare"
+        },
+        {
+          "name": "Zekrom ex - 172/086",
+          "set": "Black Bolt",
+          "price": 615.16,
+          "rarity": "Black White Rare"
+        },
+        {
+          "name": "Victini - 172/086",
+          "set": "White Flare",
+          "price": 568.94,
+          "rarity": "Black White Rare"
+        },
+        {
+          "name": "Arceus & Dialga & Palkia GX (Alternate Full Art) - 221/236",
+          "set": "Cosmic Eclipse",
+          "price": 568.04,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "M Gengar EX (121 Secret Rare) - 121/119",
+          "set": "Phantom Forces",
+          "price": 563.67,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Sylveon ex - 156/131",
+          "set": "Prismatic Evolutions",
+          "price": 541.74,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Dragonite V (Alternate Full Art) - 192/203",
+          "set": "Evolving Skies",
+          "price": 533.69,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Lugia V (Alternate Full Art) - 186/195",
+          "set": "Silver Tempest",
+          "price": 524.94,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Team Aqua's Kyogre EX - 6/34",
+          "set": "Double Crisis",
+          "price": 520.91,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Blastoise & Piplup GX (Alternate Full Art) - 215/236",
+          "set": "Cosmic Eclipse",
+          "price": 494.2,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "M Rayquaza EX (105 Full Art) - 105/108",
+          "set": "Roaring Skies",
+          "price": 491.57,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Reshiram ex - 173/086",
+          "set": "White Flare",
+          "price": 489.18,
+          "rarity": "Black White Rare"
+        },
+        {
+          "name": "Team Magma's Groudon EX - 15/34",
+          "set": "Double Crisis",
+          "price": 479.62,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Team Rocket's Mewtwo ex - 231/182",
+          "set": "Destined Rivals",
+          "price": 472.63,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Lillie (Full Art) - 151/156",
+          "set": "Ultra Prism",
+          "price": 470.3,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Primal Kyogre EX (Shiny Full Art) - 96/98",
+          "set": "Ancient Origins",
+          "price": 466.45,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Reshiram & Zekrom GX (Full Art) - 222/236",
+          "set": "Cosmic Eclipse",
+          "price": 417.85,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Mewtwo & Mew GX (Secret) - 242/236",
+          "set": "Unified Minds",
+          "price": 414.92,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Mega Sableye & Tyranitar GX (Alternate Full Art) - 226/236",
+          "set": "Unified Minds",
+          "price": 386.43,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Blaziken VMAX (Alternate Art Secret) - 201/198",
+          "set": "Chilling Reign",
+          "price": 385.31,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Magikarp - 203/193",
+          "set": "Paldea Evolved",
+          "price": 378.78,
+          "rarity": "Illustration Rare"
+        },
+        {
+          "name": "Greninja ex - 214/167",
+          "set": "Twilight Masquerade",
+          "price": 370.23,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Charizard ex - 199/165",
+          "set": "Scarlet & Violet 151",
+          "price": 368.57,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Misty's Favor (Full Art) - 235/236",
+          "set": "Unified Minds",
+          "price": 368.17,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Greninja & Zoroark GX (201) (Alternate Full Art) - 201/214",
+          "set": "Unbroken Bonds",
+          "price": 346.71,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Espeon VMAX (Alternate Art Secret) - 270/264",
+          "set": "Fusion Strike",
+          "price": 344.19,
+          "rarity": "Secret Rare"
+        },
+        {
+          "name": "Leafeon ex - 144/131",
+          "set": "Prismatic Evolutions",
+          "price": 340.75,
+          "rarity": "Special Illustration Rare"
+        },
+        {
+          "name": "Primal Groudon EX (Shiny Full Art) - 97/98",
+          "set": "Ancient Origins",
+          "price": 327.12,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "Primal Kyogre EX (Alpha - 149 Full Art) - 149/160",
+          "set": "Primal Clash",
+          "price": 323.19,
+          "rarity": "Ultra Rare"
+        },
+        {
+          "name": "M Charizard EX (Y) (Secret) - 107/106",
+          "set": "Flashfire",
+          "price": 321.89,
+          "rarity": "Secret Rare"
+        }
+      ]
+    }
+  ]
+}
