@@ -1,8 +1,8 @@
 {
   "updates": [
     {
-      "date": "2026-09-01",
-      "note": "First snapshot recorded under the new historical-changes tracker. No prior snapshot exists to diff against, so this establishes the baseline \u2014 future monthly updates will show cards added to and removed from the index here.",
+      "date": "2026-08-31",
+      "note": "First snapshot recorded under the new historical-changes tracker. No prior snapshot exists to diff against, so this establishes the baseline. Top 50 composition confirmed unchanged this update (no cards added or removed) \u2014 future monthly updates will show cards added to and removed from the index here.",
       "added": [],
       "removed": [],
       "index_snapshot": [
