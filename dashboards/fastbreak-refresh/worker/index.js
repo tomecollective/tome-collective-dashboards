@@ -10,6 +10,23 @@
 // separate Classic objective set and Pro objective set (Pro also carries an
 // optional Top Shot badge/set name). The frontend's day toggle asks this
 // Worker to build any date in that window on demand.
+//
+// NBA HISTORIC: a second, independent mode lives in ./historic.js -- a
+// simulated NBA season (no live game feed exists for it) seeded from last
+// season's fastbreak_historic_stats sheet. It reads/writes its own
+// "fastbreak:historic:*" KV keys only, so it cannot affect anything WNBA
+// (fastbreak:latest, fastbreak:objectives, fastbreak:fulldata, ...) in this
+// same namespace. See the three new /api/fastbreak/historic* routes below --
+// that's the entire integration surface; buildDashboard/refreshAndStore and
+// the scheduled() cron handler are untouched.
+
+import {
+  simulateHistoricDay,
+  buildHistoricDashboard,
+  seedHistoric,
+  getCurrentHistoricDay,
+  setCurrentHistoricDay,
+} from "./historic.js";
 
 const BALLDONTLIE_BASE = "https://api.balldontlie.io/wnba/v1";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -35,8 +52,11 @@ function isWithinRun(dateStr) {
 }
 
 // -- League / mode -----------------------------------------------------------
-// Only WNBA has live data right now. NBA (season not in progress) and Historic
-// (no historical pipeline built yet) are disabled in the frontend toggle.
+// Only WNBA has live data right now. NBA (season not in progress) is disabled
+// in the frontend toggle. Historic (NBA) now has a pipeline -- see
+// ./historic.js and the /api/fastbreak/historic* routes below -- but it runs
+// fully independently of buildDashboard/SUPPORTED_LEAGUE, so this constant
+// deliberately still describes only the live BALLDONTLIE-backed path.
 // Classic and Pro each carry their own objective set for a given date (see
 // objectivesForDate below) -- Pro additionally carries a Top Shot badge/set
 // requirement (badgeSetName).
@@ -1394,6 +1414,73 @@ export default {
       );
     }
 
+    // -- NBA Historic (simulated season) -----------------------------------
+    // Entirely separate code path from everything above: reads/writes only
+    // the "fastbreak:historic:*" KV keys (see historic.js), never touches
+    // BALLDONTLIE, and is not called by the cron scheduled() handler below --
+    // advancing a day is an explicit admin action, not automatic, until
+    // there's a real launch date to put on a schedule.
+
+    // Public read: today's (or a specified day's) Historic dashboard, same
+    // response shape as the WNBA payload above so the existing frontend
+    // table can render it without new parsing logic.
+    if (url.pathname === "/api/fastbreak/historic" && request.method === "GET") {
+      try {
+        const dayParam = url.searchParams.get("day");
+        const day = dayParam ? Number(dayParam) : undefined;
+        const dashboard = await buildHistoricDashboard(env, { day });
+        return new Response(JSON.stringify(dashboard, null, 2), { headers: corsHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // Admin: load players/schedule/objectives (the build_players.js/
+    // build_schedule.js/build_objectives.js output from the prototype
+    // pipeline). Overwrite-in-place on the historic:* keys -- safe to call
+    // repeatedly while iterating on the roster before launch.
+    if (url.pathname === "/api/fastbreak/historic/seed" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+      try {
+        const body = await request.json();
+        const result = await seedHistoric(env, {
+          players: body.players,
+          schedule: body.schedule,
+          objectives: body.objectives,
+        });
+        return new Response(JSON.stringify(result), { headers: corsHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // Admin: simulate the next day's box scores and advance the public
+    // "current day" pointer. This is the manual stand-in for what a
+    // Cloudflare Cron Trigger should do automatically once Historic has a
+    // real launch date -- see the PR description for that follow-up.
+    if (url.pathname === "/api/fastbreak/historic/advance" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
+          status: 401,
+          headers: corsHeaders,
+        });
+      }
+      try {
+        const body = await request.json().catch(() => ({}));
+        const nextDay = body.day || (await getCurrentHistoricDay(env)) + (body.fromCurrent === false ? 0 : 1);
+        const simResult = await simulateHistoricDay(env, nextDay);
+        await setCurrentHistoricDay(env, nextDay);
+        return new Response(JSON.stringify({ ok: true, day: nextDay, ...simResult }), { headers: corsHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 
@@ -1420,6 +1507,14 @@ export default {
         console.error("full-data build tick failed (continuing):", err.message);
       }
     }
+
+    // NBA Historic is NOT advanced here -- see the /api/fastbreak/historic/
+    // advance route above. Wiring it into this cron tick (once there's a
+    // real launch date) is a one-line addition: await simulateHistoricDay(
+    // env, (await getCurrentHistoricDay(env)) + 1) followed by
+    // setCurrentHistoricDay -- deliberately left as a follow-up rather than
+    // done here, so Historic can't start advancing on its own before anyone
+    // has decided the season should be running.
   },
 };
 

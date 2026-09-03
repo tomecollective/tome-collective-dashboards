@@ -7,403 +7,403 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  *,*::before,*::after{box-sizing:border-box;}
+*,*::before,*::after{box-sizing:border-box;}
 
-  :root{
-    --green:#0C7958;--green-lt:#0fa377;--gold:#FFB515;
-    --bg:#0f1009;--surface:#181910;--surface2:#1e201a;--surface3:#262820;
-    --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);--border-str:rgba(255,255,255,0.18);
-    --text:#eaecdf;--text-2:#a8aa9c;--text-3:#6a6c60;
-    --up:#34d399;--dn:#f87171;
-    --sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
-    --r:8px;--r-lg:14px;
-    --tier1-bg:rgba(15,163,119,0.55);--tier2-bg:rgba(15,163,119,0.26);
-    --tier3-bg:rgba(255,181,21,0.30);--tier4-bg:rgba(255,181,21,0.13);
-  }
+:root{
+--green:#0C7958;--green-lt:#0fa377;--gold:#FFB515;
+--bg:#0f1009;--surface:#181910;--surface2:#1e201a;--surface3:#262820;
+--border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);--border-str:rgba(255,255,255,0.18);
+--text:#eaecdf;--text-2:#a8aa9c;--text-3:#6a6c60;
+--up:#34d399;--dn:#f87171;
+--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+--r:8px;--r-lg:14px;
+--tier1-bg:rgba(15,163,119,0.55);--tier2-bg:rgba(15,163,119,0.26);
+--tier3-bg:rgba(255,181,21,0.30);--tier4-bg:rgba(255,181,21,0.13);
+}
 
-  body{margin:0;padding:0;font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;}
-  a{color:var(--green-lt);}
+body{margin:0;padding:0;font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;}
+a{color:var(--green-lt);}
 
-  h1,h2{font-family:var(--sans);font-weight:700;letter-spacing:-0.3px;margin:0;}
+h1,h2{font-family:var(--sans);font-weight:700;letter-spacing:-0.3px;margin:0;}
 
-  /* -- header bar ------------------------------------------------------- */
-  .hdr{background:var(--green);height:50px;display:flex;align-items:center;padding:0 1.5rem;gap:12px;position:sticky;top:0;z-index:300;}
-  .hdr-logo{display:flex;align-items:center;gap:7px;}
-  .hdr-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;}
-  .hdr-name{font-size:14px;font-weight:600;color:#fff;letter-spacing:-0.2px;}
-  .hdr-div{width:1px;height:18px;background:rgba(255,255,255,0.25);}
-  .hdr-product{font-size:13px;font-weight:500;color:rgba(255,255,255,0.8);}
-  .hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
-  .hdr-pill{font-size:11px;font-weight:600;background:rgba(255,255,255,0.14);color:rgba(255,255,255,0.85);padding:3px 10px;border-radius:20px;letter-spacing:0.2px;}
+/* -- header bar ------------------------------------------------------- */
+.hdr{background:var(--green);height:50px;display:flex;align-items:center;padding:0 1.5rem;gap:12px;position:sticky;top:0;z-index:300;}
+.hdr-logo{display:flex;align-items:center;gap:7px;}
+.hdr-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;}
+.hdr-name{font-size:14px;font-weight:600;color:#fff;letter-spacing:-0.2px;}
+.hdr-div{width:1px;height:18px;background:rgba(255,255,255,0.25);}
+.hdr-product{font-size:13px;font-weight:500;color:rgba(255,255,255,0.8);}
+.hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.hdr-pill{font-size:11px;font-weight:600;background:rgba(255,255,255,0.14);color:rgba(255,255,255,0.85);padding:3px 10px;border-radius:20px;letter-spacing:0.2px;}
 
-  /* -- layout ------------------------------------------------------------ */
-  .wrap{max-width:1320px;margin:0 auto;padding:1.5rem 1.5rem 4rem;}
-  .pg-hd{margin-bottom:1.25rem;}
-  .pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green-lt);margin-bottom:4px;}
-  .pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
-  .pg-sub{font-size:13px;color:var(--text-2);margin-top:5px;max-width:640px;line-height:1.5;}
-  .pg-meta{font-size:11px;color:var(--text-3);margin-top:8px;}
+/* -- layout ------------------------------------------------------------ */
+.wrap{max-width:1320px;margin:0 auto;padding:1.5rem 1.5rem 4rem;}
+.pg-hd{margin-bottom:1.25rem;}
+.pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green-lt);margin-bottom:4px;}
+.pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
+.pg-sub{font-size:13px;color:var(--text-2);margin-top:5px;max-width:640px;line-height:1.5;}
+.pg-meta{font-size:11px;color:var(--text-3);margin-top:8px;}
 
-  /* -- toggles ------------------------------------------------------- */
-  .toggle-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
-  .toggle-group { display: flex; gap: 4px; background:var(--surface); border: 0.5px solid var(--border); border-radius: 11px; padding:4px; width: fit-content; }
-  .toggle-group button { background: transparent; border: none; border-radius:8px; color: var(--text-2); padding: 8px 18px; font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
-  .toggle-group button.active { background: var(--green); color: #fff; box-shadow:0 2px 8px rgba(12,121,88,0.35); }
-  .toggle-group button:disabled { color: #3d423b; cursor: not-allowed; background: transparent; }
-  .toggle-group button:not(:disabled):not(.active):hover { color: var(--text); background:var(--surface2); }
-  .toggle-note { font-size: 0.72rem; color: var(--text-3); }
+/* -- toggles ------------------------------------------------------- */
+.toggle-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
+.toggle-group { display: flex; gap: 4px; background:var(--surface); border: 0.5px solid var(--border); border-radius: 11px; padding:4px; width: fit-content; }
+.toggle-group button { background: transparent; border: none; border-radius:8px; color: var(--text-2); padding: 8px 18px; font-size: 0.78rem; font-weight: 600; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; transition: all .12s; }
+.toggle-group button.active { background: var(--green); color: #fff; box-shadow:0 2px 8px rgba(12,121,88,0.35); }
+.toggle-group button:disabled { color: #3d423b; cursor: not-allowed; background: transparent; }
+.toggle-group button:not(:disabled):not(.active):hover { color: var(--text); background:var(--surface2); }
+.toggle-note { font-size: 0.72rem; color: var(--text-3); }
 
-  .admin-link-btn { margin-left: auto; background: none; border: none; color: var(--text-3); padding: 4px 2px; font-size: 0.68rem; font-weight:500; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; text-decoration: underline; text-decoration-color: transparent; transition: all .12s; opacity: 0.75; }
-  .admin-link-btn:hover { color: var(--text-2); text-decoration-color: var(--text-3); opacity: 1; }
+.admin-link-btn { margin-left: auto; background: none; border: none; color: var(--text-3); padding: 4px 2px; font-size: 0.68rem; font-weight:500; cursor: pointer; font-family: inherit; letter-spacing: 0.02em; text-decoration: underline; text-decoration-color: transparent; transition: all .12s; opacity: 0.75; }
+.admin-link-btn:hover { color: var(--text-2); text-decoration-color: var(--text-3); opacity: 1; }
 
-  /* -- run (day) toggle --------------------------------------------------- */
-  .run-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-  .run-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-3); }
-  .run-days { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
-  .run-day-btn { flex-shrink:0; background:var(--surface); border:0.5px solid var(--border); color:var(--text-2); padding:7px 12px; border-radius:9px; font-size:0.72rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
-  .run-day-btn.active { background:var(--green); color:#fff; border-color:var(--green); }
-  .run-day-btn:hover:not(.active) { color:var(--text); border-color:var(--border-str); }
+/* -- run (day) toggle --------------------------------------------------- */
+.run-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.run-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-3); }
+.run-days { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+.run-day-btn { flex-shrink:0; background:var(--surface); border:0.5px solid var(--border); color:var(--text-2); padding:7px 12px; border-radius:9px; font-size:0.72rem; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.run-day-btn.active { background:var(--green); color:#fff; border-color:var(--green); }
+.run-day-btn:hover:not(.active) { color:var(--text); border-color:var(--border-str); }
 
-  /* -- game tiles (ESPN-style schedule strip) --------------------------- */
-  .schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; justify-items:center; }
-  .game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; text-align:center; width:100%; cursor: help; }
-  .game-tile .matchup { font-weight: 700; font-size: 0.92rem; letter-spacing:-0.1px; }
-  .game-tile .time { color: var(--text-3); font-size: 0.72rem; margin-top: 4px; font-family:var(--mono); }
-  .schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); text-align:center; }
+/* -- game tiles (ESPN-style schedule strip) --------------------------- */
+.schedule-row { display: grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap: 10px; margin-bottom: 24px; justify-items:center; }
+.game-tile { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 11px 14px; text-align:center; width:100%; cursor: help; }
+.game-tile .matchup { font-weight: 700; font-size: 0.92rem; letter-spacing:-0.1px; }
+.game-tile .time { color: var(--text-3); font-size: 0.72rem; margin-top: 4px; font-family:var(--mono); }
+.schedule-empty { color: var(--text-3); font-size: 0.85rem; margin-bottom: 24px; padding:0.9rem; background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); text-align:center; }
 
-  /* -- objective / badge tiles -------------------------------------------- */
-  .objective-row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:24px; }
-  .objective-tile { background:var(--surface2); border:0.5px solid var(--border-str); border-radius:var(--r); padding:10px 18px; text-align:center; min-width:120px; }
-  .objective-tile .val { font-size:1.15rem; font-weight:700; color:var(--text); }
-  .objective-tile .lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-3); margin-top:2px; }
-  .objective-tile.badge-tile .val { color:var(--gold); font-size:0.95rem; }
+/* -- objective / badge tiles -------------------------------------------- */
+.objective-row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:24px; }
+.objective-tile { background:var(--surface2); border:0.5px solid var(--border-str); border-radius:var(--r); padding:10px 18px; text-align:center; min-width:120px; }
+.objective-tile .val { font-size:1.15rem; font-weight:700; color:var(--text); }
+.objective-tile .lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-3); margin-top:2px; }
+.objective-tile.badge-tile .val { color:var(--gold); font-size:0.95rem; }
 
-  /* -- toolbar (export + legend) ----------------------------------------- */
-  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:0.85rem;}
-  .export-btn { background: var(--green); color: #fff; border: none; padding: 9px 18px; border-radius: var(--r); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; transition: background .12s; margin-left:auto; }
-  .export-btn:hover { background: var(--green-lt); }
+/* -- toolbar (export + legend) ----------------------------------------- */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:0.85rem;}
+.export-btn { background: var(--green); color: #fff; border: none; padding: 9px 18px; border-radius: var(--r); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; transition: background .12s; margin-left:auto; }
+.export-btn:hover { background: var(--green-lt); }
 
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.72rem; color: var(--text-2); }
-  .legend span.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.72rem; color: var(--text-2); }
+.legend span.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
 
-  /* -- table ------------------------------------------------------------ */
-  .tbl-outer{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;}
-  .tbl-scroll{overflow-x:auto;}
-  table { width: 100%; border-collapse: collapse; font-size:12.5px; min-width:820px; }
-  thead tr{background:var(--surface2);}
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
-  th { color: var(--text-3); text-transform: uppercase; font-size: 0.66rem; font-weight:700; letter-spacing: 0.05em; cursor: pointer; user-select: none; position:sticky; top:0; background:var(--surface2); }
-  th:hover { color: var(--text); }
-  th.sorted-asc, th.sorted-desc{ color:var(--green-lt); }
-  th.sorted-asc::after { content: " \25B2"; opacity:0.85; }
-  th.sorted-desc::after { content: " \25BC"; opacity:0.85; }
-  th.obj-group-start { border-left: 0.5px solid var(--border-str); }
-  td.obj-group-start{ border-left: 0.5px solid var(--border-str); }
-  tbody tr:last-child td{border-bottom:none;}
-  tbody tr:hover{background:var(--surface2);}
-  td{font-family:var(--mono);font-size:12px;color:var(--text-2);}
-  td:first-child, td:nth-child(2), td:nth-child(3), td:nth-child(4){font-family:var(--sans);color:var(--text);}
-  td:first-child{font-weight:600;}
-  td strong{color:var(--text);font-weight:700;}
-  /* -- Injury status pill (next to player name): red = Out, yellow = anything
-      else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
-   .injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
-   .injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
-   .injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
-  /* -- 5-tier color coding (locked scheme, reused from WNBA Fast Break tables) */
-  td.tier-dark-green   { background: var(--tier1-bg); color: #f2fdf9; font-weight: 700; }
-  td.tier-light-green  { background: var(--tier2-bg); color: var(--text); }
-  td.tier-yellow        { background: var(--tier3-bg); color: var(--text); }
-  td.tier-light-yellow  { background: var(--tier4-bg); color: var(--text); }
+/* -- table ------------------------------------------------------------ */
+.tbl-outer{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;}
+.tbl-scroll{overflow-x:auto;}
+table { width: 100%; border-collapse: collapse; font-size:12.5px; min-width:820px; }
+thead tr{background:var(--surface2);}
+th, td { text-align: left; padding: 10px 12px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+th { color: var(--text-3); text-transform: uppercase; font-size: 0.66rem; font-weight:700; letter-spacing: 0.05em; cursor: pointer; user-select: none; position:sticky; top:0; background:var(--surface2); }
+th:hover { color: var(--text); }
+th.sorted-asc, th.sorted-desc{ color:var(--green-lt); }
+th.sorted-asc::after { content: " \25B2"; opacity:0.85; }
+th.sorted-desc::after { content: " \25BC"; opacity:0.85; }
+th.obj-group-start { border-left: 0.5px solid var(--border-str); }
+td.obj-group-start{ border-left: 0.5px solid var(--border-str); }
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface2);}
+td{font-family:var(--mono);font-size:12px;color:var(--text-2);}
+td:first-child, td:nth-child(2), td:nth-child(3), td:nth-child(4){font-family:var(--sans);color:var(--text);}
+td:first-child{font-weight:600;}
+td strong{color:var(--text);font-weight:700;}
+/* -- Injury status pill (next to player name): red = Out, yellow = anything
+else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
+.injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
+.injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
+.injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
+/* -- 5-tier color coding (locked scheme, reused from WNBA Fast Break tables) */
+td.tier-dark-green { background: var(--tier1-bg); color: #f2fdf9; font-weight: 700; }
+td.tier-light-green { background: var(--tier2-bg); color: var(--text); }
+td.tier-yellow { background: var(--tier3-bg); color: var(--text); }
+td.tier-light-yellow { background: var(--tier4-bg); color: var(--text); }
 
-  .note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
+.note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
 
-  /* -- Full Data tab ------------------------------------------------------- */
-  #view-fulldata { display: none; }
-  .fd-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:0.85rem; }
-  .fd-search { background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 12px; border-radius: var(--r); font-family: inherit; font-size: 0.82rem; outline:none; min-width:220px; }
-  .fd-search:focus { border-color: var(--green); }
-  .fd-meta { font-size: 0.72rem; color: var(--text-3); margin-left:auto; }
-  /* Team abbreviation hover: dotted underline signals a PPG/PAPG tooltip
-     (native title attribute) is available -- no extra markup/JS needed. */
-  .team-hover { cursor: help; border-bottom: 1px dotted var(--text-3); }
-  td.fd-group-start, th.fd-group-start { border-left: 0.5px solid var(--border-str); }
+/* -- Full Data tab ------------------------------------------------------- */
+#view-fulldata { display: none; }
+.fd-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:0.85rem; }
+.fd-search { background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 12px; border-radius: var(--r); font-family: inherit; font-size: 0.82rem; outline:none; min-width:220px; }
+.fd-search:focus { border-color: var(--green); }
+.fd-meta { font-size: 0.72rem; color: var(--text-3); margin-left:auto; }
+/* Team abbreviation hover: dotted underline signals a PPG/PAPG tooltip
+(native title attribute) is available -- no extra markup/JS needed. */
+.team-hover { cursor: help; border-bottom: 1px dotted var(--text-3); }
+td.fd-group-start, th.fd-group-start { border-left: 0.5px solid var(--border-str); }
 
-  /* -- admin view (kept deliberately small/quiet -- this is a tool for the
-     site owner, not viewer-facing content, so it should never compete
-     visually with the dashboard itself) ----------------------------------- */
-  #view-admin { display: none; font-size: 0.85em; }
-  #view-admin h2 { font-size: 0.92rem; color: var(--text-2); }
-  .admin-banner { display:flex; align-items:center; gap:6px; background: rgba(255,181,21,0.07); border: 0.5px solid rgba(255,181,21,0.25); color: var(--text-3); padding: 6px 12px; border-radius: var(--r); font-size: 0.7rem; margin-bottom: 14px; }
-  .admin-table{width:100%;}
-  .admin-table th, .admin-table td { font-size: 0.7rem; }
-  .admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-top: 14px; max-width: 420px; }
-  .admin-form h2{font-size:0.82rem;margin-bottom:3px;}
-  .admin-form label { display: block; font-size: 0.62rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
-  .admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
-  .admin-form input:focus, .admin-form select:focus{border-color:var(--green);}
-  .admin-form .obj-pair { display: flex; gap: 10px; }
-  .admin-form .obj-pair > div { flex: 1; }
-  .admin-form button { margin-top: 14px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; transition:all .12s; }
-  .admin-form button:hover { background: var(--green); color: #fff; border-color: var(--green); }
-  #admin-status { margin-top: 8px; font-size: 0.7rem; }
-  #proj-status { margin-top: 8px; font-size: 0.7rem; }
+/* -- admin view (kept deliberately small/quiet -- this is a tool for the
+site owner, not viewer-facing content, so it should never compete
+visually with the dashboard itself) ----------------------------------- */
+#view-admin { display: none; font-size: 0.85em; }
+#view-admin h2 { font-size: 0.92rem; color: var(--text-2); }
+.admin-banner { display:flex; align-items:center; gap:6px; background: rgba(255,181,21,0.07); border: 0.5px solid rgba(255,181,21,0.25); color: var(--text-3); padding: 6px 12px; border-radius: var(--r); font-size: 0.7rem; margin-bottom: 14px; }
+.admin-table{width:100%;}
+.admin-table th, .admin-table td { font-size: 0.7rem; }
+.admin-form { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-top: 14px; max-width: 420px; }
+.admin-form h2{font-size:0.82rem;margin-bottom:3px;}
+.admin-form label { display: block; font-size: 0.62rem; font-weight:600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
+.admin-form input, .admin-form select { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
+.admin-form input:focus, .admin-form select:focus{border-color:var(--green);}
+.admin-form .obj-pair { display: flex; gap: 10px; }
+.admin-form .obj-pair > div { flex: 1; }
+.admin-form button { margin-top: 14px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; transition:all .12s; }
+.admin-form button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+#admin-status { margin-top: 8px; font-size: 0.7rem; }
+#proj-status { margin-top: 8px; font-size: 0.7rem; }
 
-  .admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r); padding: 14px 16px; max-width: 300px; margin-top:14px; }
-  .admin-gate h2 { font-size: 0.82rem; margin-bottom: 6px; }
-  .admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
-  .admin-gate button { margin-top: 8px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; }
-  .admin-gate button:hover { background: var(--green); color: #fff; border-color: var(--green); }
-  #admin-gate-status { margin-top: 8px; font-size: 0.68rem; color: var(--dn); }
-  #admin-locked-content { display:none; }
+.admin-gate { background: var(--surface); border: 0.5px solid var(--border-str); border-radius: var(--r); padding: 14px 16px; max-width: 300px; margin-top:14px; }
+.admin-gate h2 { font-size: 0.82rem; margin-bottom: 6px; }
+.admin-gate input { width: 100%; box-sizing: border-box; background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 6px 8px; border-radius: var(--r); font-family: inherit; font-size: 0.75rem; outline:none; }
+.admin-gate button { margin-top: 8px; background: var(--surface3); border: 0.5px solid var(--border-str); color: var(--text-2); padding: 6px 14px; border-radius: var(--r); font-weight: 600; cursor: pointer; font-family: inherit; font-size: 0.72rem; }
+.admin-gate button:hover { background: var(--green); color: #fff; border-color: var(--green); }
+#admin-gate-status { margin-top: 8px; font-size: 0.68rem; color: var(--dn); }
+#admin-locked-content { display:none; }
 
-  ::-webkit-scrollbar{height:8px;width:8px;}
-  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+::-webkit-scrollbar{height:8px;width:8px;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
 </style>
 </head>
 <body>
 
 <div class="hdr">
-  <div class="hdr-logo">
-    <span class="hdr-dot"></span>
-    <span class="hdr-name">Tome Collective</span>
-  </div>
-  <div class="hdr-div"></div>
-  <span class="hdr-product">Tome Edge: Fast Break</span>
-  <div class="hdr-right">
-    <span class="hdr-pill">Edge</span>
-  </div>
+<div class="hdr-logo">
+<span class="hdr-dot"></span>
+<span class="hdr-name">Tome Collective</span>
+</div>
+<div class="hdr-div"></div>
+<span class="hdr-product">Tome Edge: Fast Break</span>
+<div class="hdr-right">
+<span class="hdr-pill">Edge</span>
+</div>
 </div>
 
 <div class="wrap">
 
 <div class="pg-hd">
-  <div class="pg-eye" id="pg-eye">Tome Collective &middot; WNBA &middot; Fast Break</div>
-  <h1 class="pg-title">Tome Edge: Fast Break</h1>
-  <p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
-  <div class="pg-meta">Powered by Tome Analytics</div>
+<div class="pg-eye" id="pg-eye">Tome Collective &middot; WNBA &middot; Fast Break</div>
+<h1 class="pg-title">Tome Edge: Fast Break</h1>
+<p class="pg-sub">Today's objective(s), one weighted Ovr Rank per player. Click any column header to sort.</p>
+<div class="pg-meta">Powered by Tome Analytics</div>
 </div>
 
 <div class="toggle-row">
-  <div class="toggle-group" id="league-toggle">
-    <button data-league="NBA" disabled title="Season not in progress">NBA</button>
-    <button data-league="WNBA" class="active">WNBA</button>
-  </div>
-  <div class="toggle-group" id="mode-toggle">
-    <button data-mode="Classic" class="active">Classic</button>
-    <button data-mode="Pro">Pro</button>
-    <button data-mode="Historic" disabled title="Not built yet">Historic</button>
-    <button data-mode="FullData" title="Every active player's L10/YTD across all Fast Break stats">Full Data</button>
-  </div>
-  <span class="toggle-note" id="mode-note"></span>
-  <button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin &rarr;</button>
+<div class="toggle-group" id="league-toggle">
+<button data-league="NBA" disabled title="Season not in progress">NBA</button>
+<button data-league="WNBA" class="active">WNBA</button>
+</div>
+<div class="toggle-group" id="mode-toggle">
+<button data-mode="Classic" class="active">Classic</button>
+<button data-mode="Pro">Pro</button>
+<button data-mode="Historic" disabled title="Not built yet">Historic</button>
+<button data-mode="FullData" title="Every active player's L10/YTD across all Fast Break stats">Full Data</button>
+</div>
+<span class="toggle-note" id="mode-note"></span>
+<button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin &rarr;</button>
 </div>
 
 <div id="view-main">
 
-  <div class="run-row">
-    <span class="run-label">Run 10</span>
-    <div class="run-days" id="run-days"></div>
-  </div>
+<div class="run-row">
+<span class="run-label">Run 10</span>
+<div class="run-days" id="run-days"></div>
+</div>
 
-  <div id="schedule-tiles" class="schedule-row"></div>
+<div id="schedule-tiles" class="schedule-row"></div>
 
-  <div id="objective-tiles" class="objective-row"></div>
+<div id="objective-tiles" class="objective-row"></div>
 
-  <div class="toolbar">
-    <div class="legend" id="color-legend">
-      <span><span class="swatch" style="background:var(--tier1-bg)"></span>&ge;125% of target</span>
-      <span><span class="swatch" style="background:var(--tier2-bg)"></span>&ge;100%</span>
-      <span><span class="swatch" style="background:var(--tier3-bg)"></span>&ge;90%</span>
-      <span><span class="swatch" style="background:var(--tier4-bg)"></span>&ge;75%</span>
-      <span>no fill: below 75%</span>
-    </div>
-    <button class="export-btn" id="export-csv-btn">Download CSV</button>
-  </div>
+<div class="toolbar">
+<div class="legend" id="color-legend">
+<span><span class="swatch" style="background:var(--tier1-bg)"></span>&ge;125% of target</span>
+<span><span class="swatch" style="background:var(--tier2-bg)"></span>&ge;100%</span>
+<span><span class="swatch" style="background:var(--tier3-bg)"></span>&ge;90%</span>
+<span><span class="swatch" style="background:var(--tier4-bg)"></span>&ge;75%</span>
+<span>no fill: below 75%</span>
+</div>
+<button class="export-btn" id="export-csv-btn">Download CSV</button>
+</div>
 
-  <div class="tbl-outer">
-    <div class="tbl-scroll">
-      <table>
-        <thead id="table-head"></thead>
-        <tbody id="players-body"></tbody>
-      </table>
-    </div>
-  </div>
+<div class="tbl-outer">
+<div class="tbl-scroll">
+<table>
+<thead id="table-head"></thead>
+<tbody id="players-body"></tbody>
+</table>
+</div>
+</div>
 
-  <p class="note" id="dashboard-note"></p>
+<p class="note" id="dashboard-note"></p>
 </div>
 
 <div id="view-fulldata">
-  <h2 style="font-size:1.05rem;margin-bottom:6px;">Full Data: Every Active Player</h2>
-  <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:0 0 16px;">
-    L10 and YTD averages across every Fast Break-relevant box-score stat, for every active WNBA
-    player -- not just the day's objective(s) or today's slate. Rebuilds roughly once a day.
-    Switch to the Teams tab for season/YTD team averages. Click any column header to sort.
-  </p>
+<h2 style="font-size:1.05rem;margin-bottom:6px;">Full Data: Every Active Player</h2>
+<p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:0 0 16px;">
+L10 and YTD averages across every Fast Break-relevant box-score stat, for every active WNBA
+player -- not just the day's objective(s) or today's slate. Rebuilds roughly once a day.
+Switch to the Teams tab for season/YTD team averages. Click any column header to sort.
+</p>
 
-  <div class="fd-toolbar">
-    <div class="toggle-group" id="fd-subtab-toggle">
-      <button data-fdtab="players" class="active">Players</button>
-      <button data-fdtab="teams">Teams</button>
-    </div>
-    <input type="text" class="fd-search" id="fd-search" placeholder="Search player or team...">
-    <span class="fd-meta" id="fd-meta"></span>
-    <button class="export-btn" id="fd-export-csv-btn">Download CSV</button>
-  </div>
+<div class="fd-toolbar">
+<div class="toggle-group" id="fd-subtab-toggle">
+<button data-fdtab="players" class="active">Players</button>
+<button data-fdtab="teams">Teams</button>
+</div>
+<input type="text" class="fd-search" id="fd-search" placeholder="Search player or team...">
+<span class="fd-meta" id="fd-meta"></span>
+<button class="export-btn" id="fd-export-csv-btn">Download CSV</button>
+</div>
 
-  <div class="tbl-outer">
-    <div class="tbl-scroll">
-      <table>
-        <thead id="fd-table-head"></thead>
-        <tbody id="fd-players-body"></tbody>
-      </table>
-    </div>
-  </div>
+<div class="tbl-outer">
+<div class="tbl-scroll">
+<table>
+<thead id="fd-table-head"></thead>
+<tbody id="fd-players-body"></tbody>
+</table>
+</div>
+</div>
 
-  <p class="note" id="fd-note"></p>
+<p class="note" id="fd-note"></p>
 </div>
 
 <div id="view-admin">
-  <h2>Objectives Schedule (Admin)</h2>
-  <div class="admin-banner">
-    This view is visible to anyone, but read-only at this layer -- the schedule can only be
-    changed through the forms below, which are locked behind the admin password. Nothing
-    here is editable by clicking on the page content itself.
-  </div>
+<h2>Objectives Schedule (Admin)</h2>
+<div class="admin-banner">
+This view is visible to anyone, but read-only at this layer -- the schedule can only be
+changed through the forms below, which are locked behind the admin password. Nothing
+here is editable by clicking on the page content itself.
+</div>
 
-  <div class="tbl-outer">
-    <div class="tbl-scroll">
-      <table class="admin-table">
-        <thead>
-          <tr><th>Date</th><th>Classic</th><th>Pro</th><th>Badge/Set</th></tr>
-        </thead>
-        <tbody id="admin-schedule-body"></tbody>
-      </table>
-    </div>
-  </div>
+<div class="tbl-outer">
+<div class="tbl-scroll">
+<table class="admin-table">
+<thead>
+<tr><th>Date</th><th>Classic</th><th>Pro</th><th>Badge/Set</th></tr>
+</thead>
+<tbody id="admin-schedule-body"></tbody>
+</table>
+</div>
+</div>
 
-  <div class="admin-gate" id="admin-gate">
-    <h2>Admin Tools</h2>
-    <label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Password</label>
-    <input type="password" id="admin-password-input" placeholder="Required to unlock">
-    <button id="admin-unlock-btn">Unlock</button>
-    <div id="admin-gate-status"></div>
-  </div>
+<div class="admin-gate" id="admin-gate">
+<h2>Admin Tools</h2>
+<label style="display:block;font-size:0.7rem;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Password</label>
+<input type="password" id="admin-password-input" placeholder="Required to unlock">
+<button id="admin-unlock-btn">Unlock</button>
+<div id="admin-gate-status"></div>
+</div>
 
-  <div id="admin-locked-content">
-    <div class="admin-form">
-      <h2>Set / Update a Day's Objectives</h2>
-      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
-        Weight is no longer entered manually -- it's computed automatically from the share of
-        players projected to clear 100% of each objective's target (the rarer feat carries more weight).
-      </p>
+<div id="admin-locked-content">
+<div class="admin-form">
+<h2>Set / Update a Day's Objectives</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Weight is no longer entered manually -- it's computed automatically from the share of
+players projected to clear 100% of each objective's target (the rarer feat carries more weight).
+</p>
 
-      <label>Mode</label>
-      <select id="admin-mode">
-        <option value="Classic">Classic</option>
-        <option value="Pro">Pro</option>
-      </select>
+<label>Mode</label>
+<select id="admin-mode">
+<option value="Classic">Classic</option>
+<option value="Pro">Pro</option>
+</select>
 
-      <label>Date</label>
-      <input type="date" id="admin-date">
+<label>Date</label>
+<input type="date" id="admin-date">
 
-      <div class="obj-pair">
-        <div>
-          <label>Objective 1</label>
-          <select id="admin-stat-1">
-            <option value="PTS">PTS</option>
-            <option value="REB">REB</option>
-            <option value="AST">AST</option>
-            <option value="STL">STL</option>
-            <option value="BLK">BLK</option>
-            <option value="TOV">TOV</option>
-            <option value="FGM">FGM</option>
-            <option value="FGA">FGA</option>
-            <option value="3PM">3PM</option>
-            <option value="3PA">3PA</option>
-            <option value="FTM">FTM</option>
-            <option value="FTA">FTA</option>
-            <option value="OREB">OREB</option>
-            <option value="PITP">PITP</option>
-          </select>
-        </div>
-        <div>
-          <label>Daily Team Target</label>
-          <input type="number" id="admin-target-1" placeholder="e.g. 12">
-        </div>
-      </div>
+<div class="obj-pair">
+<div>
+<label>Objective 1</label>
+<select id="admin-stat-1">
+<option value="PTS">PTS</option>
+<option value="REB">REB</option>
+<option value="AST">AST</option>
+<option value="STL">STL</option>
+<option value="BLK">BLK</option>
+<option value="TOV">TOV</option>
+<option value="FGM">FGM</option>
+<option value="FGA">FGA</option>
+<option value="3PM">3PM</option>
+<option value="3PA">3PA</option>
+<option value="FTM">FTM</option>
+<option value="FTA">FTA</option>
+<option value="OREB">OREB</option>
+<option value="PITP">PITP</option>
+</select>
+</div>
+<div>
+<label>Daily Team Target</label>
+<input type="number" id="admin-target-1" placeholder="e.g. 12">
+</div>
+</div>
 
-      <label style="margin-top:20px;"><input type="checkbox" id="admin-has-second" style="width:auto;margin-right:6px;">Add a second objective for this day</label>
-      <div class="obj-pair" id="admin-second-row" style="display:none; margin-top:8px;">
-        <div>
-          <label>Objective 2</label>
-          <select id="admin-stat-2">
-            <option value="PTS">PTS</option>
-            <option value="REB">REB</option>
-            <option value="AST">AST</option>
-            <option value="STL">STL</option>
-            <option value="BLK">BLK</option>
-            <option value="TOV">TOV</option>
-            <option value="FGM">FGM</option>
-            <option value="FGA">FGA</option>
-            <option value="3PM">3PM</option>
-            <option value="3PA">3PA</option>
-            <option value="FTM">FTM</option>
-            <option value="FTA">FTA</option>
-            <option value="OREB">OREB</option>
-            <option value="PITP">PITP</option>
-          </select>
-        </div>
-        <div>
-          <label>Daily Team Target</label>
-          <input type="number" id="admin-target-2" placeholder="e.g. 26">
-        </div>
-      </div>
+<label style="margin-top:20px;"><input type="checkbox" id="admin-has-second" style="width:auto;margin-right:6px;">Add a second objective for this day</label>
+<div class="obj-pair" id="admin-second-row" style="display:none; margin-top:8px;">
+<div>
+<label>Objective 2</label>
+<select id="admin-stat-2">
+<option value="PTS">PTS</option>
+<option value="REB">REB</option>
+<option value="AST">AST</option>
+<option value="STL">STL</option>
+<option value="BLK">BLK</option>
+<option value="TOV">TOV</option>
+<option value="FGM">FGM</option>
+<option value="FGA">FGA</option>
+<option value="3PM">3PM</option>
+<option value="3PA">3PA</option>
+<option value="FTM">FTM</option>
+<option value="FTA">FTA</option>
+<option value="OREB">OREB</option>
+<option value="PITP">PITP</option>
+</select>
+</div>
+<div>
+<label>Daily Team Target</label>
+<input type="number" id="admin-target-2" placeholder="e.g. 26">
+</div>
+</div>
 
-      <label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only)</label>
-      <input type="text" id="admin-badge-name" placeholder="e.g. Rookie Year" style="display:none;">
+<label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only)</label>
+<input type="text" id="admin-badge-name" placeholder="e.g. Rookie Year" style="display:none;">
 
-      <button id="admin-save-btn">Save Day</button>
-      <div id="admin-status"></div>
-    </div>
+<button id="admin-save-btn">Save Day</button>
+<div id="admin-status"></div>
+</div>
 
-    <div class="admin-form">
-      <h2>Load Real Projections (Rotowire-sourced)</h2>
-      <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
-        BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
-        here -- a manual, Rotowire-sourced upload. Pasting a full Rotowire table captures every
-        stat column it recognizes in one save (so both objectives on a two-objective day are
-        covered by a single paste, no need to change Stat and resubmit). Any stat with no
-        uploaded projection for a date shows Proj as TBD, except PITP, which always falls back
-        to the L10 average automatically (neither Rotowire nor standard sites project it).
-      </p>
-      <label>Date</label>
-      <input type="date" id="proj-date">
+<div class="admin-form">
+<h2>Load Real Projections (Rotowire-sourced)</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
+here -- a manual, Rotowire-sourced upload. Pasting a full Rotowire table captures every
+stat column it recognizes in one save (so both objectives on a two-objective day are
+covered by a single paste, no need to change Stat and resubmit). Any stat with no
+uploaded projection for a date shows Proj as TBD, except PITP, which always falls back
+to the L10 average automatically (neither Rotowire nor standard sites project it).
+</p>
+<label>Date</label>
+<input type="date" id="proj-date">
 
-      <label>Stat (only used for a plain "Name, Value" paste below -- ignored for a full table paste, which auto-detects every stat column)</label>
-      <select id="proj-stat">
-        <option value="PTS">PTS</option>
-        <option value="REB">REB</option>
-        <option value="AST">AST</option>
-        <option value="STL">STL</option>
-        <option value="BLK">BLK</option>
-        <option value="TOV">TOV</option>
-        <option value="FGM">FGM</option>
-        <option value="FGA">FGA</option>
-        <option value="3PM">3PM</option>
-        <option value="3PA">3PA</option>
-        <option value="FTM">FTM</option>
-        <option value="FTA">FTA</option>
-        <option value="OREB">OREB</option>
-        <option value="PITP">PITP</option>
-      </select>
+<label>Stat (only used for a plain "Name, Value" paste below -- ignored for a full table paste, which auto-detects every stat column)</label>
+<select id="proj-stat">
+<option value="PTS">PTS</option>
+<option value="REB">REB</option>
+<option value="AST">AST</option>
+<option value="STL">STL</option>
+<option value="BLK">BLK</option>
+<option value="TOV">TOV</option>
+<option value="FGM">FGM</option>
+<option value="FGA">FGA</option>
+<option value="3PM">3PM</option>
+<option value="3PA">3PA</option>
+<option value="FTM">FTM</option>
+<option value="FTA">FTA</option>
+<option value="OREB">OREB</option>
+<option value="PITP">PITP</option>
+</select>
 
-        <label>Paste either "Name, Value" lines for the Stat picked above, or a full Rotowire table (tab-separated, with header row) -- every recognized stat column in the table is loaded at once</label>
-        <textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
-      <button id="proj-save-btn">Load Projections</button>
-      <div id="proj-status"></div>
-    </div>
-  </div>
+<label>Paste either "Name, Value" lines for the Stat picked above, or a full Rotowire table (tab-separated, with header row) -- every recognized stat column in the table is loaded at once</label>
+<textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
+<button id="proj-save-btn">Load Projections</button>
+<div id="proj-status"></div>
+</div>
+</div>
 </div>
 
 </div>
@@ -415,6 +415,12 @@ const OBJECTIVES_URL = WORKER_BASE + "/api/fastbreak/objectives";
 const OBJECTIVES_DAY_URL = WORKER_BASE + "/api/fastbreak/objectives/day";
 const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
 const FULLDATA_URL = WORKER_BASE + "/api/fastbreak/fulldata";
+const HISTORIC_URL = WORKER_BASE + "/api/fastbreak/historic";
+// Historic (simulated NBA season) plumbing is live server-side (worker route +
+// KV-backed sim/aggregation), but the frontend toggle stays off until the
+// season actually starts -- flip this to true (and update the button below)
+// when it's ready to go live. See historic.js in the refresh worker.
+const HISTORIC_ENABLED = false;
 
 // Run 10: Day 1 = Aug 19, 2026 through Day 12 = Aug 30, 2026 (inclusive).
 // Kept in sync with RUN_START/RUN_END in the refresh Worker.
@@ -446,20 +452,20 @@ let fdTeamSortDir = 1;
 // -- View switching (main dashboard / admin / full data) ----------------------
 let activeView = "main";
 function setActiveView(view) {
-  activeView = view;
-  document.getElementById("view-main").style.display = view === "main" ? "block" : "none";
-  document.getElementById("view-admin").style.display = view === "admin" ? "block" : "none";
-  document.getElementById("view-fulldata").style.display = view === "fulldata" ? "block" : "none";
+activeView = view;
+document.getElementById("view-main").style.display = view === "main" ? "block" : "none";
+document.getElementById("view-admin").style.display = view === "admin" ? "block" : "none";
+document.getElementById("view-fulldata").style.display = view === "fulldata" ? "block" : "none";
 }
 
 // Small hover tooltip (native title attribute) showing a team's PPG/PAPG,
 // computed by the refresh Worker straight from this season's final scores --
 // used wherever a team abbreviation is rendered, once Full Data has loaded.
 function teamCellHtml(abbr) {
-  const t = fullData.teams?.[abbr];
-  if (!t) return abbr || "";
-  const title = `PPG ${t.ppg ?? "--"} &middot; PAPG ${t.papg ?? "--"} (${t.gamesPlayed} GP)`;
-  return `<span class="team-hover" title="${title.replace(/&middot;/, "·")}">${abbr}</span>`;
+const t = fullData.teams?.[abbr];
+if (!t) return abbr || "";
+const title = `PPG ${t.ppg ?? "--"} &middot; PAPG ${t.papg ?? "--"} (${t.gamesPlayed} GP)`;
+return `<span class="team-hover" title="${title.replace(/&middot;/, "·")}">${abbr}</span>`;
 }
 
 // -- League / Mode toggle ---------------------------------------------------
@@ -468,7 +474,7 @@ let currentMode = "Classic";
 let selectedDate = null; // set by initRunDays()
 
 function ymd(d) {
-  return d.toISOString().slice(0, 10);
+return d.toISOString().slice(0, 10);
 }
 
 // -- Run day toggle -----------------------------------------------------------
@@ -476,111 +482,121 @@ function ymd(d) {
 // falls off the front of the list. Run 10 is entirely within EDT (UTC-4), so
 // a fixed offset is safe here.
 function earliestSelectableRunDate() {
-  const nowUtc = new Date();
-  const etNow = new Date(nowUtc.getTime() - 4 * 3600 * 1000);
-  const etDateStr = ymd(etNow);
-  const etHour = etNow.getUTCHours(); // etNow's "UTC" fields are really ET after the shift above
-  let earliest;
-  if (etHour < 10) {
-    const prev = new Date(`${etDateStr}T00:00:00Z`);
-    prev.setUTCDate(prev.getUTCDate() - 1);
-    earliest = ymd(prev);
-  } else {
-    earliest = etDateStr;
-  }
-  if (earliest < RUN_START) earliest = RUN_START;
-  if (earliest > RUN_END) earliest = RUN_END;
-  return earliest;
+const nowUtc = new Date();
+const etNow = new Date(nowUtc.getTime() - 4 * 3600 * 1000);
+const etDateStr = ymd(etNow);
+const etHour = etNow.getUTCHours(); // etNow's "UTC" fields are really ET after the shift above
+let earliest;
+if (etHour < 10) {
+const prev = new Date(`${etDateStr}T00:00:00Z`);
+prev.setUTCDate(prev.getUTCDate() - 1);
+earliest = ymd(prev);
+} else {
+earliest = etDateStr;
+}
+if (earliest < RUN_START) earliest = RUN_START;
+if (earliest > RUN_END) earliest = RUN_END;
+return earliest;
 }
 
 function initRunDays() {
-  const earliest = earliestSelectableRunDate();
-  selectedDate = earliest;
-  const container = document.getElementById("run-days");
-  container.innerHTML = "";
-  const start = new Date(`${RUN_START}T00:00:00Z`);
-  let dayNum = 1;
-  for (let d = new Date(`${RUN_START}T00:00:00Z`); ymd(d) <= RUN_END; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
-    const dateStr = ymd(d);
-    if (dateStr < earliest) continue;
-    const btn = document.createElement("button");
-    btn.className = "run-day-btn" + (dateStr === selectedDate ? " active" : "");
-    btn.dataset.date = dateStr;
-    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-    btn.textContent = `Day ${dayNum} - ${label}`;
-    btn.addEventListener("click", () => {
-      selectedDate = dateStr;
-      container.querySelectorAll(".run-day-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      loadData();
-    });
-    container.appendChild(btn);
-  }
+const earliest = earliestSelectableRunDate();
+selectedDate = earliest;
+const container = document.getElementById("run-days");
+container.innerHTML = "";
+const start = new Date(`${RUN_START}T00:00:00Z`);
+let dayNum = 1;
+for (let d = new Date(`${RUN_START}T00:00:00Z`); ymd(d) <= RUN_END; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
+const dateStr = ymd(d);
+if (dateStr < earliest) continue;
+const btn = document.createElement("button");
+btn.className = "run-day-btn" + (dateStr === selectedDate ? " active" : "");
+btn.dataset.date = dateStr;
+const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+btn.textContent = `Day ${dayNum} - ${label}`;
+btn.addEventListener("click", () => {
+selectedDate = dateStr;
+container.querySelectorAll(".run-day-btn").forEach((b) => b.classList.remove("active"));
+btn.classList.add("active");
+loadData();
+});
+container.appendChild(btn);
+}
 }
 
 document.getElementById("league-toggle").addEventListener("click", (e) => {
-  if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
-  document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
-  e.target.classList.add("active");
-  currentLeague = e.target.dataset.league;
-  document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
+if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
+document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
+e.target.classList.add("active");
+currentLeague = e.target.dataset.league;
+document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
 });
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
-  if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
-  document.querySelectorAll("#mode-toggle button").forEach((b) => b.classList.remove("active"));
-  e.target.classList.add("active");
-  const mode = e.target.dataset.mode;
+if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
+document.querySelectorAll("#mode-toggle button").forEach((b) => b.classList.remove("active"));
+e.target.classList.add("active");
+const mode = e.target.dataset.mode;
 
-  if (mode === "FullData") {
-    setActiveView("fulldata");
-    loadFullData();
-    return;
-  }
+if (mode === "FullData") {
+setActiveView("fulldata");
+loadFullData();
+return;
+}
 
-  currentMode = mode;
-  document.getElementById("mode-note").textContent =
-    currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" : "";
-  setActiveView("main");
-  loadData();
+currentMode = mode;
+document.getElementById("mode-note").textContent =
+currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" :
+currentMode === "Historic" ? "Historic: simulated season -- not live NBA data" : "";
+setActiveView("main");
+loadData();
 });
+
+// Historic stays disabled in the UI until HISTORIC_ENABLED is flipped on
+// above, even though the worker route and KV data behind it are already live.
+(function syncHistoricToggle() {
+const btn = document.querySelector('#mode-toggle button[data-mode="Historic"]');
+if (!btn) return;
+btn.disabled = !HISTORIC_ENABLED;
+btn.title = HISTORIC_ENABLED ? "" : "Historic sim pipeline is live -- frontend toggle turns on when the season starts";
+})();
 
 // -- Admin view toggle --------------------------------------------------------
 document.getElementById("admin-toggle-btn").addEventListener("click", () => {
-  const showingAdmin = activeView === "admin";
-  if (showingAdmin) {
-    // Return to whichever mode-toggle button is currently marked active.
-    const activeModeBtn = document.querySelector("#mode-toggle button.active");
-    setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : "main");
-  } else {
-    setActiveView("admin");
-  }
-  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
-  if (!showingAdmin) loadAdminSchedule();
+const showingAdmin = activeView === "admin";
+if (showingAdmin) {
+// Return to whichever mode-toggle button is currently marked active.
+const activeModeBtn = document.querySelector("#mode-toggle button.active");
+setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : "main");
+} else {
+setActiveView("admin");
+}
+document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
+if (!showingAdmin) loadAdminSchedule();
 });
 
 document.getElementById("admin-has-second").addEventListener("change", (e) => {
-  document.getElementById("admin-second-row").style.display = e.target.checked ? "flex" : "none";
+document.getElementById("admin-second-row").style.display = e.target.checked ? "flex" : "none";
 });
 
 document.getElementById("admin-mode").addEventListener("change", (e) => {
-  const isPro = e.target.value === "Pro";
-  document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
-  document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
+const isPro = e.target.value === "Pro";
+document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
+document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
 });
 
 // -- Admin password gate -------------------------------------------------------
 document.getElementById("admin-unlock-btn").addEventListener("click", () => {
-  const entered = document.getElementById("admin-password-input").value;
-  const statusEl = document.getElementById("admin-gate-status");
-  if (entered === ADMIN_PASSWORD) {
-    adminPassword = entered;
-    document.getElementById("admin-gate").style.display = "none";
-    document.getElementById("admin-locked-content").style.display = "block";
-    statusEl.textContent = "";
-  } else {
-    statusEl.textContent = "Incorrect password.";
-  }
+const entered = document.getElementById("admin-password-input").value;
+const statusEl = document.getElementById("admin-gate-status");
+if (entered === ADMIN_PASSWORD) {
+adminPassword = entered;
+document.getElementById("admin-gate").style.display = "none";
+document.getElementById("admin-locked-content").style.display = "block";
+statusEl.textContent = "";
+} else {
+statusEl.textContent = "Incorrect password.";
+}
 });
 
 // -- Schedule tiles -----------------------------------------------------------
@@ -591,294 +607,294 @@ document.getElementById("admin-unlock-btn").addEventListener("click", () => {
 // (own missed shots as a proxy for true opponent-DREB data, which isn't
 // fetchable within the subrequest budget) -- both are labeled as such.
 function teamAdvancedTooltip(abbr) {
-  const t = dashboard.teamAdvanced?.[abbr];
-  if (!t) return `${abbr}: L10 advanced data unavailable`;
-  return (
-    `${abbr}  (L10 ${t.record ?? "--"})\n` +
-    `PPG ${t.l10Ppg ?? "--"}  ·  PAPG ${t.l10Papg ?? "--"}\n` +
-    `ORtg ${t.offRtg ?? "--"}  ·  DRtg ${t.defRtg ?? "--"}  ·  Pace ${t.pace ?? "--"}\n` +
-    `eFG% ${t.efgPct ?? "--"}  ·  TOV% ${t.tovPct ?? "--"}  ·  OREB% (est.) ${t.orebPctEst ?? "--"}`
-  );
+const t = dashboard.teamAdvanced?.[abbr];
+if (!t) return `${abbr}: L10 advanced data unavailable`;
+return (
+`${abbr} (L10 ${t.record ?? "--"})\n` +
+`PPG ${t.l10Ppg ?? "--"} · PAPG ${t.l10Papg ?? "--"}\n` +
+`ORtg ${t.offRtg ?? "--"} · DRtg ${t.defRtg ?? "--"} · Pace ${t.pace ?? "--"}\n` +
+`eFG% ${t.efgPct ?? "--"} · TOV% ${t.tovPct ?? "--"} · OREB% (est.) ${t.orebPctEst ?? "--"}`
+);
 }
 
 function renderScheduleTiles() {
-  const row = document.getElementById("schedule-tiles");
-  row.innerHTML = "";
-  if (!dashboard.games || !dashboard.games.length) {
-    row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
-    return;
-  }
-  dashboard.games.forEach((g) => {
-    const tile = document.createElement("div");
-    tile.className = "game-tile";
-    tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}</div>`;
-    tile.title = `${teamAdvancedTooltip(g.awayAbbr)}\n\n${teamAdvancedTooltip(g.homeAbbr)}`;
-    row.appendChild(tile);
-  });
+const row = document.getElementById("schedule-tiles");
+row.innerHTML = "";
+if (!dashboard.games || !dashboard.games.length) {
+row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
+return;
+}
+dashboard.games.forEach((g) => {
+const tile = document.createElement("div");
+tile.className = "game-tile";
+tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}</div>`;
+tile.title = `${teamAdvancedTooltip(g.awayAbbr)}\n\n${teamAdvancedTooltip(g.homeAbbr)}`;
+row.appendChild(tile);
+});
 }
 
 // -- Objective / badge tiles ---------------------------------------------------
 function renderObjectiveTiles() {
-  const row = document.getElementById("objective-tiles");
-  row.innerHTML = "";
-  (dashboard.objectives || []).forEach((o) => {
-    const tile = document.createElement("div");
-    tile.className = "objective-tile";
-    tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
-    row.appendChild(tile);
-  });
-  if (currentMode === "Pro" && dashboard.badgeSetName) {
-    const tile = document.createElement("div");
-    tile.className = "objective-tile badge-tile";
-    tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
-    row.appendChild(tile);
-  }
+const row = document.getElementById("objective-tiles");
+row.innerHTML = "";
+(dashboard.objectives || []).forEach((o) => {
+const tile = document.createElement("div");
+tile.className = "objective-tile";
+tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
+row.appendChild(tile);
+});
+if (currentMode === "Pro" && dashboard.badgeSetName) {
+const tile = document.createElement("div");
+tile.className = "objective-tile badge-tile";
+tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
+row.appendChild(tile);
+}
 }
 
 // -- Main table -----------------------------------------------------------------
 function objectiveColumns() {
-  // Returns [{stat,label,index}] for however many objectives are active today.
-  return (dashboard.objectives || []).map((o, i) => ({ stat: o.stat, label: o.label || o.stat, index: i }));
+// Returns [{stat,label,index}] for however many objectives are active today.
+return (dashboard.objectives || []).map((o, i) => ({ stat: o.stat, label: o.label || o.stat, index: i }));
 }
 
 function buildHeader() {
-  const thead = document.getElementById("table-head");
-  const objCols = objectiveColumns();
-  let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
-  objCols.forEach((oc, i) => {
-    const groupStart = ' class="obj-group-start"';
-    row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
-    row += `<th data-key="obj:${oc.index}:ytd">${oc.label} YTD</th>`;
-    row += `<th data-key="obj:${oc.index}:l10">${oc.label} L10</th>`;
-  });
-  row += `</tr>`;
-  thead.innerHTML = row;
+const thead = document.getElementById("table-head");
+const objCols = objectiveColumns();
+let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
+objCols.forEach((oc, i) => {
+const groupStart = ' class="obj-group-start"';
+row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
+row += `<th data-key="obj:${oc.index}:ytd">${oc.label} YTD</th>`;
+row += `<th data-key="obj:${oc.index}:l10">${oc.label} L10</th>`;
+});
+row += `</tr>`;
+thead.innerHTML = row;
 
-  thead.querySelectorAll("th[data-key]").forEach((th) => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.key;
-      sortDir = sortKey === key ? -sortDir : 1;
-      sortKey = key;
-      render();
-    });
-  });
+thead.querySelectorAll("th[data-key]").forEach((th) => {
+th.addEventListener("click", () => {
+const key = th.dataset.key;
+sortDir = sortKey === key ? -sortDir : 1;
+sortKey = key;
+render();
+});
+});
 }
 
 function sortValue(p, key) {
-  if (key.startsWith("base:")) {
-    const field = key.slice(5);
-    return p[field];
-  }
-  const [, idxStr, field] = key.split(":");
-  const obj = dashboard.objectives[Number(idxStr)];
-  return p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
+if (key.startsWith("base:")) {
+const field = key.slice(5);
+return p[field];
+}
+const [, idxStr, field] = key.split(":");
+const obj = dashboard.objectives[Number(idxStr)];
+return p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
 }
 
 function getSorted() {
-  const players = [...(dashboard.players || [])];
-  players.sort((a, b) => {
-    let av = sortValue(a, sortKey);
-    let bv = sortValue(b, sortKey);
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1; // nulls sort last regardless of direction
-    if (bv == null) return -1;
-    if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
-    return String(av).localeCompare(String(bv)) * sortDir;
-  });
-  return players;
+const players = [...(dashboard.players || [])];
+players.sort((a, b) => {
+let av = sortValue(a, sortKey);
+let bv = sortValue(b, sortKey);
+if (av == null && bv == null) return 0;
+if (av == null) return 1; // nulls sort last regardless of direction
+if (bv == null) return -1;
+if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
+return String(av).localeCompare(String(bv)) * sortDir;
+});
+return players;
 }
 
 function tierClass(tier) {
-  return tier ? `tier-${tier}` : "";
+return tier ? `tier-${tier}` : "";
 }
 
 // Red pill for Out, yellow for anything else the player_injuries endpoint
- // reports (Day-To-Day, Questionable, Probable, etc). title=hover text shows
- // the fuller injury note/return date when the API provides one.
+// reports (Day-To-Day, Questionable, Probable, etc). title=hover text shows
+// the fuller injury note/return date when the API provides one.
 function injuryPillHtml(p) {
-  if (!p.injuryStatus) return "";
-  const status = String(p.injuryStatus);
-  const isOut = status.toLowerCase() === "out";
-  const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
-  const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
-  return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
- }
- 
+if (!p.injuryStatus) return "";
+const status = String(p.injuryStatus);
+const isOut = status.toLowerCase() === "out";
+const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
+const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
+return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
+}
+
 function render() {
-  buildHeader();
-  const tbody = document.getElementById("players-body");
-  tbody.innerHTML = "";
-  const objCols = objectiveColumns();
-  const sorted = getSorted();
+buildHeader();
+const tbody = document.getElementById("players-body");
+tbody.innerHTML = "";
+const objCols = objectiveColumns();
+const sorted = getSorted();
 
-  sorted.forEach((p) => {
-    const row = document.createElement("tr");
-    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
-    objCols.forEach((oc, i) => {
-      const ov = p.objectives[oc.stat] || {};
-      const groupStart = i === 0 ? " obj-group-start" : "";
-      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
-      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
-      html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
-      html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
-    });
-    row.innerHTML = html;
-    tbody.appendChild(row);
-  });
+sorted.forEach((p) => {
+const row = document.createElement("tr");
+let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
+objCols.forEach((oc, i) => {
+const ov = p.objectives[oc.stat] || {};
+const groupStart = i === 0 ? " obj-group-start" : "";
+const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
+html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
+html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
+html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
+});
+row.innerHTML = html;
+tbody.appendChild(row);
+});
 
-  document.querySelectorAll("#table-head th").forEach((th) => {
-    th.classList.remove("sorted-asc", "sorted-desc");
-    if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
-  });
+document.querySelectorAll("#table-head th").forEach((th) => {
+th.classList.remove("sorted-asc", "sorted-desc");
+if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+});
 
-  const objLabel = objCols.map((o) => `${o.label} (target ${dashboard.objectives[o.index].dailyTeamTarget}, weight ${(dashboard.objectives[o.index].weight * 100).toFixed(2)}%)`).join(" + ");
-  document.getElementById("dashboard-note").textContent =
-    (objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
+const objLabel = objCols.map((o) => `${o.label} (target ${dashboard.objectives[o.index].dailyTeamTarget}, weight ${(dashboard.objectives[o.index].weight * 100).toFixed(2)}%)`).join(" + ");
+document.getElementById("dashboard-note").textContent =
+(objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
 }
 
 // -- CSV export -----------------------------------------------------------------
 function csvEscape(value) {
-  const str = String(value ?? "");
-  if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
-  return str;
+const str = String(value ?? "");
+if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+return str;
 }
 
 function downloadCSV() {
-  const objCols = objectiveColumns();
-  const headers = ["Player", "Team", "Opp", "Ovr Rank"];
-  objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
+const objCols = objectiveColumns();
+const headers = ["Player", "Team", "Opp", "Ovr Rank"];
+objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
 
-  const rows = getSorted().map((p) => {
-    const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
-    objCols.forEach((oc) => {
-      const ov = p.objectives[oc.stat] || {};
-      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "");
-      row.push(projText, ov.ytd ?? "", ov.l10 ?? "");
-    });
-    return row;
-  });
+const rows = getSorted().map((p) => {
+const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
+objCols.forEach((oc) => {
+const ov = p.objectives[oc.stat] || {};
+const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "");
+row.push(projText, ov.ytd ?? "", ov.l10 ?? "");
+});
+return row;
+});
 
-  const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-  const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const today = new Date();
-  const filename = `tome-edge-fastbreak-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}.csv`;
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const today = new Date();
+const filename = `tome-edge-fastbreak-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}.csv`;
+const link = document.createElement("a");
+link.href = url;
+link.download = filename;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
 }
 document.getElementById("export-csv-btn").addEventListener("click", downloadCSV);
 
 // -- Full Data tab --------------------------------------------------------------
 async function loadFullData({ silent } = {}) {
-  if (fullDataLoading) return;
-  fullDataLoading = true;
-  const metaEl = document.getElementById("fd-meta");
-  if (!silent && metaEl) metaEl.textContent = "Loading...";
-  try {
-    const res = await fetch(FULLDATA_URL);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    fullData = data;
-    fullDataLoaded = true;
-  } catch (err) {
-    if (metaEl) metaEl.textContent = `Full Data unavailable (${err.message}).`;
-  } finally {
-    fullDataLoading = false;
-  }
-  if (activeView === "fulldata") renderFullData();
-  else if (activeView === "main") render(); // picks up team PPG/PAPG hover tooltips
+if (fullDataLoading) return;
+fullDataLoading = true;
+const metaEl = document.getElementById("fd-meta");
+if (!silent && metaEl) metaEl.textContent = "Loading...";
+try {
+const res = await fetch(FULLDATA_URL);
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+fullData = data;
+fullDataLoaded = true;
+} catch (err) {
+if (metaEl) metaEl.textContent = `Full Data unavailable (${err.message}).`;
+} finally {
+fullDataLoading = false;
+}
+if (activeView === "fulldata") renderFullData();
+else if (activeView === "main") render(); // picks up team PPG/PAPG hover tooltips
 }
 
 function fdColumns() {
-  return (fullData.statCodes || []).map((code) => ({ code }));
+return (fullData.statCodes || []).map((code) => ({ code }));
 }
 
 function buildFullDataHeader() {
-  const thead = document.getElementById("fd-table-head");
-  const cols = fdColumns();
-  let row = `<tr><th data-fd-key="name">Player</th><th data-fd-key="team">Team</th>`;
-  cols.forEach((c, i) => {
-    const groupStart = i === 0 ? ' class="fd-group-start"' : "";
-    row += `<th data-fd-key="${c.code}:l10"${groupStart}>${c.code} L10</th>`;
-    row += `<th data-fd-key="${c.code}:ytd">${c.code} YTD</th>`;
-  });
-  row += `</tr>`;
-  thead.innerHTML = row;
+const thead = document.getElementById("fd-table-head");
+const cols = fdColumns();
+let row = `<tr><th data-fd-key="name">Player</th><th data-fd-key="team">Team</th>`;
+cols.forEach((c, i) => {
+const groupStart = i === 0 ? ' class="fd-group-start"' : "";
+row += `<th data-fd-key="${c.code}:l10"${groupStart}>${c.code} L10</th>`;
+row += `<th data-fd-key="${c.code}:ytd">${c.code} YTD</th>`;
+});
+row += `</tr>`;
+thead.innerHTML = row;
 
-  thead.querySelectorAll("th[data-fd-key]").forEach((th) => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.fdKey;
-      fdSortDir = fdSortKey === key ? -fdSortDir : 1;
-      fdSortKey = key;
-      renderFullData();
-    });
-  });
+thead.querySelectorAll("th[data-fd-key]").forEach((th) => {
+th.addEventListener("click", () => {
+const key = th.dataset.fdKey;
+fdSortDir = fdSortKey === key ? -fdSortDir : 1;
+fdSortKey = key;
+renderFullData();
+});
+});
 }
 
 function fdSortValue(p, key) {
-  if (key === "name" || key === "team") return p[key];
-  const [code, field] = key.split(":");
-  return p.stats[code] ? p.stats[code][field] : null;
+if (key === "name" || key === "team") return p[key];
+const [code, field] = key.split(":");
+return p.stats[code] ? p.stats[code][field] : null;
 }
 
 function getFullDataFiltered() {
-  const term = fdSearchTerm.trim().toLowerCase();
-  let players = fullData.players || [];
-  if (term) {
-    players = players.filter((p) => p.name.toLowerCase().includes(term) || p.team.toLowerCase().includes(term));
-  }
-  players = [...players];
-  players.sort((a, b) => {
-    let av = fdSortValue(a, fdSortKey);
-    let bv = fdSortValue(b, fdSortKey);
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdSortDir;
-    return String(av).localeCompare(String(bv)) * fdSortDir;
-  });
-  return players;
+const term = fdSearchTerm.trim().toLowerCase();
+let players = fullData.players || [];
+if (term) {
+players = players.filter((p) => p.name.toLowerCase().includes(term) || p.team.toLowerCase().includes(term));
+}
+players = [...players];
+players.sort((a, b) => {
+let av = fdSortValue(a, fdSortKey);
+let bv = fdSortValue(b, fdSortKey);
+if (av == null && bv == null) return 0;
+if (av == null) return 1;
+if (bv == null) return -1;
+if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdSortDir;
+return String(av).localeCompare(String(bv)) * fdSortDir;
+});
+return players;
 }
 
 function renderFullDataPlayers() {
-  buildFullDataHeader();
-  const tbody = document.getElementById("fd-players-body");
-  tbody.innerHTML = "";
-  const cols = fdColumns();
-  const rows = getFullDataFiltered();
+buildFullDataHeader();
+const tbody = document.getElementById("fd-players-body");
+tbody.innerHTML = "";
+const cols = fdColumns();
+const rows = getFullDataFiltered();
 
-  rows.forEach((p) => {
-    const row = document.createElement("tr");
-    // Full Data's Players tab shows the team abbreviation as plain text --
-    // the team-level hover tooltip now lives on the daily schedule tiles
-    // instead (see teamAdvancedTooltip / renderScheduleTiles above).
-    let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
-    cols.forEach((c, i) => {
-      const s = p.stats[c.code] || {};
-      const groupStart = i === 0 ? " fd-group-start" : "";
-      html += `<td class="${groupStart}">${s.l10 ?? "--"}</td>`;
-      html += `<td>${s.ytd ?? "--"}</td>`;
-    });
-    row.innerHTML = html;
-    tbody.appendChild(row);
-  });
+rows.forEach((p) => {
+const row = document.createElement("tr");
+// Full Data's Players tab shows the team abbreviation as plain text --
+// the team-level hover tooltip now lives on the daily schedule tiles
+// instead (see teamAdvancedTooltip / renderScheduleTiles above).
+let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
+cols.forEach((c, i) => {
+const s = p.stats[c.code] || {};
+const groupStart = i === 0 ? " fd-group-start" : "";
+html += `<td class="${groupStart}">${s.l10 ?? "--"}</td>`;
+html += `<td>${s.ytd ?? "--"}</td>`;
+});
+row.innerHTML = html;
+tbody.appendChild(row);
+});
 
-  document.querySelectorAll("#fd-table-head th").forEach((th) => {
-    th.classList.remove("sorted-asc", "sorted-desc");
-    if (th.dataset.fdKey === fdSortKey) th.classList.add(fdSortDir === 1 ? "sorted-asc" : "sorted-desc");
-  });
+document.querySelectorAll("#fd-table-head th").forEach((th) => {
+th.classList.remove("sorted-asc", "sorted-desc");
+if (th.dataset.fdKey === fdSortKey) th.classList.add(fdSortDir === 1 ? "sorted-asc" : "sorted-desc");
+});
 
-  const metaEl = document.getElementById("fd-meta");
-  if (metaEl) {
-    const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
-    metaEl.textContent = `${rows.length} of ${(fullData.players || []).length} players · last generated ${generated}`;
-  }
-  document.getElementById("fd-note").textContent = fullData.note || "";
+const metaEl = document.getElementById("fd-meta");
+if (metaEl) {
+const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
+metaEl.textContent = `${rows.length} of ${(fullData.players || []).length} players · last generated ${generated}`;
+}
+document.getElementById("fd-note").textContent = fullData.note || "";
 }
 
 // -- Full Data: Teams sub-tab ---------------------------------------------------
@@ -886,228 +902,228 @@ function renderFullDataPlayers() {
 // FGA, FG%, 3PM, 3PA, 3P% -- sourced from teamsDetail (built server-side by
 // advanceFullDataBuild's teamBoxSums accumulation).
 const FD_TEAM_COLUMNS = [
-  { key: "ppg", label: "PPG" },
-  { key: "papg", label: "PAPG" },
-  { key: "reb", label: "REB" },
-  { key: "oreb", label: "OREB" },
-  { key: "ast", label: "AST" },
-  { key: "stl", label: "STL" },
-  { key: "tov", label: "TO" },
-  { key: "blk", label: "BLK" },
-  { key: "fgm", label: "FGM" },
-  { key: "fga", label: "FGA" },
-  { key: "fgPct", label: "FG%" },
-  { key: "fg3m", label: "3PM" },
-  { key: "fg3a", label: "3PA" },
-  { key: "fg3Pct", label: "3P%" },
+{ key: "ppg", label: "PPG" },
+{ key: "papg", label: "PAPG" },
+{ key: "reb", label: "REB" },
+{ key: "oreb", label: "OREB" },
+{ key: "ast", label: "AST" },
+{ key: "stl", label: "STL" },
+{ key: "tov", label: "TO" },
+{ key: "blk", label: "BLK" },
+{ key: "fgm", label: "FGM" },
+{ key: "fga", label: "FGA" },
+{ key: "fgPct", label: "FG%" },
+{ key: "fg3m", label: "3PM" },
+{ key: "fg3a", label: "3PA" },
+{ key: "fg3Pct", label: "3P%" },
 ];
 
 function buildFullDataTeamsHeader() {
-  const thead = document.getElementById("fd-table-head");
-  let row = `<tr><th data-fd-team-key="team">Team</th><th data-fd-team-key="gamesPlayed">GP</th>`;
-  FD_TEAM_COLUMNS.forEach((c, i) => {
-    const groupStart = i === 0 ? ' class="fd-group-start"' : "";
-    row += `<th data-fd-team-key="${c.key}"${groupStart}>${c.label}</th>`;
-  });
-  row += `</tr>`;
-  thead.innerHTML = row;
+const thead = document.getElementById("fd-table-head");
+let row = `<tr><th data-fd-team-key="team">Team</th><th data-fd-team-key="gamesPlayed">GP</th>`;
+FD_TEAM_COLUMNS.forEach((c, i) => {
+const groupStart = i === 0 ? ' class="fd-group-start"' : "";
+row += `<th data-fd-team-key="${c.key}"${groupStart}>${c.label}</th>`;
+});
+row += `</tr>`;
+thead.innerHTML = row;
 
-  thead.querySelectorAll("th[data-fd-team-key]").forEach((th) => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.fdTeamKey;
-      fdTeamSortDir = fdTeamSortKey === key ? -fdTeamSortDir : 1;
-      fdTeamSortKey = key;
-      renderFullDataTeams();
-    });
-  });
+thead.querySelectorAll("th[data-fd-team-key]").forEach((th) => {
+th.addEventListener("click", () => {
+const key = th.dataset.fdTeamKey;
+fdTeamSortDir = fdTeamSortKey === key ? -fdTeamSortDir : 1;
+fdTeamSortKey = key;
+renderFullDataTeams();
+});
+});
 }
 
 function getFullDataTeamsFiltered() {
-  const term = fdSearchTerm.trim().toLowerCase();
-  const teamsDetail = fullData.teamsDetail || {};
-  let teams = Object.entries(teamsDetail).map(([abbr, t]) => ({ abbr, ...t }));
-  if (term) {
-    teams = teams.filter((t) => t.abbr.toLowerCase().includes(term) || (t.team || "").toLowerCase().includes(term));
-  }
-  teams.sort((a, b) => {
-    const key = fdTeamSortKey === "team" ? "abbr" : fdTeamSortKey;
-    let av = a[key];
-    let bv = b[key];
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdTeamSortDir;
-    return String(av).localeCompare(String(bv)) * fdTeamSortDir;
-  });
-  return teams;
+const term = fdSearchTerm.trim().toLowerCase();
+const teamsDetail = fullData.teamsDetail || {};
+let teams = Object.entries(teamsDetail).map(([abbr, t]) => ({ abbr, ...t }));
+if (term) {
+teams = teams.filter((t) => t.abbr.toLowerCase().includes(term) || (t.team || "").toLowerCase().includes(term));
+}
+teams.sort((a, b) => {
+const key = fdTeamSortKey === "team" ? "abbr" : fdTeamSortKey;
+let av = a[key];
+let bv = b[key];
+if (av == null && bv == null) return 0;
+if (av == null) return 1;
+if (bv == null) return -1;
+if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdTeamSortDir;
+return String(av).localeCompare(String(bv)) * fdTeamSortDir;
+});
+return teams;
 }
 
 function renderFullDataTeams() {
-  buildFullDataTeamsHeader();
-  const tbody = document.getElementById("fd-players-body");
-  tbody.innerHTML = "";
-  const rows = getFullDataTeamsFiltered();
+buildFullDataTeamsHeader();
+const tbody = document.getElementById("fd-players-body");
+tbody.innerHTML = "";
+const rows = getFullDataTeamsFiltered();
 
-  rows.forEach((t) => {
-    const row = document.createElement("tr");
-    let html = `<td>${t.abbr}</td><td>${t.gamesPlayed ?? "--"}</td>`;
-    FD_TEAM_COLUMNS.forEach((c, i) => {
-      const groupStart = i === 0 ? " fd-group-start" : "";
-      html += `<td class="${groupStart}">${t[c.key] ?? "--"}</td>`;
-    });
-    row.innerHTML = html;
-    tbody.appendChild(row);
-  });
+rows.forEach((t) => {
+const row = document.createElement("tr");
+let html = `<td>${t.abbr}</td><td>${t.gamesPlayed ?? "--"}</td>`;
+FD_TEAM_COLUMNS.forEach((c, i) => {
+const groupStart = i === 0 ? " fd-group-start" : "";
+html += `<td class="${groupStart}">${t[c.key] ?? "--"}</td>`;
+});
+row.innerHTML = html;
+tbody.appendChild(row);
+});
 
-  document.querySelectorAll("#fd-table-head th").forEach((th) => {
-    th.classList.remove("sorted-asc", "sorted-desc");
-    if (th.dataset.fdTeamKey === fdTeamSortKey) th.classList.add(fdTeamSortDir === 1 ? "sorted-asc" : "sorted-desc");
-  });
+document.querySelectorAll("#fd-table-head th").forEach((th) => {
+th.classList.remove("sorted-asc", "sorted-desc");
+if (th.dataset.fdTeamKey === fdTeamSortKey) th.classList.add(fdTeamSortDir === 1 ? "sorted-asc" : "sorted-desc");
+});
 
-  const metaEl = document.getElementById("fd-meta");
-  if (metaEl) {
-    const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
-    metaEl.textContent = `${rows.length} of ${Object.keys(fullData.teamsDetail || {}).length} teams · last generated ${generated}`;
-  }
-  document.getElementById("fd-note").textContent = fullData.note || "";
+const metaEl = document.getElementById("fd-meta");
+if (metaEl) {
+const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
+metaEl.textContent = `${rows.length} of ${Object.keys(fullData.teamsDetail || {}).length} teams · last generated ${generated}`;
+}
+document.getElementById("fd-note").textContent = fullData.note || "";
 }
 
 function renderFullData() {
-  if (fdSubTab === "teams") renderFullDataTeams();
-  else renderFullDataPlayers();
+if (fdSubTab === "teams") renderFullDataTeams();
+else renderFullDataPlayers();
 }
 
 document.getElementById("fd-search").addEventListener("input", (e) => {
-  fdSearchTerm = e.target.value;
-  renderFullData();
+fdSearchTerm = e.target.value;
+renderFullData();
 });
 
 document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    fdSubTab = btn.dataset.fdtab;
-    document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b === btn));
-    renderFullData();
-  });
+btn.addEventListener("click", () => {
+fdSubTab = btn.dataset.fdtab;
+document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b === btn));
+renderFullData();
+});
 });
 
 // -- Full Data: CSV export (whichever sub-tab -- Players or Teams -- is active) --
 function downloadFullDataCSV() {
-  const today = new Date();
-  const dateSuffix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+const today = new Date();
+const dateSuffix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-  if (fdSubTab === "teams") {
-    const headers = ["Team", "GP", ...FD_TEAM_COLUMNS.map((c) => c.label)];
-    const rows = getFullDataTeamsFiltered().map((t) => [t.abbr, t.gamesPlayed ?? "", ...FD_TEAM_COLUMNS.map((c) => t[c.key] ?? "")]);
-    const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-    const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `tome-edge-fastbreak-fulldata-teams-${dateSuffix}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    return;
-  }
+if (fdSubTab === "teams") {
+const headers = ["Team", "GP", ...FD_TEAM_COLUMNS.map((c) => c.label)];
+const rows = getFullDataTeamsFiltered().map((t) => [t.abbr, t.gamesPlayed ?? "", ...FD_TEAM_COLUMNS.map((c) => t[c.key] ?? "")]);
+const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const link = document.createElement("a");
+link.href = url;
+link.download = `tome-edge-fastbreak-fulldata-teams-${dateSuffix}.csv`;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
+return;
+}
 
-  const cols = fdColumns();
-  const headers = ["Player", "Team"];
-  cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
-  const rows = getFullDataFiltered().map((p) => {
-    const row = [p.name, p.team];
-    cols.forEach((c) => {
-      const s = p.stats[c.code] || {};
-      row.push(s.l10 ?? "", s.ytd ?? "");
-    });
-    return row;
-  });
-  const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-  const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `tome-edge-fastbreak-fulldata-players-${dateSuffix}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+const cols = fdColumns();
+const headers = ["Player", "Team"];
+cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
+const rows = getFullDataFiltered().map((p) => {
+const row = [p.name, p.team];
+cols.forEach((c) => {
+const s = p.stats[c.code] || {};
+row.push(s.l10 ?? "", s.ytd ?? "");
+});
+return row;
+});
+const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+const url = URL.createObjectURL(blob);
+const link = document.createElement("a");
+link.href = url;
+link.download = `tome-edge-fastbreak-fulldata-players-${dateSuffix}.csv`;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
 }
 document.getElementById("fd-export-csv-btn").addEventListener("click", downloadFullDataCSV);
 
 // -- Admin: view schedule -----------------------------------------------------
 async function loadAdminSchedule() {
-  const tbody = document.getElementById("admin-schedule-body");
-  tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
-  try {
-    const res = await fetch(OBJECTIVES_URL);
-    const data = await res.json();
-    const days = Object.entries(data.schedule?.WNBA || {}).sort(([a], [b]) => a.localeCompare(b));
-    if (!days.length) {
-      tbody.innerHTML = `<tr><td colspan="4">No dates configured yet.</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = days.map(([date, entry]) => {
-      const classic = (entry.objectives?.Classic || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
-      const pro = (entry.objectives?.Pro || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
-      return `<tr>
-        <td>${date}</td>
-        <td>${classic}</td>
-        <td>${pro}</td>
-        <td>${entry.badgeSetName || "--"}</td>
-      </tr>`;
-    }).join("");
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
-  }
+const tbody = document.getElementById("admin-schedule-body");
+tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
+try {
+const res = await fetch(OBJECTIVES_URL);
+const data = await res.json();
+const days = Object.entries(data.schedule?.WNBA || {}).sort(([a], [b]) => a.localeCompare(b));
+if (!days.length) {
+tbody.innerHTML = `<tr><td colspan="4">No dates configured yet.</td></tr>`;
+return;
+}
+tbody.innerHTML = days.map(([date, entry]) => {
+const classic = (entry.objectives?.Classic || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
+const pro = (entry.objectives?.Pro || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
+return `<tr>
+<td>${date}</td>
+<td>${classic}</td>
+<td>${pro}</td>
+<td>${entry.badgeSetName || "--"}</td>
+</tr>`;
+}).join("");
+} catch (err) {
+tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
+}
 }
 
 // -- Admin: save a day (locked behind the password, never a direct DOM edit) ----
 document.getElementById("admin-save-btn").addEventListener("click", async () => {
-  const statusEl = document.getElementById("admin-status");
-  statusEl.style.color = "#a8aa9c";
-  statusEl.textContent = "Saving...";
+const statusEl = document.getElementById("admin-status");
+statusEl.style.color = "#a8aa9c";
+statusEl.textContent = "Saving...";
 
-  const mode = document.getElementById("admin-mode").value;
-  const date = document.getElementById("admin-date").value;
-  const stat1 = document.getElementById("admin-stat-1").value;
-  const target1 = parseFloat(document.getElementById("admin-target-1").value);
-  const hasSecond = document.getElementById("admin-has-second").checked;
-  const badgeSetName = document.getElementById("admin-badge-name").value.trim();
+const mode = document.getElementById("admin-mode").value;
+const date = document.getElementById("admin-date").value;
+const stat1 = document.getElementById("admin-stat-1").value;
+const target1 = parseFloat(document.getElementById("admin-target-1").value);
+const hasSecond = document.getElementById("admin-has-second").checked;
+const badgeSetName = document.getElementById("admin-badge-name").value.trim();
 
-  if (!date || !target1) {
-    statusEl.style.color = "#f87171";
-    statusEl.textContent = "Date and Objective 1 target are required.";
-    return;
-  }
+if (!date || !target1) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = "Date and Objective 1 target are required.";
+return;
+}
 
-  const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1 }];
-  if (hasSecond) {
-    const stat2 = document.getElementById("admin-stat-2").value;
-    const target2 = parseFloat(document.getElementById("admin-target-2").value);
-    if (!target2) {
-      statusEl.style.color = "#f87171";
-      statusEl.textContent = "Objective 2 target is required when adding a second objective.";
-      return;
-    }
-    objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2 });
-  }
+const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1 }];
+if (hasSecond) {
+const stat2 = document.getElementById("admin-stat-2").value;
+const target2 = parseFloat(document.getElementById("admin-target-2").value);
+if (!target2) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = "Objective 2 target is required when adding a second objective.";
+return;
+}
+objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2 });
+}
 
-  try {
-    const res = await fetch(OBJECTIVES_DAY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-      body: JSON.stringify({ league: "WNBA", date, mode, objectives, badgeSetName: mode === "Pro" ? badgeSetName : undefined }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    statusEl.style.color = "#34d399";
-    statusEl.textContent = `Saved ${date} (${mode}). It will take effect immediately on next load.`;
-    loadAdminSchedule();
-  } catch (err) {
-    statusEl.style.color = "#f87171";
-    statusEl.textContent = `Failed to save: ${err.message}`;
-  }
+try {
+const res = await fetch(OBJECTIVES_DAY_URL, {
+method: "POST",
+headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
+body: JSON.stringify({ league: "WNBA", date, mode, objectives, badgeSetName: mode === "Pro" ? badgeSetName : undefined }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+statusEl.style.color = "#34d399";
+statusEl.textContent = `Saved ${date} (${mode}). It will take effect immediately on next load.`;
+loadAdminSchedule();
+} catch (err) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = `Failed to save: ${err.message}`;
+}
 });
 
 // -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
@@ -1115,8 +1131,8 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
 // actually track as objectives are listed; other Rotowire columns (Min, Pos,
 // FG%, DREB, 3P%, etc.) are simply ignored during table parsing.
 const ROTOWIRE_HEADER_TO_STAT = {
-  PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
-  TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
+PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
+TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
 };
 
 // Returns { byStat: { STAT: [{name,value}, ...] }, errors: [] }. A full
@@ -1127,140 +1143,143 @@ const ROTOWIRE_HEADER_TO_STAT = {
 // matters for the plain "Name, Value" fallback below, where there's no
 // column header to identify the stat from.
 function parseProjRows(text, stat) {
-  const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
-  if (!lines.length) return { byStat: {}, errors: [] };
+const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
+if (!lines.length) return { byStat: {}, errors: [] };
 
-  // Full Rotowire table paste: first line is a tab-separated header starting
-  // with "Player". Pull out every column that matches a stat we track.
-  const headerCells = lines[0].split("\t").map((c) => c.trim());
-  if (headerCells[0] === "Player" && headerCells.length > 2) {
-    const statColumns = headerCells
-      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
-      .filter((c) => c.stat);
-    if (!statColumns.length) {
-      return {
-        byStat: {},
-        errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`],
-      };
-    }
-    const byStat = {};
-    statColumns.forEach((c) => (byStat[c.stat] = []));
-    const errors = [];
-    lines.slice(1).forEach((line, i) => {
-      const cells = line.split("\t").map((c) => c.trim());
-      const name = cells[0];
-      statColumns.forEach(({ stat: colStat, colIndex }) => {
-        const value = parseFloat(cells[colIndex]);
-        if (!name || Number.isNaN(value)) {
-          errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
-          return;
-        }
-        byStat[colStat].push({ name, value });
-      });
-    });
-    return { byStat, errors };
-  }
+// Full Rotowire table paste: first line is a tab-separated header starting
+// with "Player". Pull out every column that matches a stat we track.
+const headerCells = lines[0].split("\t").map((c) => c.trim());
+if (headerCells[0] === "Player" && headerCells.length > 2) {
+const statColumns = headerCells
+.map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
+.filter((c) => c.stat);
+if (!statColumns.length) {
+return {
+byStat: {},
+errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`],
+};
+}
+const byStat = {};
+statColumns.forEach((c) => (byStat[c.stat] = []));
+const errors = [];
+lines.slice(1).forEach((line, i) => {
+const cells = line.split("\t").map((c) => c.trim());
+const name = cells[0];
+statColumns.forEach(({ stat: colStat, colIndex }) => {
+const value = parseFloat(cells[colIndex]);
+if (!name || Number.isNaN(value)) {
+errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
+return;
+}
+byStat[colStat].push({ name, value });
+});
+});
+return { byStat, errors };
+}
 
-  // Fallback: simple "Name, Value" per line -- only identifies the single
-  // stat selected in the dropdown, since there's no header to read from.
-  const rows = [];
-  const errors = [];
-  lines.forEach((line, i) => {
-    const trimmed = line.trim();
-    const parts = trimmed.split(",");
-    if (parts.length !== 2) {
-      errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
-      return;
-    }
-    const name = parts[0].trim();
-    const value = parseFloat(parts[1].trim());
-    if (!name || Number.isNaN(value)) {
-      errors.push(`Line ${i + 1}: could not parse a name and number from "${trimmed}"`);
-      return;
-    }
-    rows.push({ name, value });
-  });
-  return { byStat: rows.length ? { [stat]: rows } : {}, errors };
+// Fallback: simple "Name, Value" per line -- only identifies the single
+// stat selected in the dropdown, since there's no header to read from.
+const rows = [];
+const errors = [];
+lines.forEach((line, i) => {
+const trimmed = line.trim();
+const parts = trimmed.split(",");
+if (parts.length !== 2) {
+errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
+return;
+}
+const name = parts[0].trim();
+const value = parseFloat(parts[1].trim());
+if (!name || Number.isNaN(value)) {
+errors.push(`Line ${i + 1}: could not parse a name and number from "${trimmed}"`);
+return;
+}
+rows.push({ name, value });
+});
+return { byStat: rows.length ? { [stat]: rows } : {}, errors };
 }
 
 document.getElementById("proj-save-btn").addEventListener("click", async () => {
-  const statusEl = document.getElementById("proj-status");
-  statusEl.style.color = "#a8aa9c";
-  statusEl.textContent = "Saving...";
+const statusEl = document.getElementById("proj-status");
+statusEl.style.color = "#a8aa9c";
+statusEl.textContent = "Saving...";
 
-  const date = document.getElementById("proj-date").value;
-  const stat = document.getElementById("proj-stat").value;
-  const rawText = document.getElementById("proj-rows").value;
+const date = document.getElementById("proj-date").value;
+const stat = document.getElementById("proj-stat").value;
+const rawText = document.getElementById("proj-rows").value;
 
-  if (!date) {
-    statusEl.style.color = "#f87171";
-    statusEl.textContent = "Date is required.";
-    return;
-  }
+if (!date) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = "Date is required.";
+return;
+}
 
-  const { byStat, errors } = parseProjRows(rawText, stat);
-  if (errors.length) {
-    statusEl.style.color = "#f87171";
-    statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
-    return;
-  }
-  const stats = Object.keys(byStat);
-  if (!stats.length) {
-    statusEl.style.color = "#f87171";
-     statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
-    return;
-  }
+const { byStat, errors } = parseProjRows(rawText, stat);
+if (errors.length) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
+return;
+}
+const stats = Object.keys(byStat);
+if (!stats.length) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
+return;
+}
 
-  // A full-table paste can carry every stat it recognizes in one submission
-  // (e.g. both 3PM and 3PA for a two-objective day) -- save each one with
-  // its own request against the same single-stat endpoint, then report a
-  // combined result. One request per stat either way; the difference is the
-  // admin no longer has to change the Stat dropdown and re-paste per stat.
-  const succeeded = [];
-  const failed = [];
-  for (const s of stats) {
-    try {
-      const res = await fetch(PROJECTIONS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-        body: JSON.stringify({ league: "WNBA", date, stat: s, projections: byStat[s] }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      succeeded.push(`${s} (${byStat[s].length})`);
-    } catch (err) {
-      failed.push(`${s}: ${err.message}`);
-    }
-  }
+// A full-table paste can carry every stat it recognizes in one submission
+// (e.g. both 3PM and 3PA for a two-objective day) -- save each one with
+// its own request against the same single-stat endpoint, then report a
+// combined result. One request per stat either way; the difference is the
+// admin no longer has to change the Stat dropdown and re-paste per stat.
+const succeeded = [];
+const failed = [];
+for (const s of stats) {
+try {
+const res = await fetch(PROJECTIONS_URL, {
+method: "POST",
+headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
+body: JSON.stringify({ league: "WNBA", date, stat: s, projections: byStat[s] }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+succeeded.push(`${s} (${byStat[s].length})`);
+} catch (err) {
+failed.push(`${s}: ${err.message}`);
+}
+}
 
-  if (failed.length) {
-    statusEl.style.color = "#f87171";
-    statusEl.textContent = `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : "");
-  } else {
-    statusEl.style.color = "#34d399";
-    statusEl.textContent = `Loaded projections for ${date}: ${succeeded.join(", ")}. Takes effect immediately on next load.`;
-  }
+if (failed.length) {
+statusEl.style.color = "#f87171";
+statusEl.textContent = `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : "");
+} else {
+statusEl.style.color = "#34d399";
+statusEl.textContent = `Loaded projections for ${date}: ${succeeded.join(", ")}. Takes effect immediately on next load.`;
+}
 });
 
 // -- Load ------------------------------------------------------------------------
 async function loadData() {
-  const existingBanner = document.getElementById("data-error-banner");
-  if (existingBanner) existingBanner.remove();
-  try {
-    const res = await fetch(`${WORKER_URL}?date=${selectedDate}&mode=${currentMode}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    dashboard = data;
-  } catch (err) {
-    const banner = document.createElement("p");
-    banner.id = "data-error-banner";
-    banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
-    banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
-    document.getElementById("view-main").insertBefore(banner, document.getElementById("run-days").closest(".run-row"));
-  }
-  renderScheduleTiles();
-  renderObjectiveTiles();
-  render();
+const existingBanner = document.getElementById("data-error-banner");
+if (existingBanner) existingBanner.remove();
+try {
+// Historic has no live API/calendar date -- it fetches the worker's
+// current simulated day directly instead of WORKER_URL's date/mode query.
+const url = currentMode === "Historic" ? HISTORIC_URL : `${WORKER_URL}?date=${selectedDate}&mode=${currentMode}`;
+const res = await fetch(url);
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const data = await res.json();
+dashboard = data;
+} catch (err) {
+const banner = document.createElement("p");
+banner.id = "data-error-banner";
+banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
+banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
+document.getElementById("view-main").insertBefore(banner, document.getElementById("run-days").closest(".run-row"));
+}
+renderScheduleTiles();
+renderObjectiveTiles();
+render();
 }
 
 initRunDays();

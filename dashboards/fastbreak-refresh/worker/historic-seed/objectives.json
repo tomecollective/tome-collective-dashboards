@@ -1,0 +1,1202 @@
+[
+  {
+    "day": 1,
+    "date": "March 30",
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 30
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 20
+      }
+    ]
+  },
+  {
+    "day": 2,
+    "date": "March 31",
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 50
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 3,
+    "date": "April 1",
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 4,
+    "date": "April 2",
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      }
+    ]
+  },
+  {
+    "day": 5,
+    "date": "April 3",
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 20
+      }
+    ]
+  },
+  {
+    "day": 6,
+    "date": "April 4",
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 40
+      }
+    ]
+  },
+  {
+    "day": 7,
+    "date": "April 5",
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      },
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 8,
+    "date": "April 6",
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 30
+      }
+    ]
+  },
+  {
+    "day": 9,
+    "date": "April 7",
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 50
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 10,
+    "date": "April 8",
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 30
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 20
+      }
+    ]
+  },
+  {
+    "day": 11,
+    "date": "April 9",
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 12,
+    "date": "April 10",
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 45
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 10
+      }
+    ]
+  },
+  {
+    "day": 13,
+    "date": "April 12",
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 120
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 10
+      }
+    ]
+  },
+  {
+    "day": 14,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 31
+      }
+    ]
+  },
+  {
+    "day": 15,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 38
+      }
+    ]
+  },
+  {
+    "day": 16,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 17,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 18,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 19,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 41
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 48
+      }
+    ]
+  },
+  {
+    "day": 20,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 21,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 22,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 47
+      }
+    ]
+  },
+  {
+    "day": 23,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 11
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 48
+      }
+    ]
+  },
+  {
+    "day": 24,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 25,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 119
+      }
+    ]
+  },
+  {
+    "day": 26,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 114
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 27,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 111
+      }
+    ]
+  },
+  {
+    "day": 28,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 10
+      }
+    ]
+  },
+  {
+    "day": 29,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 30,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 31,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 116
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 32,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 102
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 41
+      }
+    ]
+  },
+  {
+    "day": 33,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 10
+      }
+    ]
+  },
+  {
+    "day": 34,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 29
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 35,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 49
+      }
+    ]
+  },
+  {
+    "day": 36,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 34
+      }
+    ]
+  },
+  {
+    "day": 37,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 40
+      }
+    ]
+  },
+  {
+    "day": 38,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 50
+      }
+    ]
+  },
+  {
+    "day": 39,
+    "date": null,
+    "objectives": [
+      {
+        "type": "STL",
+        "dailyTeamTarget": 7
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      }
+    ]
+  },
+  {
+    "day": 40,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      }
+    ]
+  },
+  {
+    "day": 41,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      }
+    ]
+  },
+  {
+    "day": 42,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 34
+      }
+    ]
+  },
+  {
+    "day": 43,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 109
+      },
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 44,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 36
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 45,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 112
+      }
+    ]
+  },
+  {
+    "day": 46,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 47
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 47,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 106
+      }
+    ]
+  },
+  {
+    "day": 48,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 29
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 49,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 30
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 50
+      }
+    ]
+  },
+  {
+    "day": 50,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 46
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 51,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 45
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 11
+      }
+    ]
+  },
+  {
+    "day": 52,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 53,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      }
+    ]
+  },
+  {
+    "day": 54,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 102
+      }
+    ]
+  },
+  {
+    "day": 55,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 11
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 45
+      }
+    ]
+  },
+  {
+    "day": 56,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 42
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      }
+    ]
+  },
+  {
+    "day": 57,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      }
+    ]
+  },
+  {
+    "day": 58,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 12
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      }
+    ]
+  },
+  {
+    "day": 59,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 10
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 60,
+    "date": null,
+    "objectives": [
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 114
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 22
+      }
+    ]
+  },
+  {
+    "day": 61,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 39
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 62,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 10
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 120
+      }
+    ]
+  },
+  {
+    "day": 63,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 38
+      }
+    ]
+  },
+  {
+    "day": 64,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 65,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 66,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 47
+      },
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 67,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      },
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      }
+    ]
+  },
+  {
+    "day": 68,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 69,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 34
+      }
+    ]
+  },
+  {
+    "day": 70,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 28
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      }
+    ]
+  },
+  {
+    "day": 71,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 72,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 49
+      }
+    ]
+  },
+  {
+    "day": 73,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 107
+      }
+    ]
+  },
+  {
+    "day": 74,
+    "date": null,
+    "objectives": [
+      {
+        "type": "REB",
+        "dailyTeamTarget": 35
+      }
+    ]
+  },
+  {
+    "day": 75,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 48
+      }
+    ]
+  },
+  {
+    "day": 76,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "AST",
+        "dailyTeamTarget": 29
+      }
+    ]
+  },
+  {
+    "day": 77,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 46
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 8
+      }
+    ]
+  },
+  {
+    "day": 78,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 23
+      },
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 79,
+    "date": null,
+    "objectives": [
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      },
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      }
+    ]
+  },
+  {
+    "day": 80,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGA",
+        "dailyTeamTarget": 100
+      },
+      {
+        "type": "3PM",
+        "dailyTeamTarget": 10
+      }
+    ]
+  },
+  {
+    "day": 81,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 20
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 44
+      }
+    ]
+  },
+  {
+    "day": 82,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 23
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 33
+      }
+    ]
+  },
+  {
+    "day": 83,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      }
+    ]
+  },
+  {
+    "day": 84,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 49
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 111
+      }
+    ]
+  },
+  {
+    "day": 85,
+    "date": null,
+    "objectives": [
+      {
+        "type": "FGM",
+        "dailyTeamTarget": 49
+      },
+      {
+        "type": "PTS",
+        "dailyTeamTarget": 113
+      }
+    ]
+  },
+  {
+    "day": 86,
+    "date": null,
+    "objectives": [
+      {
+        "type": "STL",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      }
+    ]
+  },
+  {
+    "day": 87,
+    "date": null,
+    "objectives": [
+      {
+        "type": "3PA",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 7
+      }
+    ]
+  },
+  {
+    "day": 88,
+    "date": null,
+    "objectives": [
+      {
+        "type": "BLK",
+        "dailyTeamTarget": 6
+      },
+      {
+        "type": "OREB",
+        "dailyTeamTarget": 9
+      }
+    ]
+  },
+  {
+    "day": 89,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 23
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 33
+      }
+    ]
+  },
+  {
+    "day": 90,
+    "date": null,
+    "objectives": [
+      {
+        "type": "AST",
+        "dailyTeamTarget": 25
+      },
+      {
+        "type": "REB",
+        "dailyTeamTarget": 42
+      }
+    ]
+  }
+]
