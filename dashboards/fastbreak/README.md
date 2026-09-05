@@ -4,85 +4,105 @@
 Two Cloudflare Workers share one KV namespace (`FASTBREAK_KV`):
 
 - **`tome-fastbreak-refresh`** (`dashboards/fastbreak-refresh/`) — the only piece that
-  talks to BALLDONTLIE. On a cron schedule (and via a manual `GET /` for testing) it
-  builds the full dashboard payload — schedule tiles, per-objective Proj/YTD/L10, color
-  tiers, and one weighted Ovr Rank per player — and writes it to `FASTBREAK_KV` under
-  `fastbreak:latest`. It also owns the admin objectives schedule at
-  `fastbreak:objectives`.
-- **`tome-fastbreak-dashboard`** (`dashboards/fastbreak/`, this directory) — the public
-  Worker `index.html` actually calls. It only reads/writes `FASTBREAK_KV`; it never
-  calls BALLDONTLIE directly, so it stays fast regardless of refresh cadence.
+  talks to BALLDONTLIE. It builds the dashboard payload for any (league, date, mode) on
+  demand, caches each day's raw inputs in KV, refreshes today's slate on a cron schedule,
+  owns the objectives schedule + Rotowire projection uploads, and hosts the NBA Historic
+  simulation (`worker/historic.js`).
+- **`tome-fastbreak-dashboard`** (`dashboards/fastbreak/`, this directory) — a thin public
+  read/admin-write proxy over the same KV. `index.html` (GitHub Pages) calls the refresh
+  Worker directly; this Worker is a cheap fallback that serves the last cron-cached slate.
 
-## What's live
-- **League / Mode toggle.** NBA and Historic are disabled (season not in progress /
-  not built yet). WNBA + Classic/Pro are selectable; both currently read the same live
-  data — see the `TODO(mode)` in the refresh Worker's source for where Classic vs. Pro
-  will eventually diverge (e.g. Pro unlocking Top Shot badge/set filtering once the
-  Cadence/Flow moment-ownership integration exists — intentionally not built yet).
-- **Game schedule tiles.** ESPN-style row above the table (matchup + time), pulled from
-  the same BALLDONTLIE `/games` data used for opponents and the L10/YTD game windows.
-- **Objectives admin view.** Reachable via the "Objectives Admin" toggle on the main
-  page. The schedule table itself is visible to anyone (it's a locked *view*, not a
-  secret); the only way to change it is the form at the bottom, which requires the
-  admin token (`X-Admin-Token` header, checked against the `FASTBREAK_ADMIN_TOKEN`
-  secret). There's no code path that lets someone edit the schedule by hand-editing
-  page content.
-- **Proj = L10 average**, for every objective, including PITP. This matches what was
-  being done manually. **This is intentionally the simplest honest version** — see the
-  `TODO(projections)` comment in `dashboards/fastbreak-refresh/worker/index.js`. A real
-  pace/matchup/usage-adjusted projection model is a separately-scoped future build, not
-  something guessed at here.
-- **YTD / L10 from BALLDONTLIE**, including PITP via `player_game_advanced_stats`
-  (`stats.misc.points_paint`) when PITP is one of the day's objectives.
-- **Weighted Ovr Rank.** When a day has two objectives, players get ranked separately
-  within each objective (standard competition ranking on Proj, descending), then those
-  ranks combine using that day's weights into a single combined score — one Ovr Rank
-  per player, never separate per-objective leaderboards.
-- **5-tier color coding** on every Proj/YTD/L10 cell, against that day's per-player
-  target (`dailyTeamTarget / 5`): dark green ≥125%, light green ≥100%, yellow ≥90%,
-  light yellow ≥75%, no fill below 75%.
-- **Every column is sortable** by clicking its header (Player/Team/Opp, every
-  objective's Proj/YTD/L10, and Ovr Rank).
+## Modes (single-select toggle)
+`WNBA Classic · WNBA Pro · NBA Classic · NBA Pro · NBA Historic · Full Data`
 
-## Explicitly not built yet
-Top Shot badge/set filtering for the Pro tab. That depends on real Top Shot
-moment-ownership data (the Cadence/Flow blockchain integration), which doesn't exist
-yet. Building filter UI now would show either fake data or an empty state — waiting
-until the real data integration lands.
+- **WNBA and NBA** run through the same live pipeline. Everything league-specific lives in
+  the `LEAGUES` table at the top of `fastbreak-refresh/worker/index.js`: API base
+  (`/wnba/v1` vs `/v1`), score fields (`home_score` vs `home_team_score`), status
+  normalization (WNBA `pre/in/post` vs NBA `"Final"/"1st Qtr"/status_state`), season
+  numbering (WNBA = calendar year; NBA 2026 = 2026-27), L10 lookback (NBA reaches back
+  240 days so opening week shows last season's L10), run window, and KV keys.
+- **Runs.** WNBA Run 11 = Sept 17–24, 2026 (post-World-Cup regular-season finish). NBA Run 1
+  = Oct 20–26, 2026 (opening week). Each league's window is independent, so the WNBA
+  playoffs and NBA season start can overlap. Change a window in `LEAGUES[].run`; the
+  frontend reads it from `/api/fastbreak/run?league=ALL` (with a matching fallback in
+  `index.html`'s `RUNS`).
+- **Classic vs Pro** differ only in their objective sets (and Pro's badge/set label).
+  Rotowire projections are uploaded once per league/date and shared by both.
+- **NBA Historic** is a simulated season with its own `fastbreak:historic:*` keys. The
+  public toggle is greyed out until `HISTORIC_ENABLED` in `index.html` is flipped; it is
+  fully manageable from Objectives Admin in the meantime (seed upload, per-day objectives,
+  advance day).
+- **Full Data** has a WNBA/NBA sub-toggle; each league's leaguewide build is separate.
 
-## Rotowire
-Dropped entirely. The long-term plan is in-house projections generated from
-BALLDONTLIE data (see `TODO(projections)` above), not a third-party dependency.
+## Resumable day builds (why the NBA tab doesn't drop players)
+A full NBA slate is 300–450 active players ≈ 80+ BALLDONTLIE calls, past the Cloudflare
+Free plan's 50-subrequests-per-invocation ceiling. Each (league, date) build is persisted
+in KV as it goes (`<dayPrefix><date>:build`) and resumed by the next request or cron tick
+until every player is loaded; the finished snapshot (`<dayPrefix><date>`) then serves both
+Classic and Pro with zero API calls for 30 minutes (6 hours for past dates). While a
+rebuild is in flight the last complete snapshot keeps being served (`refreshing: true`);
+a first-ever build returns partial players with `building: true` + `progress`, and the
+frontend polls every 2.5s until done. "Rebuild a Day's Data" in the admin forces a
+re-pull (`POST /api/fastbreak/day/invalidate`).
 
-## Local verification (no live Cloudflare account needed)
-- `node dashboards/fastbreak-refresh/worker/_local_test.mjs` — mocks BALLDONTLIE and KV,
-  exercises the pure ranking/color-tier/weight logic and a couple of full
-  `buildDashboard()` runs (single-objective PITP day, two-objective weighted day,
-  unconfigured-day fallback).
-- `node dashboards/fastbreak/_frontend_test.mjs` — drives `index.html` in headless
-  Chromium against mocked Worker responses: toggle disabling, game tiles, Proj===L10,
-  color classes, header-click sorting (including a per-objective column), the admin
-  view's reachability, and the admin save flow (wrong token rejected, correct token
-  posts a real request rather than mutating the DOM).
+Early in a season YTD is a subset of L10, so one stats query covers both. Later, YTD is
+paged up to `YTD_STAT_PAGES_PER_CHUNK` (3 pages = 30 games/player); beyond that YTD is
+best-effort from the earliest games and the payload note says so. L10 is always complete.
 
-Both are dev-only scripts, not part of the deployed Worker bundles.
+## Cron
+`wrangler.toml` declares two schedules — `*/15 * * * *` (WNBA) and `7-59/15 * * * *`
+(NBA) — and `scheduled()` maps `event.cron` back to a league via `LEAGUE_CRONS`. A tick is
+a no-op outside that league's `seasonActive` window, refreshes today's slate otherwise,
+and spends the leftover budget on that league's Full Data build. All "today" logic is
+Eastern Time via `Intl` (handles the EDT/EST switch in November).
+
+## API (refresh Worker)
+| Route | Notes |
+|---|---|
+| `GET /api/fastbreak?league=&date=&mode=` | Live view (serve-or-advance). |
+| `GET /api/fastbreak/run?league=ALL` | Run windows for the frontend. |
+| `GET /api/fastbreak/objectives` | Whole schedule, keyed `schedule[league][date]`. |
+| `POST /api/fastbreak/objectives/day` | `{league, date, mode, objectives, badgeSetName}` |
+| `POST /api/fastbreak/objectives/day/projections` | `{league, date, stat, projections}` |
+| `POST /api/fastbreak/day/invalidate` | `{league, date}` |
+| `GET /api/fastbreak/fulldata?league=` · `POST …/fulldata/build?league=` · `GET …/fulldata/status?league=` | Per-league Full Data. |
+| `GET /api/fastbreak/historic?day=` · `GET …/historic/status` | Historic public + status. |
+| `POST /api/fastbreak/historic/seed` · `POST …/historic/objectives/day` · `POST …/historic/advance` | Historic admin. |
+
+POSTs require the `X-Admin-Token` header (`FASTBREAK_ADMIN_TOKEN` secret).
+
+## KV keys
+`fastbreak:objectives` (all leagues) · `fastbreak:latest` / `fastbreak:nba:latest` ·
+`fastbreak:day:<date>[:build]` / `fastbreak:nba:day:<date>[:build]` ·
+`fastbreak:fulldata[:build]` / `fastbreak:nba:fulldata[:build]` · `fastbreak:historic:*`.
+
+## BALLDONTLIE tiers
+Box scores, active rosters and injuries need ALL-STAR. PITP comes from the advanced-stats
+endpoints; on the NBA side (`/nba/v2/stats/advanced`) that is GOAT tier — if the key lacks
+it the build fails soft and PITP shows `--` with a note, rather than breaking the slate.
+
+## Local verification (no Cloudflare account needed)
+- `node dashboards/fastbreak-refresh/worker/_local_test.mjs` — mocks BALLDONTLIE (both
+  league shapes) and KV; covers the pure helpers, a 384-player NBA slate finishing across
+  multiple calls with nobody dropped, a WNBA PITP day, Pro served from cache, PITP-change
+  invalidation, the HTTP surface, and cron dispatch.
+- `node dashboards/fastbreak/_frontend_test.mjs` — headless Chromium against mocked Worker
+  routes; covers the six-way toggle, per-league run days, building→done polling, Full Data
+  league sub-toggle, and the five-mode admin (`CHROMIUM_PATH=` to point at a local
+  Chromium; needs `npm i playwright`).
 
 ## Deploy
-1. Create the shared KV namespace once: `wrangler kv:namespace create FASTBREAK_KV`,
-   then put the printed id into **both** `dashboards/fastbreak/wrangler.toml` and
-   `dashboards/fastbreak-refresh/wrangler.toml`.
-2. Set secrets on the refresh Worker: `wrangler secret put BALLDONTLIE_API_KEY` and
-   `wrangler secret put FASTBREAK_ADMIN_TOKEN`. Set `FASTBREAK_ADMIN_TOKEN` on the
-   public Worker too (same value) so it can validate admin writes.
-3. `cd dashboards/fastbreak-refresh && wrangler deploy`
-4. `cd dashboards/fastbreak && wrangler deploy`
-5. Trigger the refresh Worker's `GET /` once manually to populate KV instead of waiting
-   for the next cron tick, then load `index.html`.
+1. Create the shared KV namespace once (`wrangler kv:namespace create FASTBREAK_KV`) and put
+   its id in **both** `wrangler.toml` files.
+2. Secrets on the refresh Worker: `BALLDONTLIE_API_KEY`, `FASTBREAK_ADMIN_TOKEN`
+   (also `FASTBREAK_ADMIN_TOKEN` on the public Worker).
+3. `cd dashboards/fastbreak-refresh && wrangler deploy` (this registers both crons), then
+   `cd dashboards/fastbreak && wrangler deploy`.
+4. Push `index.html` to GitHub Pages. Existing WNBA KV data keeps working unchanged
+   (`fastbreak:objectives` is already keyed by league; old `fastbreak:latest` is reused).
 
 ## Known follow-ups
-- Classic vs. Pro don't functionally differ yet (see `TODO(mode)`).
-- Proj is a straight L10 passthrough (see `TODO(projections)`); a real projection model
-  is future, separately-scoped work.
-- Top Shot badge/set filtering for Pro is on hold pending the Cadence/Flow integration.
-- **Future enhancement: Flow/Cadence badge/set ownership lookup.** `badgeSetName` on a Pro day is currently just an admin-typed label ("Rookie Year") shown on the objective tile — it doesn't know which *players* actually own a moment from that badge/set. Integrating with Flow/Cadence (the blockchain NBA Top Shot moments live on) could let the refresh Worker look up real moment ownership per player and automatically flag/filter who qualifies, instead of the badge/set name being purely informational.
-- **Future enhancement: Top 10 Players by Utilization.** NBA Top Shot's own Fast Break page surfaces which players are being utilized most heavily (picked into the most lineups). Worth investigating whether that utilization signal — or a comparable Cadence/Flow-sourced equivalent — could be captured and rendered here as a "Top 10 Players by Utilization" tile/graphic alongside the objectives.
+- Historic Ovr Rank is an equal-weight L10 average; porting `computeAutoWeights` is noted.
+- Top Shot badge/set filtering for Pro waits on a Flow/Cadence moment-ownership integration.
+- "Top 10 Players by Utilization" tile (Top Shot's own Fast Break page signal) is unbuilt.
+- WNBA playoffs (Sept 27+) will need a new run window (`LEAGUES.WNBA.run`).
