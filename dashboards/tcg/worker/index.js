@@ -15,7 +15,9 @@
 //     result to KV.
 //   - POST /api/refresh: manually kicks off the same batched run on demand,
 //     without waiting for the cron -- same pattern the healthcheck worker's
-//     README documents for testing its own scheduled handler. One POST
+//     README documents for testing its own scheduled handler. Requires the
+//     X-Admin-Token header (== the TCG_ADMIN_TOKEN secret); without it the
+//     route answers 401 so strangers can't burn JustTCG quota. One POST
 //     starts the chain; it finishes itself over several batches a few
 //     seconds apart. Add ?resume=1 to continue an in-progress run instead of
 //     restarting from card 0 (this is what the worker passes to itself).
@@ -349,7 +351,28 @@ async function freshProgress(env) {
     sets: JSON.parse(JSON.stringify(chaseIndexData.sets)),
     offset: 0,
     failures: [],
+    // Per-run secret the batch chain presents on its resume=1 calls, so the
+    // chain keeps working without exposing an unauthenticated /api/refresh.
+    chainNonce: crypto.randomUUID(),
   };
+}
+
+// -- Admin auth for POST /api/refresh -----------------------------------------
+// A fresh run may only be started by the cron (scheduled(), no HTTP) or by an
+// admin presenting X-Admin-Token == TCG_ADMIN_TOKEN. Batch continuations
+// (?resume=1) are authenticated by the per-run chainNonce stored in KV
+// progress and sent back as X-Refresh-Chain -- never by the admin token, so
+// the chain works even if the secret is rotated mid-run.
+function checkAdminToken(request, env) {
+  const token = request.headers.get("X-Admin-Token") || "";
+  return Boolean(env.TCG_ADMIN_TOKEN) && token === env.TCG_ADMIN_TOKEN;
+}
+
+async function checkChainNonce(request, env) {
+  const presented = request.headers.get("X-Refresh-Chain") || "";
+  if (!presented || !env.CHASE_INDEX_KV) return false;
+  const progress = await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json");
+  return Boolean(progress && progress.chainNonce && progress.chainNonce === presented);
 }
 
 // Processes one BATCH_SIZE-sized slice of cards, then either chains itself
@@ -376,7 +399,6 @@ async function processBatch(env, origin, resume, ctx) {
   progress.offset += slice.length;
 
   if (progress.offset < total) {
-    await env.CHASE_INDEX_KV.put(KEY_PROGRESS, JSON.stringify(progress));
     // Chain to the next batch via the SELF service binding, NOT a plain
     // fetch() to our own workers.dev URL -- Cloudflare silently blocks a
     // worker from fetch()-ing its own *.workers.dev URL as anti-loop
@@ -384,7 +406,11 @@ async function processBatch(env, origin, resume, ctx) {
     // exactly what made the first version of this chain die after batch 1
     // with no visible error. Service bindings route worker-to-worker
     // internally and aren't subject to that restriction -- see wrangler.toml.
-    ctx.waitUntil(env.SELF.fetch(`${origin}/api/refresh?resume=1`, { method: "POST" }));
+    if (!progress.chainNonce) progress.chainNonce = crypto.randomUUID(); // progress written before this field existed
+    await env.CHASE_INDEX_KV.put(KEY_PROGRESS, JSON.stringify(progress));
+    ctx.waitUntil(
+      env.SELF.fetch(`${origin}/api/refresh?resume=1`, { method: "POST", headers: { "X-Refresh-Chain": progress.chainNonce } })
+    );
     return { done: false, progress: `${progress.offset}/${total}`, message: "batch complete, next batch chaining automatically" };
   }
 
@@ -537,6 +563,11 @@ export default {
     }
 
     if (url.pathname === "/api/refresh" && request.method === "POST") {
+      const resume = url.searchParams.get("resume") === "1";
+      const authorized = resume ? await checkChainNonce(request, env) : checkAdminToken(request, env);
+      if (!authorized) {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
+      }
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set -- wrangler secret put JUSTTCG_API_KEY" }), {
           status: 500,
@@ -552,8 +583,7 @@ export default {
       // ?resume=1 continues a chained run already in progress (this is what
       // the worker calls on itself between batches); no resume param means
       // "start a fresh run from card 0", which is what you want the first
-      // time you POST here by hand.
-      const resume = url.searchParams.get("resume") === "1";
+      // time you POST here by hand (with the X-Admin-Token header).
       const result = await processBatch(env, url.origin, resume, ctx);
       return new Response(JSON.stringify(result), { headers: corsHeaders });
     }

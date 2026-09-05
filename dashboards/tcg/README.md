@@ -83,6 +83,11 @@ necessary given the API's retention capability.
    candidate-pool grid should all render from the seed data
 8. **When ready to go live:** add your JustTCG key via `wrangler secret put JUSTTCG_API_KEY`,
    then swap the static import in `worker/index.js` for the live fetch documented inline there
+9. **Admin token (required):** `wrangler secret put TCG_ADMIN_TOKEN`. `POST /api/refresh`
+   answers 401 unless the request carries `X-Admin-Token: <that value>`; the cron and the
+   worker's own batch chain (`?resume=1`, authenticated by a per-run nonce) don't need it.
+   Manual kick: `curl -X POST -H "X-Admin-Token: ..." https://tome-tcg.tomecollective.workers.dev/api/refresh`
+   Local check: `node dashboards/tcg/worker/_local_test.mjs`
 
 ## Future: usage analytics
 The "See ranks 6-10" toggle mentioned in earlier notes has been removed — the candidate pool now
