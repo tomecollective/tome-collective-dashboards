@@ -156,6 +156,11 @@ visually with the dashboard itself) ----------------------------------- */
 .admin-gate button:hover { background: var(--green); color: #fff; border-color: var(--green); }
 #admin-gate-status { margin-top: 8px; font-size: 0.68rem; color: var(--dn); }
 #admin-locked-content { display:none; }
+.admin-picker-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.admin-form-scope { font-size:0.68rem; font-weight:600; color:var(--gold); margin-left:6px; letter-spacing:0.02em; }
+.admin-textarea { width:100%; box-sizing:border-box; background:var(--surface2); border:0.5px solid var(--border-str); color:var(--text); padding:8px 10px; border-radius:var(--r); font-family:var(--mono); font-size:0.8rem; outline:none; resize:vertical; }
+.admin-form code { font-family:var(--mono); font-size:0.68rem; color:var(--text-2); }
+.loading-banner { font-size:0.75rem; color:var(--gold); margin:-8px 0 16px; }
 
 ::-webkit-scrollbar{height:8px;width:8px;}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
@@ -185,15 +190,16 @@ visually with the dashboard itself) ----------------------------------- */
 </div>
 
 <div class="toggle-row">
-<div class="toggle-group" id="league-toggle">
-<button data-league="NBA" disabled title="Season not in progress">NBA</button>
-<button data-league="WNBA" class="active">WNBA</button>
-</div>
+<!-- Single-select: one button per league+mode combination (no NBA x Historic
+style cross-filtering to get wrong). Historic stays greyed out until
+HISTORIC_ENABLED is flipped in the script below. -->
 <div class="toggle-group" id="mode-toggle">
-<button data-mode="Classic" class="active">Classic</button>
-<button data-mode="Pro">Pro</button>
-<button data-mode="Historic" disabled title="Not built yet">Historic</button>
-<button data-mode="FullData" title="Every active player's L10/YTD across all Fast Break stats">Full Data</button>
+<button data-league="WNBA" data-mode="Classic" class="active">WNBA Classic</button>
+<button data-league="WNBA" data-mode="Pro">WNBA Pro</button>
+<button data-league="NBA" data-mode="Classic">NBA Classic</button>
+<button data-league="NBA" data-mode="Pro">NBA Pro</button>
+<button data-league="NBA" data-mode="Historic">NBA Historic</button>
+<button data-league="" data-mode="FullData" title="Every active player's L10/YTD across all Fast Break stats">Full Data</button>
 </div>
 <span class="toggle-note" id="mode-note"></span>
 <button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin &rarr;</button>
@@ -202,7 +208,7 @@ visually with the dashboard itself) ----------------------------------- */
 <div id="view-main">
 
 <div class="run-row">
-<span class="run-label">Run 10</span>
+<span class="run-label" id="run-label">Run</span>
 <div class="run-days" id="run-days"></div>
 </div>
 
@@ -236,12 +242,17 @@ visually with the dashboard itself) ----------------------------------- */
 <div id="view-fulldata">
 <h2 style="font-size:1.05rem;margin-bottom:6px;">Full Data: Every Active Player</h2>
 <p style="font-size:0.78rem;color:var(--text-3);line-height:1.5;margin:0 0 16px;">
-L10 and YTD averages across every Fast Break-relevant box-score stat, for every active WNBA
-player -- not just the day's objective(s) or today's slate. Rebuilds roughly once a day.
-Switch to the Teams tab for season/YTD team averages. Click any column header to sort.
+L10 and YTD averages across every Fast Break-relevant box-score stat, for every active
+player in the selected league -- not just the day's objective(s) or today's slate. Rebuilds
+roughly once a day. Switch to the Teams tab for season/YTD team averages. Click any column
+header to sort.
 </p>
 
 <div class="fd-toolbar">
+<div class="toggle-group" id="fd-league-toggle">
+<button data-fdleague="WNBA" class="active">WNBA</button>
+<button data-fdleague="NBA">NBA</button>
+</div>
 <div class="toggle-group" id="fd-subtab-toggle">
 <button data-fdtab="players" class="active">Players</button>
 <button data-fdtab="teams">Teams</button>
@@ -264,22 +275,53 @@ Switch to the Teams tab for season/YTD team averages. Click any column header to
 </div>
 
 <div id="view-admin">
-<h2>Objectives Schedule (Admin)</h2>
+<h2>Objectives Admin</h2>
 <div class="admin-banner">
-This view is visible to anyone, but read-only at this layer -- the schedule can only be
+This view is visible to anyone, but read-only at this layer -- schedules can only be
 changed through the forms below, which are locked behind the admin password. Nothing
 here is editable by clicking on the page content itself.
 </div>
 
+<!-- One picker drives everything below: which league's schedule table is
+shown, which league+mode the objectives form saves to, which league the
+projections upload lands in, and whether the Historic tools are shown. -->
+<div class="admin-picker-row">
+<span class="run-label">Managing</span>
+<div class="toggle-group" id="admin-mode-picker">
+<button data-league="WNBA" data-mode="Classic" class="active">WNBA Classic</button>
+<button data-league="WNBA" data-mode="Pro">WNBA Pro</button>
+<button data-league="NBA" data-mode="Classic">NBA Classic</button>
+<button data-league="NBA" data-mode="Pro">NBA Pro</button>
+<button data-league="NBA" data-mode="Historic">NBA Historic</button>
+</div>
+<span class="toggle-note" id="admin-picker-note"></span>
+</div>
+
+<div id="admin-live-section">
 <div class="tbl-outer">
 <div class="tbl-scroll">
 <table class="admin-table">
 <thead>
-<tr><th>Date</th><th>Classic</th><th>Pro</th><th>Badge/Set</th></tr>
+<tr><th>Date</th><th>Day</th><th>Classic</th><th>Pro</th><th>Badge/Set (Pro)</th><th>Projections uploaded</th></tr>
 </thead>
 <tbody id="admin-schedule-body"></tbody>
 </table>
 </div>
+</div>
+</div>
+
+<div id="admin-historic-section" style="display:none;">
+<div class="tbl-outer">
+<div class="tbl-scroll">
+<table class="admin-table">
+<thead>
+<tr><th>Day</th><th>Date</th><th>Games</th><th>Objectives</th><th>Simulated</th></tr>
+</thead>
+<tbody id="admin-historic-body"></tbody>
+</table>
+</div>
+</div>
+<p class="note" id="admin-historic-status" style="margin-top:12px;"></p>
 </div>
 
 <div class="admin-gate" id="admin-gate">
@@ -291,18 +333,16 @@ here is editable by clicking on the page content itself.
 </div>
 
 <div id="admin-locked-content">
-<div class="admin-form">
-<h2>Set / Update a Day's Objectives</h2>
-<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
-Weight is no longer entered manually -- it's computed automatically from the share of
-players projected to clear 100% of each objective's target (the rarer feat carries more weight).
-</p>
 
-<label>Mode</label>
-<select id="admin-mode">
-<option value="Classic">Classic</option>
-<option value="Pro">Pro</option>
-</select>
+<!-- Live leagues (WNBA / NBA x Classic / Pro) -->
+<div id="admin-live-forms">
+<div class="admin-form">
+<h2>Set / Update a Day's Objectives <span class="admin-form-scope" id="admin-obj-scope"></span></h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Saves to the league + mode selected in the picker above. Weight is computed automatically
+from the share of players projected to clear 100% of each objective's target (the rarer feat
+carries more weight).
+</p>
 
 <label>Date</label>
 <input type="date" id="admin-date">
@@ -310,22 +350,7 @@ players projected to clear 100% of each objective's target (the rarer feat carri
 <div class="obj-pair">
 <div>
 <label>Objective 1</label>
-<select id="admin-stat-1">
-<option value="PTS">PTS</option>
-<option value="REB">REB</option>
-<option value="AST">AST</option>
-<option value="STL">STL</option>
-<option value="BLK">BLK</option>
-<option value="TOV">TOV</option>
-<option value="FGM">FGM</option>
-<option value="FGA">FGA</option>
-<option value="3PM">3PM</option>
-<option value="3PA">3PA</option>
-<option value="FTM">FTM</option>
-<option value="FTA">FTA</option>
-<option value="OREB">OREB</option>
-<option value="PITP">PITP</option>
-</select>
+<select id="admin-stat-1" class="stat-select"></select>
 </div>
 <div>
 <label>Daily Team Target</label>
@@ -337,22 +362,7 @@ players projected to clear 100% of each objective's target (the rarer feat carri
 <div class="obj-pair" id="admin-second-row" style="display:none; margin-top:8px;">
 <div>
 <label>Objective 2</label>
-<select id="admin-stat-2">
-<option value="PTS">PTS</option>
-<option value="REB">REB</option>
-<option value="AST">AST</option>
-<option value="STL">STL</option>
-<option value="BLK">BLK</option>
-<option value="TOV">TOV</option>
-<option value="FGM">FGM</option>
-<option value="FGA">FGA</option>
-<option value="3PM">3PM</option>
-<option value="3PA">3PA</option>
-<option value="FTM">FTM</option>
-<option value="FTA">FTA</option>
-<option value="OREB">OREB</option>
-<option value="PITP">PITP</option>
-</select>
+<select id="admin-stat-2" class="stat-select"></select>
 </div>
 <div>
 <label>Daily Team Target</label>
@@ -368,41 +378,118 @@ players projected to clear 100% of each objective's target (the rarer feat carri
 </div>
 
 <div class="admin-form">
-<h2>Load Real Projections (Rotowire-sourced)</h2>
+<h2>Load Real Projections (Rotowire-sourced) <span class="admin-form-scope" id="admin-proj-scope"></span></h2>
 <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
-BALLDONTLIE has no projections endpoint, so Proj values for most objectives come from
-here -- a manual, Rotowire-sourced upload. Pasting a full Rotowire table captures every
-stat column it recognizes in one save (so both objectives on a two-objective day are
-covered by a single paste, no need to change Stat and resubmit). Any stat with no
-uploaded projection for a date shows Proj as TBD, except PITP, which always falls back
-to the L10 average automatically (neither Rotowire nor standard sites project it).
+Projections are stored per league and date and shared by that league's Classic and Pro
+(a player's projected PTS doesn't depend on the mode), so one upload covers both. Pasting a
+full Rotowire table captures every stat column it recognizes in one save. Any stat with no
+uploaded projection for a date shows Proj as TBD, except PITP, which always falls back to
+the L10 average automatically (neither Rotowire nor standard sites project it).
 </p>
 <label>Date</label>
 <input type="date" id="proj-date">
 
 <label>Stat (only used for a plain "Name, Value" paste below -- ignored for a full table paste, which auto-detects every stat column)</label>
-<select id="proj-stat">
-<option value="PTS">PTS</option>
-<option value="REB">REB</option>
-<option value="AST">AST</option>
-<option value="STL">STL</option>
-<option value="BLK">BLK</option>
-<option value="TOV">TOV</option>
-<option value="FGM">FGM</option>
-<option value="FGA">FGA</option>
-<option value="3PM">3PM</option>
-<option value="3PA">3PA</option>
-<option value="FTM">FTM</option>
-<option value="FTA">FTA</option>
-<option value="OREB">OREB</option>
-<option value="PITP">PITP</option>
-</select>
+<select id="proj-stat" class="stat-select"></select>
 
 <label>Paste either "Name, Value" lines for the Stat picked above, or a full Rotowire table (tab-separated, with header row) -- every recognized stat column in the table is loaded at once</label>
-<textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" style="width:100%;box-sizing:border-box;background:var(--surface2);border:0.5px solid var(--border-str);color:var(--text);padding:8px 10px;border-radius:var(--r);font-family:var(--mono);font-size:0.8rem;outline:none;resize:vertical;"></textarea>
+<textarea id="proj-rows" rows="10" placeholder="Rhyne Howard, 3.3&#10;Caitlin Clark, 2.8&#10;Kelsey Mitchell, 2.8&#10;&#10;-- or --&#10;Player&#9;Team&#9;Pos&#9;Min&#9;PTS&#9;REB&#9;AST&#9;STL&#9;BLK&#9;3PM&#9;FG%&#9;FT%&#9;TO&#9;OREB&#9;DREB&#9;3PA&#9;3P%&#9;FGM&#9;FGA&#9;FTM&#9;FTA&#10;Kelsey Mitchell&#9;IND&#9;G&#9;34.0&#9;22.7&#9;2.5&#9;3.1&#9;1.1&#9;0.1&#9;2.8&#9;46.1&#9;82.6&#9;1.9&#9;0.7&#9;1.8&#9;6.8&#9;41.6&#9;11.0&#9;23.8&#9;3.6&#9;4.4" class="admin-textarea"></textarea>
 <button id="proj-save-btn">Load Projections</button>
 <div id="proj-status"></div>
 </div>
+
+<div class="admin-form">
+<h2>Rebuild a Day's Data <span class="admin-form-scope" id="admin-inv-scope"></span></h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Each league/date's live data is cached for 10 minutes (6 hours for past dates). Use this after
+a roster move, or after adding PITP to a day that didn't have it, to force the next load to
+re-pull from BALLDONTLIE.
+</p>
+<label>Date</label>
+<input type="date" id="inv-date">
+<button id="inv-btn">Invalidate cache for this date</button>
+<div id="inv-status"></div>
+</div>
+</div>
+
+<!-- NBA Historic (simulated season) -->
+<div id="admin-historic-forms" style="display:none;">
+<div class="admin-form">
+<h2>Set / Update a Historic Day's Objectives</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Historic is keyed by day number (Day 1, Day 2, ...), not calendar date. The date label is
+optional and only used for display.
+</p>
+<div class="obj-pair">
+<div>
+<label>Day #</label>
+<input type="number" id="hist-day" min="1" placeholder="e.g. 1">
+</div>
+<div>
+<label>Date label (optional)</label>
+<input type="text" id="hist-date-label" placeholder="e.g. Oct 24">
+</div>
+</div>
+<div class="obj-pair">
+<div>
+<label>Objective 1</label>
+<select id="hist-stat-1" class="stat-select"></select>
+</div>
+<div>
+<label>Daily Team Target</label>
+<input type="number" id="hist-target-1" placeholder="e.g. 30">
+</div>
+</div>
+<label style="margin-top:20px;"><input type="checkbox" id="hist-has-second" style="width:auto;margin-right:6px;">Add a second objective for this day</label>
+<div class="obj-pair" id="hist-second-row" style="display:none; margin-top:8px;">
+<div>
+<label>Objective 2</label>
+<select id="hist-stat-2" class="stat-select"></select>
+</div>
+<div>
+<label>Daily Team Target</label>
+<input type="number" id="hist-target-2" placeholder="e.g. 20">
+</div>
+</div>
+<button id="hist-save-btn">Save Historic Day</button>
+<div id="hist-status"></div>
+</div>
+
+<div class="admin-form">
+<h2>Historic Data Upload (players / schedule / objectives)</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Paste a JSON object with any of the keys <code>players</code>, <code>schedule</code>,
+<code>objectives</code> (the build_players / build_schedule / build_objectives output).
+Each key you include replaces that dataset in full; keys you leave out are untouched.
+"Seed from repo files" loads the three JSON files checked into the repo's
+<code>historic-seed/</code> folder instead of pasting.
+</p>
+<textarea id="hist-seed-json" rows="8" placeholder='{"players": [...], "schedule": [...], "objectives": [...]}' class="admin-textarea"></textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<button id="hist-seed-btn">Upload pasted JSON</button>
+<button id="hist-seed-repo-btn">Seed from repo files</button>
+</div>
+<div id="hist-seed-status"></div>
+</div>
+
+<div class="admin-form">
+<h2>Advance the Historic Season</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Simulates the next day's box scores and moves the public "current day" pointer forward.
+Never re-rolls a day that's already been simulated. Nothing advances automatically until you
+decide the season is running.
+</p>
+<div class="obj-pair">
+<div>
+<label>Jump to a specific day (optional)</label>
+<input type="number" id="hist-advance-day" min="1" placeholder="blank = next day">
+</div>
+</div>
+<button id="hist-advance-btn">Simulate &amp; advance</button>
+<div id="hist-advance-status"></div>
+</div>
+</div>
+
 </div>
 </div>
 
@@ -411,21 +498,38 @@ to the L10 average automatically (neither Rotowire nor standard sites project it
 <script>
 const WORKER_BASE = "https://tome-fastbreak-refresh.tomecollective.workers.dev";
 const WORKER_URL = WORKER_BASE + "/api/fastbreak";
+const RUN_URL = WORKER_BASE + "/api/fastbreak/run";
 const OBJECTIVES_URL = WORKER_BASE + "/api/fastbreak/objectives";
 const OBJECTIVES_DAY_URL = WORKER_BASE + "/api/fastbreak/objectives/day";
 const PROJECTIONS_URL = WORKER_BASE + "/api/fastbreak/objectives/day/projections";
+const INVALIDATE_URL = WORKER_BASE + "/api/fastbreak/day/invalidate";
 const FULLDATA_URL = WORKER_BASE + "/api/fastbreak/fulldata";
 const HISTORIC_URL = WORKER_BASE + "/api/fastbreak/historic";
-// Historic (simulated NBA season) plumbing is live server-side (worker route +
-// KV-backed sim/aggregation), but the frontend toggle stays off until the
-// season actually starts -- flip this to true (and update the button below)
-// when it's ready to go live. See historic.js in the refresh worker.
+const HISTORIC_STATUS_URL = WORKER_BASE + "/api/fastbreak/historic/status";
+const HISTORIC_SEED_URL = WORKER_BASE + "/api/fastbreak/historic/seed";
+const HISTORIC_OBJ_URL = WORKER_BASE + "/api/fastbreak/historic/objectives/day";
+const HISTORIC_ADVANCE_URL = WORKER_BASE + "/api/fastbreak/historic/advance";
+// Seed JSON checked into the repo, served by the same GitHub Pages site.
+const HISTORIC_SEED_FILES = {
+  players: "../../dashboards/fastbreak-refresh/worker/historic-seed/players.json",
+  schedule: "../../dashboards/fastbreak-refresh/worker/historic-seed/schedule.json",
+  objectives: "../../dashboards/fastbreak-refresh/worker/historic-seed/objectives.json",
+};
+
+// NBA Historic (simulated season) is fully wired server-side and manageable
+// from the Objectives Admin below, but the public toggle stays greyed out
+// until there's a launch day. Flip to true to open it to viewers.
 const HISTORIC_ENABLED = false;
 
-// Run 10: Day 1 = Aug 19, 2026 through Day 12 = Aug 30, 2026 (inclusive).
-// Kept in sync with RUN_START/RUN_END in the refresh Worker.
-const RUN_START = "2026-08-19";
-const RUN_END = "2026-08-30";
+const STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "3PM", "3PA", "FTM", "FTA", "OREB", "PITP"];
+
+// Run windows per league. Loaded live from /api/fastbreak/run?league=ALL on
+// startup; these are the fallback if that call fails, and must match the
+// LEAGUES table in the refresh Worker.
+let RUNS = {
+  WNBA: { runLabel: "Run 11", runStart: "2026-09-17", runEnd: "2026-09-24" },
+  NBA: { runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26" },
+};
 
 // The admin password gate. Whatever is entered here is also sent as the
 // X-Admin-Token header -- Cloudflare's FASTBREAK_ADMIN_TOKEN secret must be
@@ -438,853 +542,1067 @@ let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName
 let sortKey = "base:ovrRank";
 let sortDir = 1;
 
-// -- Full Data (leaguewide L10/YTD, all stats) -------------------------------
-let fullData = { players: [], teams: {}, teamsDetail: {}, statCodes: [], note: "", generated_at: null };
-let fullDataLoaded = false;
-let fullDataLoading = false;
+// -- Full Data (leaguewide L10/YTD, all stats), cached per league ------------
+const EMPTY_FULLDATA = { players: [], teams: {}, teamsDetail: {}, statCodes: [], note: "", generated_at: null };
+const fullDataByLeague = { WNBA: null, NBA: null };
+const fullDataLoading = { WNBA: false, NBA: false };
+let fdLeague = "WNBA";
 let fdSortKey = "name";
 let fdSortDir = 1;
 let fdSearchTerm = "";
 let fdSubTab = "players"; // "players" | "teams"
 let fdTeamSortKey = "team";
 let fdTeamSortDir = 1;
+function fullDataFor(league) {
+  return fullDataByLeague[league] || EMPTY_FULLDATA;
+}
 
 // -- View switching (main dashboard / admin / full data) ----------------------
 let activeView = "main";
 function setActiveView(view) {
-activeView = view;
-document.getElementById("view-main").style.display = view === "main" ? "block" : "none";
-document.getElementById("view-admin").style.display = view === "admin" ? "block" : "none";
-document.getElementById("view-fulldata").style.display = view === "fulldata" ? "block" : "none";
+  activeView = view;
+  document.getElementById("view-main").style.display = view === "main" ? "block" : "none";
+  document.getElementById("view-admin").style.display = view === "admin" ? "block" : "none";
+  document.getElementById("view-fulldata").style.display = view === "fulldata" ? "block" : "none";
 }
 
-// Small hover tooltip (native title attribute) showing a team's PPG/PAPG,
-// computed by the refresh Worker straight from this season's final scores --
-// used wherever a team abbreviation is rendered, once Full Data has loaded.
+// Hover tooltip showing a team's PPG/PAPG (from the current league's Full
+// Data snapshot), used wherever a team abbreviation is rendered.
 function teamCellHtml(abbr) {
-const t = fullData.teams?.[abbr];
-if (!t) return abbr || "";
-const title = `PPG ${t.ppg ?? "--"} &middot; PAPG ${t.papg ?? "--"} (${t.gamesPlayed} GP)`;
-return `<span class="team-hover" title="${title.replace(/&middot;/, "·")}">${abbr}</span>`;
+  const t = fullDataFor(currentLeague).teams?.[abbr];
+  if (!t) return abbr || "";
+  const title = `PPG ${t.ppg ?? "--"} · PAPG ${t.papg ?? "--"} (${t.gamesPlayed} GP)`;
+  return `<span class="team-hover" title="${title}">${abbr}</span>`;
 }
 
-// -- League / Mode toggle ---------------------------------------------------
+// -- League / Mode (single-select) --------------------------------------------
 let currentLeague = "WNBA";
 let currentMode = "Classic";
 let selectedDate = null; // set by initRunDays()
 
 function ymd(d) {
-return d.toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+// Current Eastern date + hour via Intl (handles the EDT/EST switch).
+function etNow() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", hour12: false }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  let hour = Number(get("hour"));
+  if (hour === 24) hour = 0;
+  return { dateStr: `${get("year")}-${get("month")}-${get("day")}`, hour };
+}
+
+function runFor(league) {
+  return RUNS[league] || RUNS.WNBA;
 }
 
 // -- Run day toggle -----------------------------------------------------------
 // A day stays selectable through 10:00 AM ET the following calendar day, then
-// falls off the front of the list. Run 10 is entirely within EDT (UTC-4), so
-// a fixed offset is safe here.
-function earliestSelectableRunDate() {
-const nowUtc = new Date();
-const etNow = new Date(nowUtc.getTime() - 4 * 3600 * 1000);
-const etDateStr = ymd(etNow);
-const etHour = etNow.getUTCHours(); // etNow's "UTC" fields are really ET after the shift above
-let earliest;
-if (etHour < 10) {
-const prev = new Date(`${etDateStr}T00:00:00Z`);
-prev.setUTCDate(prev.getUTCDate() - 1);
-earliest = ymd(prev);
-} else {
-earliest = etDateStr;
-}
-if (earliest < RUN_START) earliest = RUN_START;
-if (earliest > RUN_END) earliest = RUN_END;
-return earliest;
+// falls off the front of the list.
+function earliestSelectableRunDate(league) {
+  const run = runFor(league);
+  const { dateStr, hour } = etNow();
+  let earliest;
+  if (hour < 10) {
+    const prev = new Date(`${dateStr}T00:00:00Z`);
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    earliest = ymd(prev);
+  } else {
+    earliest = dateStr;
+  }
+  if (earliest < run.runStart) earliest = run.runStart;
+  if (earliest > run.runEnd) earliest = run.runEnd;
+  return earliest;
 }
 
 function initRunDays() {
-const earliest = earliestSelectableRunDate();
-selectedDate = earliest;
-const container = document.getElementById("run-days");
-container.innerHTML = "";
-const start = new Date(`${RUN_START}T00:00:00Z`);
-let dayNum = 1;
-for (let d = new Date(`${RUN_START}T00:00:00Z`); ymd(d) <= RUN_END; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
-const dateStr = ymd(d);
-if (dateStr < earliest) continue;
-const btn = document.createElement("button");
-btn.className = "run-day-btn" + (dateStr === selectedDate ? " active" : "");
-btn.dataset.date = dateStr;
-const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-btn.textContent = `Day ${dayNum} - ${label}`;
-btn.addEventListener("click", () => {
-selectedDate = dateStr;
-container.querySelectorAll(".run-day-btn").forEach((b) => b.classList.remove("active"));
-btn.classList.add("active");
-loadData();
-});
-container.appendChild(btn);
-}
+  const run = runFor(currentLeague);
+  document.getElementById("run-label").textContent = `${currentLeague} ${run.runLabel}`;
+  const earliest = earliestSelectableRunDate(currentLeague);
+  selectedDate = earliest;
+  const container = document.getElementById("run-days");
+  container.innerHTML = "";
+  let dayNum = 1;
+  for (let d = new Date(`${run.runStart}T00:00:00Z`); ymd(d) <= run.runEnd; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
+    const dateStr = ymd(d);
+    if (dateStr < earliest) continue;
+    const btn = document.createElement("button");
+    btn.className = "run-day-btn" + (dateStr === selectedDate ? " active" : "");
+    btn.dataset.date = dateStr;
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    btn.textContent = `Day ${dayNum} - ${label}`;
+    btn.addEventListener("click", () => {
+      selectedDate = dateStr;
+      container.querySelectorAll(".run-day-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      loadData();
+    });
+    container.appendChild(btn);
+  }
 }
 
-document.getElementById("league-toggle").addEventListener("click", (e) => {
-if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
-document.querySelectorAll("#league-toggle button").forEach((b) => b.classList.remove("active"));
-e.target.classList.add("active");
-currentLeague = e.target.dataset.league;
-document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
-});
+async function loadRuns() {
+  try {
+    const res = await fetch(`${RUN_URL}?league=ALL`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    for (const league of Object.keys(RUNS)) {
+      if (data[league]?.runStart && data[league]?.runEnd) RUNS[league] = { ...RUNS[league], ...data[league] };
+    }
+  } catch (err) {
+    console.warn(`Run windows unavailable from Worker (${err.message}); using built-in fallback.`);
+  }
+}
+
+function modeNoteFor(league, mode) {
+  if (mode === "Pro") return `${league} Pro: objectives include moments with a badge/set`;
+  if (mode === "Historic") return "Historic: simulated NBA season -- not live data";
+  return "";
+}
 
 document.getElementById("mode-toggle").addEventListener("click", (e) => {
-if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
-document.querySelectorAll("#mode-toggle button").forEach((b) => b.classList.remove("active"));
-e.target.classList.add("active");
-const mode = e.target.dataset.mode;
+  if (e.target.tagName !== "BUTTON" || e.target.disabled) return;
+  document.querySelectorAll("#mode-toggle button").forEach((b) => b.classList.remove("active"));
+  e.target.classList.add("active");
+  const mode = e.target.dataset.mode;
 
-if (mode === "FullData") {
-setActiveView("fulldata");
-loadFullData();
-return;
-}
+  if (mode === "FullData") {
+    setActiveView("fulldata");
+    loadFullData(fdLeague);
+    return;
+  }
 
-currentMode = mode;
-document.getElementById("mode-note").textContent =
-currentMode === "Pro" ? "Pro: objectives include moments with a badge/set" :
-currentMode === "Historic" ? "Historic: simulated season -- not live NBA data" : "";
-setActiveView("main");
-loadData();
+  const leagueChanged = e.target.dataset.league !== currentLeague;
+  currentLeague = e.target.dataset.league;
+  currentMode = mode;
+  document.getElementById("pg-eye").textContent = `Tome Collective · ${currentLeague} · Fast Break`;
+  document.getElementById("mode-note").textContent = modeNoteFor(currentLeague, currentMode);
+  document.querySelector(".run-row").style.display = currentMode === "Historic" ? "none" : "flex";
+  setActiveView("main");
+  if (leagueChanged || currentMode === "Historic") initRunDays();
+  loadData();
+  if (leagueChanged) loadFullData(currentLeague, { silent: true });
 });
 
 // Historic stays disabled in the UI until HISTORIC_ENABLED is flipped on
 // above, even though the worker route and KV data behind it are already live.
 (function syncHistoricToggle() {
-const btn = document.querySelector('#mode-toggle button[data-mode="Historic"]');
-if (!btn) return;
-btn.disabled = !HISTORIC_ENABLED;
-btn.title = HISTORIC_ENABLED ? "" : "Historic sim pipeline is live -- frontend toggle turns on when the season starts";
+  const btn = document.querySelector('#mode-toggle button[data-mode="Historic"]');
+  if (!btn) return;
+  btn.disabled = !HISTORIC_ENABLED;
+  btn.title = HISTORIC_ENABLED ? "" : "Historic sim pipeline is live and manageable in Objectives Admin -- the public toggle turns on when the season starts";
 })();
 
 // -- Admin view toggle --------------------------------------------------------
 document.getElementById("admin-toggle-btn").addEventListener("click", () => {
-const showingAdmin = activeView === "admin";
-if (showingAdmin) {
-// Return to whichever mode-toggle button is currently marked active.
-const activeModeBtn = document.querySelector("#mode-toggle button.active");
-setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : "main");
-} else {
-setActiveView("admin");
-}
-document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
-if (!showingAdmin) loadAdminSchedule();
-});
-
-document.getElementById("admin-has-second").addEventListener("change", (e) => {
-document.getElementById("admin-second-row").style.display = e.target.checked ? "flex" : "none";
-});
-
-document.getElementById("admin-mode").addEventListener("change", (e) => {
-const isPro = e.target.value === "Pro";
-document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
-document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
+  const showingAdmin = activeView === "admin";
+  if (showingAdmin) {
+    const activeModeBtn = document.querySelector("#mode-toggle button.active");
+    setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : "main");
+  } else {
+    setActiveView("admin");
+  }
+  document.getElementById("admin-toggle-btn").textContent = showingAdmin ? "Objectives Admin ->" : "<- Back to Dashboard";
+  if (!showingAdmin) refreshAdminView();
 });
 
 // -- Admin password gate -------------------------------------------------------
 document.getElementById("admin-unlock-btn").addEventListener("click", () => {
-const entered = document.getElementById("admin-password-input").value;
-const statusEl = document.getElementById("admin-gate-status");
-if (entered === ADMIN_PASSWORD) {
-adminPassword = entered;
-document.getElementById("admin-gate").style.display = "none";
-document.getElementById("admin-locked-content").style.display = "block";
-statusEl.textContent = "";
-} else {
-statusEl.textContent = "Incorrect password.";
-}
+  const entered = document.getElementById("admin-password-input").value;
+  const statusEl = document.getElementById("admin-gate-status");
+  if (entered === ADMIN_PASSWORD) {
+    adminPassword = entered;
+    document.getElementById("admin-gate").style.display = "none";
+    document.getElementById("admin-locked-content").style.display = "block";
+    statusEl.textContent = "";
+  } else {
+    statusEl.textContent = "Incorrect password.";
+  }
 });
 
+function adminHeaders() {
+  return { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" };
+}
+
+function setStatus(id, text, ok) {
+  const el = document.getElementById(id);
+  el.style.color = ok === true ? "#34d399" : ok === false ? "#f87171" : "#a8aa9c";
+  el.textContent = text;
+}
+
 // -- Schedule tiles -----------------------------------------------------------
-// L10 advanced-metrics tooltip for a matchup tile (computed server-side by
-// computeTeamAdvancedMetrics -- reuses data already fetched for the day's
-// slate, zero extra BALLDONTLIE calls). Pace is raw estimated possessions/
-// game (WNBA plays 40-minute games, not the NBA's 48); OREB% is an estimate
-// (own missed shots as a proxy for true opponent-DREB data, which isn't
-// fetchable within the subrequest budget) -- both are labeled as such.
 function teamAdvancedTooltip(abbr) {
-const t = dashboard.teamAdvanced?.[abbr];
-if (!t) return `${abbr}: L10 advanced data unavailable`;
-return (
-`${abbr} (L10 ${t.record ?? "--"})\n` +
-`PPG ${t.l10Ppg ?? "--"} · PAPG ${t.l10Papg ?? "--"}\n` +
-`ORtg ${t.offRtg ?? "--"} · DRtg ${t.defRtg ?? "--"} · Pace ${t.pace ?? "--"}\n` +
-`eFG% ${t.efgPct ?? "--"} · TOV% ${t.tovPct ?? "--"} · OREB% (est.) ${t.orebPctEst ?? "--"}`
-);
+  const t = dashboard.teamAdvanced?.[abbr];
+  if (!t) return `${abbr}: L10 advanced data unavailable`;
+  return (
+    `${abbr} (L10 ${t.record ?? "--"})\n` +
+    `PPG ${t.l10Ppg ?? "--"} · PAPG ${t.l10Papg ?? "--"}\n` +
+    `ORtg ${t.offRtg ?? "--"} · DRtg ${t.defRtg ?? "--"} · Pace ${t.pace ?? "--"}\n` +
+    `eFG% ${t.efgPct ?? "--"} · TOV% ${t.tovPct ?? "--"} · OREB% (est.) ${t.orebPctEst ?? "--"}`
+  );
 }
 
 function renderScheduleTiles() {
-const row = document.getElementById("schedule-tiles");
-row.innerHTML = "";
-if (!dashboard.games || !dashboard.games.length) {
-row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
-return;
-}
-dashboard.games.forEach((g) => {
-const tile = document.createElement("div");
-tile.className = "game-tile";
-tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}</div>`;
-tile.title = `${teamAdvancedTooltip(g.awayAbbr)}\n\n${teamAdvancedTooltip(g.homeAbbr)}`;
-row.appendChild(tile);
-});
+  const row = document.getElementById("schedule-tiles");
+  row.innerHTML = "";
+  if (!dashboard.games || !dashboard.games.length) {
+    row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
+    return;
+  }
+  dashboard.games.forEach((g) => {
+    const tile = document.createElement("div");
+    tile.className = "game-tile";
+    const score = g.status === "post" && g.awayScore != null && g.homeScore != null ? ` · ${g.awayScore}-${g.homeScore}` : "";
+    tile.innerHTML = `<div class="matchup">${g.awayAbbr} @ ${g.homeAbbr}</div><div class="time">${g.time}${score}</div>`;
+    tile.title = `${teamAdvancedTooltip(g.awayAbbr)}\n\n${teamAdvancedTooltip(g.homeAbbr)}`;
+    row.appendChild(tile);
+  });
 }
 
 // -- Objective / badge tiles ---------------------------------------------------
 function renderObjectiveTiles() {
-const row = document.getElementById("objective-tiles");
-row.innerHTML = "";
-(dashboard.objectives || []).forEach((o) => {
-const tile = document.createElement("div");
-tile.className = "objective-tile";
-tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
-row.appendChild(tile);
-});
-if (currentMode === "Pro" && dashboard.badgeSetName) {
-const tile = document.createElement("div");
-tile.className = "objective-tile badge-tile";
-tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
-row.appendChild(tile);
-}
+  const row = document.getElementById("objective-tiles");
+  row.innerHTML = "";
+  (dashboard.objectives || []).forEach((o) => {
+    const tile = document.createElement("div");
+    tile.className = "objective-tile";
+    tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
+    row.appendChild(tile);
+  });
+  if (currentMode === "Pro" && dashboard.badgeSetName) {
+    const tile = document.createElement("div");
+    tile.className = "objective-tile badge-tile";
+    tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
+    row.appendChild(tile);
+  }
 }
 
 // -- Main table -----------------------------------------------------------------
 function objectiveColumns() {
-// Returns [{stat,label,index}] for however many objectives are active today.
-return (dashboard.objectives || []).map((o, i) => ({ stat: o.stat, label: o.label || o.stat, index: i }));
+  return (dashboard.objectives || []).map((o, i) => ({ stat: o.stat, label: o.label || o.stat, index: i }));
 }
 
 function buildHeader() {
-const thead = document.getElementById("table-head");
-const objCols = objectiveColumns();
-let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
-objCols.forEach((oc, i) => {
-const groupStart = ' class="obj-group-start"';
-row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
-row += `<th data-key="obj:${oc.index}:ytd">${oc.label} YTD</th>`;
-row += `<th data-key="obj:${oc.index}:l10">${oc.label} L10</th>`;
-});
-row += `</tr>`;
-thead.innerHTML = row;
+  const thead = document.getElementById("table-head");
+  const objCols = objectiveColumns();
+  let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
+  objCols.forEach((oc, i) => {
+    const groupStart = ' class="obj-group-start"';
+    row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
+    row += `<th data-key="obj:${oc.index}:ytd">${oc.label} YTD</th>`;
+    row += `<th data-key="obj:${oc.index}:l10">${oc.label} L10</th>`;
+  });
+  row += `</tr>`;
+  thead.innerHTML = row;
 
-thead.querySelectorAll("th[data-key]").forEach((th) => {
-th.addEventListener("click", () => {
-const key = th.dataset.key;
-sortDir = sortKey === key ? -sortDir : 1;
-sortKey = key;
-render();
-});
-});
+  thead.querySelectorAll("th[data-key]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.key;
+      sortDir = sortKey === key ? -sortDir : 1;
+      sortKey = key;
+      render();
+    });
+  });
 }
 
 function sortValue(p, key) {
-if (key.startsWith("base:")) {
-const field = key.slice(5);
-return p[field];
-}
-const [, idxStr, field] = key.split(":");
-const obj = dashboard.objectives[Number(idxStr)];
-return p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
+  if (key.startsWith("base:")) {
+    return p[key.slice(5)];
+  }
+  const [, idxStr, field] = key.split(":");
+  const obj = dashboard.objectives[Number(idxStr)];
+  return obj && p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
 }
 
 function getSorted() {
-const players = [...(dashboard.players || [])];
-players.sort((a, b) => {
-let av = sortValue(a, sortKey);
-let bv = sortValue(b, sortKey);
-if (av == null && bv == null) return 0;
-if (av == null) return 1; // nulls sort last regardless of direction
-if (bv == null) return -1;
-if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
-return String(av).localeCompare(String(bv)) * sortDir;
-});
-return players;
+  const players = [...(dashboard.players || [])];
+  players.sort((a, b) => {
+    let av = sortValue(a, sortKey);
+    let bv = sortValue(b, sortKey);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
+    return String(av).localeCompare(String(bv)) * sortDir;
+  });
+  return players;
 }
 
 function tierClass(tier) {
-return tier ? `tier-${tier}` : "";
+  return tier ? `tier-${tier}` : "";
 }
 
-// Red pill for Out, yellow for anything else the player_injuries endpoint
-// reports (Day-To-Day, Questionable, Probable, etc). title=hover text shows
-// the fuller injury note/return date when the API provides one.
 function injuryPillHtml(p) {
-if (!p.injuryStatus) return "";
-const status = String(p.injuryStatus);
-const isOut = status.toLowerCase() === "out";
-const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
-const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
-return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
+  if (!p.injuryStatus) return "";
+  const status = String(p.injuryStatus);
+  const isOut = status.toLowerCase() === "out";
+  const label = status.toLowerCase() === "day-to-day" ? "DTD" : status.toUpperCase();
+  const titleAttr = p.injuryNote ? ` title="${String(p.injuryNote).replace(/"/g, "&quot;")}"` : "";
+  return ` <span class="injury-pill ${isOut ? "out" : "dtd"}"${titleAttr}>${label}</span>`;
 }
 
 function render() {
-buildHeader();
-const tbody = document.getElementById("players-body");
-tbody.innerHTML = "";
-const objCols = objectiveColumns();
-const sorted = getSorted();
+  buildHeader();
+  const tbody = document.getElementById("players-body");
+  tbody.innerHTML = "";
+  const objCols = objectiveColumns();
+  const sorted = getSorted();
 
-sorted.forEach((p) => {
-const row = document.createElement("tr");
-let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
-objCols.forEach((oc, i) => {
-const ov = p.objectives[oc.stat] || {};
-const groupStart = i === 0 ? " obj-group-start" : "";
-const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
-html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
-html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
-html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
-});
-row.innerHTML = html;
-tbody.appendChild(row);
-});
+  sorted.forEach((p) => {
+    const row = document.createElement("tr");
+    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
+    objCols.forEach((oc, i) => {
+      const ov = p.objectives[oc.stat] || {};
+      const groupStart = i === 0 ? " obj-group-start" : "";
+      const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
+      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
+      html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
+      html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
+    });
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
 
-document.querySelectorAll("#table-head th").forEach((th) => {
-th.classList.remove("sorted-asc", "sorted-desc");
-if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
-});
+  document.querySelectorAll("#table-head th").forEach((th) => {
+    th.classList.remove("sorted-asc", "sorted-desc");
+    if (th.dataset.key === sortKey) th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+  });
 
-const objLabel = objCols.map((o) => `${o.label} (target ${dashboard.objectives[o.index].dailyTeamTarget}, weight ${(dashboard.objectives[o.index].weight * 100).toFixed(2)}%)`).join(" + ");
-document.getElementById("dashboard-note").textContent =
-(objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
+  const objLabel = objCols
+    .map((o) => {
+      const obj = dashboard.objectives[o.index];
+      const w = typeof obj.weight === "number" ? `, weight ${(obj.weight * 100).toFixed(2)}%` : "";
+      return `${o.label} (target ${obj.dailyTeamTarget}${w})`;
+    })
+    .join(" + ");
+  document.getElementById("dashboard-note").textContent = (objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
 }
 
 // -- CSV export -----------------------------------------------------------------
 function csvEscape(value) {
-const str = String(value ?? "");
-if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
-return str;
+  const str = String(value ?? "");
+  if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+  return str;
+}
+
+function triggerDownload(csvLines, filename) {
+  const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function todayFileSuffix() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 }
 
 function downloadCSV() {
-const objCols = objectiveColumns();
-const headers = ["Player", "Team", "Opp", "Ovr Rank"];
-objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
-
-const rows = getSorted().map((p) => {
-const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
-objCols.forEach((oc) => {
-const ov = p.objectives[oc.stat] || {};
-const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "");
-row.push(projText, ov.ytd ?? "", ov.l10 ?? "");
-});
-return row;
-});
-
-const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-const url = URL.createObjectURL(blob);
-const today = new Date();
-const filename = `tome-edge-fastbreak-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}.csv`;
-const link = document.createElement("a");
-link.href = url;
-link.download = filename;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-URL.revokeObjectURL(url);
+  const objCols = objectiveColumns();
+  const headers = ["Player", "Team", "Opp", "Ovr Rank"];
+  objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
+  const rows = getSorted().map((p) => {
+    const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
+    objCols.forEach((oc) => {
+      const ov = p.objectives[oc.stat] || {};
+      row.push(ov.proj ?? (ov.projSource === "tbd" ? "TBD" : ""), ov.ytd ?? "", ov.l10 ?? "");
+    });
+    return row;
+  });
+  const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
+  const dateTag = dashboard.date || todayFileSuffix();
+  triggerDownload(csvLines, `tome-edge-fastbreak-${currentLeague.toLowerCase()}-${currentMode.toLowerCase()}-${dateTag}.csv`);
 }
 document.getElementById("export-csv-btn").addEventListener("click", downloadCSV);
 
 // -- Full Data tab --------------------------------------------------------------
-async function loadFullData({ silent } = {}) {
-if (fullDataLoading) return;
-fullDataLoading = true;
-const metaEl = document.getElementById("fd-meta");
-if (!silent && metaEl) metaEl.textContent = "Loading...";
-try {
-const res = await fetch(FULLDATA_URL);
-const data = await res.json();
-if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-fullData = data;
-fullDataLoaded = true;
-} catch (err) {
-if (metaEl) metaEl.textContent = `Full Data unavailable (${err.message}).`;
-} finally {
-fullDataLoading = false;
-}
-if (activeView === "fulldata") renderFullData();
-else if (activeView === "main") render(); // picks up team PPG/PAPG hover tooltips
+async function loadFullData(league, { silent } = {}) {
+  if (fullDataLoading[league]) return;
+  fullDataLoading[league] = true;
+  const metaEl = document.getElementById("fd-meta");
+  if (!silent && metaEl && league === fdLeague) metaEl.textContent = "Loading...";
+  try {
+    const res = await fetch(`${FULLDATA_URL}?league=${league}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    fullDataByLeague[league] = data;
+  } catch (err) {
+    if (metaEl && league === fdLeague && activeView === "fulldata") metaEl.textContent = `${league} Full Data unavailable (${err.message}).`;
+  } finally {
+    fullDataLoading[league] = false;
+  }
+  if (activeView === "fulldata" && league === fdLeague) renderFullData();
+  else if (activeView === "main" && league === currentLeague) render(); // picks up team PPG/PAPG hover tooltips
 }
 
 function fdColumns() {
-return (fullData.statCodes || []).map((code) => ({ code }));
+  return (fullDataFor(fdLeague).statCodes || []).map((code) => ({ code }));
 }
 
 function buildFullDataHeader() {
-const thead = document.getElementById("fd-table-head");
-const cols = fdColumns();
-let row = `<tr><th data-fd-key="name">Player</th><th data-fd-key="team">Team</th>`;
-cols.forEach((c, i) => {
-const groupStart = i === 0 ? ' class="fd-group-start"' : "";
-row += `<th data-fd-key="${c.code}:l10"${groupStart}>${c.code} L10</th>`;
-row += `<th data-fd-key="${c.code}:ytd">${c.code} YTD</th>`;
-});
-row += `</tr>`;
-thead.innerHTML = row;
+  const thead = document.getElementById("fd-table-head");
+  const cols = fdColumns();
+  let row = `<tr><th data-fd-key="name">Player</th><th data-fd-key="team">Team</th>`;
+  cols.forEach((c, i) => {
+    const groupStart = i === 0 ? ' class="fd-group-start"' : "";
+    row += `<th data-fd-key="${c.code}:l10"${groupStart}>${c.code} L10</th>`;
+    row += `<th data-fd-key="${c.code}:ytd">${c.code} YTD</th>`;
+  });
+  row += `</tr>`;
+  thead.innerHTML = row;
 
-thead.querySelectorAll("th[data-fd-key]").forEach((th) => {
-th.addEventListener("click", () => {
-const key = th.dataset.fdKey;
-fdSortDir = fdSortKey === key ? -fdSortDir : 1;
-fdSortKey = key;
-renderFullData();
-});
-});
+  thead.querySelectorAll("th[data-fd-key]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.fdKey;
+      fdSortDir = fdSortKey === key ? -fdSortDir : 1;
+      fdSortKey = key;
+      renderFullData();
+    });
+  });
 }
 
 function fdSortValue(p, key) {
-if (key === "name" || key === "team") return p[key];
-const [code, field] = key.split(":");
-return p.stats[code] ? p.stats[code][field] : null;
+  if (key === "name" || key === "team") return p[key];
+  const [code, field] = key.split(":");
+  return p.stats[code] ? p.stats[code][field] : null;
 }
 
 function getFullDataFiltered() {
-const term = fdSearchTerm.trim().toLowerCase();
-let players = fullData.players || [];
-if (term) {
-players = players.filter((p) => p.name.toLowerCase().includes(term) || p.team.toLowerCase().includes(term));
+  const term = fdSearchTerm.trim().toLowerCase();
+  let players = fullDataFor(fdLeague).players || [];
+  if (term) {
+    players = players.filter((p) => p.name.toLowerCase().includes(term) || p.team.toLowerCase().includes(term));
+  }
+  players = [...players];
+  players.sort((a, b) => {
+    let av = fdSortValue(a, fdSortKey);
+    let bv = fdSortValue(b, fdSortKey);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdSortDir;
+    return String(av).localeCompare(String(bv)) * fdSortDir;
+  });
+  return players;
 }
-players = [...players];
-players.sort((a, b) => {
-let av = fdSortValue(a, fdSortKey);
-let bv = fdSortValue(b, fdSortKey);
-if (av == null && bv == null) return 0;
-if (av == null) return 1;
-if (bv == null) return -1;
-if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdSortDir;
-return String(av).localeCompare(String(bv)) * fdSortDir;
-});
-return players;
+
+function fdGeneratedLabel() {
+  const fd = fullDataFor(fdLeague);
+  return fd.generated_at ? new Date(fd.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
 }
 
 function renderFullDataPlayers() {
-buildFullDataHeader();
-const tbody = document.getElementById("fd-players-body");
-tbody.innerHTML = "";
-const cols = fdColumns();
-const rows = getFullDataFiltered();
+  buildFullDataHeader();
+  const tbody = document.getElementById("fd-players-body");
+  tbody.innerHTML = "";
+  const cols = fdColumns();
+  const rows = getFullDataFiltered();
 
-rows.forEach((p) => {
-const row = document.createElement("tr");
-// Full Data's Players tab shows the team abbreviation as plain text --
-// the team-level hover tooltip now lives on the daily schedule tiles
-// instead (see teamAdvancedTooltip / renderScheduleTiles above).
-let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
-cols.forEach((c, i) => {
-const s = p.stats[c.code] || {};
-const groupStart = i === 0 ? " fd-group-start" : "";
-html += `<td class="${groupStart}">${s.l10 ?? "--"}</td>`;
-html += `<td>${s.ytd ?? "--"}</td>`;
-});
-row.innerHTML = html;
-tbody.appendChild(row);
-});
+  rows.forEach((p) => {
+    const row = document.createElement("tr");
+    let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
+    cols.forEach((c, i) => {
+      const s = p.stats[c.code] || {};
+      const groupStart = i === 0 ? " fd-group-start" : "";
+      html += `<td class="${groupStart}">${s.l10 ?? "--"}</td>`;
+      html += `<td>${s.ytd ?? "--"}</td>`;
+    });
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
 
-document.querySelectorAll("#fd-table-head th").forEach((th) => {
-th.classList.remove("sorted-asc", "sorted-desc");
-if (th.dataset.fdKey === fdSortKey) th.classList.add(fdSortDir === 1 ? "sorted-asc" : "sorted-desc");
-});
+  document.querySelectorAll("#fd-table-head th").forEach((th) => {
+    th.classList.remove("sorted-asc", "sorted-desc");
+    if (th.dataset.fdKey === fdSortKey) th.classList.add(fdSortDir === 1 ? "sorted-asc" : "sorted-desc");
+  });
 
-const metaEl = document.getElementById("fd-meta");
-if (metaEl) {
-const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
-metaEl.textContent = `${rows.length} of ${(fullData.players || []).length} players · last generated ${generated}`;
-}
-document.getElementById("fd-note").textContent = fullData.note || "";
+  const fd = fullDataFor(fdLeague);
+  document.getElementById("fd-meta").textContent = `${fdLeague} · ${rows.length} of ${(fd.players || []).length} players · last generated ${fdGeneratedLabel()}`;
+  document.getElementById("fd-note").textContent = fd.note || "";
 }
 
 // -- Full Data: Teams sub-tab ---------------------------------------------------
-// One row per team: season/YTD PPG, PAPG, REB, OREB, AST, STL, TO, BLK, FGM,
-// FGA, FG%, 3PM, 3PA, 3P% -- sourced from teamsDetail (built server-side by
-// advanceFullDataBuild's teamBoxSums accumulation).
 const FD_TEAM_COLUMNS = [
-{ key: "ppg", label: "PPG" },
-{ key: "papg", label: "PAPG" },
-{ key: "reb", label: "REB" },
-{ key: "oreb", label: "OREB" },
-{ key: "ast", label: "AST" },
-{ key: "stl", label: "STL" },
-{ key: "tov", label: "TO" },
-{ key: "blk", label: "BLK" },
-{ key: "fgm", label: "FGM" },
-{ key: "fga", label: "FGA" },
-{ key: "fgPct", label: "FG%" },
-{ key: "fg3m", label: "3PM" },
-{ key: "fg3a", label: "3PA" },
-{ key: "fg3Pct", label: "3P%" },
+  { key: "ppg", label: "PPG" },
+  { key: "papg", label: "PAPG" },
+  { key: "reb", label: "REB" },
+  { key: "oreb", label: "OREB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "tov", label: "TO" },
+  { key: "blk", label: "BLK" },
+  { key: "fgm", label: "FGM" },
+  { key: "fga", label: "FGA" },
+  { key: "fgPct", label: "FG%" },
+  { key: "fg3m", label: "3PM" },
+  { key: "fg3a", label: "3PA" },
+  { key: "fg3Pct", label: "3P%" },
 ];
 
 function buildFullDataTeamsHeader() {
-const thead = document.getElementById("fd-table-head");
-let row = `<tr><th data-fd-team-key="team">Team</th><th data-fd-team-key="gamesPlayed">GP</th>`;
-FD_TEAM_COLUMNS.forEach((c, i) => {
-const groupStart = i === 0 ? ' class="fd-group-start"' : "";
-row += `<th data-fd-team-key="${c.key}"${groupStart}>${c.label}</th>`;
-});
-row += `</tr>`;
-thead.innerHTML = row;
+  const thead = document.getElementById("fd-table-head");
+  let row = `<tr><th data-fd-team-key="team">Team</th><th data-fd-team-key="gamesPlayed">GP</th>`;
+  FD_TEAM_COLUMNS.forEach((c, i) => {
+    const groupStart = i === 0 ? ' class="fd-group-start"' : "";
+    row += `<th data-fd-team-key="${c.key}"${groupStart}>${c.label}</th>`;
+  });
+  row += `</tr>`;
+  thead.innerHTML = row;
 
-thead.querySelectorAll("th[data-fd-team-key]").forEach((th) => {
-th.addEventListener("click", () => {
-const key = th.dataset.fdTeamKey;
-fdTeamSortDir = fdTeamSortKey === key ? -fdTeamSortDir : 1;
-fdTeamSortKey = key;
-renderFullDataTeams();
-});
-});
+  thead.querySelectorAll("th[data-fd-team-key]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.fdTeamKey;
+      fdTeamSortDir = fdTeamSortKey === key ? -fdTeamSortDir : 1;
+      fdTeamSortKey = key;
+      renderFullDataTeams();
+    });
+  });
 }
 
 function getFullDataTeamsFiltered() {
-const term = fdSearchTerm.trim().toLowerCase();
-const teamsDetail = fullData.teamsDetail || {};
-let teams = Object.entries(teamsDetail).map(([abbr, t]) => ({ abbr, ...t }));
-if (term) {
-teams = teams.filter((t) => t.abbr.toLowerCase().includes(term) || (t.team || "").toLowerCase().includes(term));
-}
-teams.sort((a, b) => {
-const key = fdTeamSortKey === "team" ? "abbr" : fdTeamSortKey;
-let av = a[key];
-let bv = b[key];
-if (av == null && bv == null) return 0;
-if (av == null) return 1;
-if (bv == null) return -1;
-if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdTeamSortDir;
-return String(av).localeCompare(String(bv)) * fdTeamSortDir;
-});
-return teams;
+  const term = fdSearchTerm.trim().toLowerCase();
+  const teamsDetail = fullDataFor(fdLeague).teamsDetail || {};
+  let teams = Object.entries(teamsDetail).map(([abbr, t]) => ({ abbr, ...t }));
+  if (term) {
+    teams = teams.filter((t) => t.abbr.toLowerCase().includes(term) || (t.team || "").toLowerCase().includes(term));
+  }
+  teams.sort((a, b) => {
+    const key = fdTeamSortKey === "team" ? "abbr" : fdTeamSortKey;
+    let av = a[key];
+    let bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * fdTeamSortDir;
+    return String(av).localeCompare(String(bv)) * fdTeamSortDir;
+  });
+  return teams;
 }
 
 function renderFullDataTeams() {
-buildFullDataTeamsHeader();
-const tbody = document.getElementById("fd-players-body");
-tbody.innerHTML = "";
-const rows = getFullDataTeamsFiltered();
+  buildFullDataTeamsHeader();
+  const tbody = document.getElementById("fd-players-body");
+  tbody.innerHTML = "";
+  const rows = getFullDataTeamsFiltered();
 
-rows.forEach((t) => {
-const row = document.createElement("tr");
-let html = `<td>${t.abbr}</td><td>${t.gamesPlayed ?? "--"}</td>`;
-FD_TEAM_COLUMNS.forEach((c, i) => {
-const groupStart = i === 0 ? " fd-group-start" : "";
-html += `<td class="${groupStart}">${t[c.key] ?? "--"}</td>`;
-});
-row.innerHTML = html;
-tbody.appendChild(row);
-});
+  rows.forEach((t) => {
+    const row = document.createElement("tr");
+    let html = `<td>${t.abbr}</td><td>${t.gamesPlayed ?? "--"}</td>`;
+    FD_TEAM_COLUMNS.forEach((c, i) => {
+      const groupStart = i === 0 ? " fd-group-start" : "";
+      html += `<td class="${groupStart}">${t[c.key] ?? "--"}</td>`;
+    });
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
 
-document.querySelectorAll("#fd-table-head th").forEach((th) => {
-th.classList.remove("sorted-asc", "sorted-desc");
-if (th.dataset.fdTeamKey === fdTeamSortKey) th.classList.add(fdTeamSortDir === 1 ? "sorted-asc" : "sorted-desc");
-});
+  document.querySelectorAll("#fd-table-head th").forEach((th) => {
+    th.classList.remove("sorted-asc", "sorted-desc");
+    if (th.dataset.fdTeamKey === fdTeamSortKey) th.classList.add(fdTeamSortDir === 1 ? "sorted-asc" : "sorted-desc");
+  });
 
-const metaEl = document.getElementById("fd-meta");
-if (metaEl) {
-const generated = fullData.generated_at ? new Date(fullData.generated_at).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET" : "--";
-metaEl.textContent = `${rows.length} of ${Object.keys(fullData.teamsDetail || {}).length} teams · last generated ${generated}`;
-}
-document.getElementById("fd-note").textContent = fullData.note || "";
+  const fd = fullDataFor(fdLeague);
+  document.getElementById("fd-meta").textContent = `${fdLeague} · ${rows.length} of ${Object.keys(fd.teamsDetail || {}).length} teams · last generated ${fdGeneratedLabel()}`;
+  document.getElementById("fd-note").textContent = fd.note || "";
 }
 
 function renderFullData() {
-if (fdSubTab === "teams") renderFullDataTeams();
-else renderFullDataPlayers();
+  if (fdSubTab === "teams") renderFullDataTeams();
+  else renderFullDataPlayers();
 }
 
 document.getElementById("fd-search").addEventListener("input", (e) => {
-fdSearchTerm = e.target.value;
-renderFullData();
+  fdSearchTerm = e.target.value;
+  renderFullData();
 });
 
 document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((btn) => {
-btn.addEventListener("click", () => {
-fdSubTab = btn.dataset.fdtab;
-document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b === btn));
-renderFullData();
-});
+  btn.addEventListener("click", () => {
+    fdSubTab = btn.dataset.fdtab;
+    document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b === btn));
+    renderFullData();
+  });
 });
 
-// -- Full Data: CSV export (whichever sub-tab -- Players or Teams -- is active) --
+document.querySelectorAll("#fd-league-toggle button[data-fdleague]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    fdLeague = btn.dataset.fdleague;
+    document.querySelectorAll("#fd-league-toggle button[data-fdleague]").forEach((b) => b.classList.toggle("active", b === btn));
+    if (fullDataByLeague[fdLeague]) renderFullData();
+    else {
+      document.getElementById("fd-players-body").innerHTML = "";
+      loadFullData(fdLeague);
+    }
+  });
+});
+
 function downloadFullDataCSV() {
-const today = new Date();
-const dateSuffix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-if (fdSubTab === "teams") {
-const headers = ["Team", "GP", ...FD_TEAM_COLUMNS.map((c) => c.label)];
-const rows = getFullDataTeamsFiltered().map((t) => [t.abbr, t.gamesPlayed ?? "", ...FD_TEAM_COLUMNS.map((c) => t[c.key] ?? "")]);
-const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-const url = URL.createObjectURL(blob);
-const link = document.createElement("a");
-link.href = url;
-link.download = `tome-edge-fastbreak-fulldata-teams-${dateSuffix}.csv`;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-URL.revokeObjectURL(url);
-return;
-}
-
-const cols = fdColumns();
-const headers = ["Player", "Team"];
-cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
-const rows = getFullDataFiltered().map((p) => {
-const row = [p.name, p.team];
-cols.forEach((c) => {
-const s = p.stats[c.code] || {};
-row.push(s.l10 ?? "", s.ytd ?? "");
-});
-return row;
-});
-const csvLines = [headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))];
-const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
-const url = URL.createObjectURL(blob);
-const link = document.createElement("a");
-link.href = url;
-link.download = `tome-edge-fastbreak-fulldata-players-${dateSuffix}.csv`;
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-URL.revokeObjectURL(url);
+  const dateSuffix = todayFileSuffix();
+  const lg = fdLeague.toLowerCase();
+  if (fdSubTab === "teams") {
+    const headers = ["Team", "GP", ...FD_TEAM_COLUMNS.map((c) => c.label)];
+    const rows = getFullDataTeamsFiltered().map((t) => [t.abbr, t.gamesPlayed ?? "", ...FD_TEAM_COLUMNS.map((c) => t[c.key] ?? "")]);
+    triggerDownload([headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))], `tome-edge-fastbreak-${lg}-fulldata-teams-${dateSuffix}.csv`);
+    return;
+  }
+  const cols = fdColumns();
+  const headers = ["Player", "Team"];
+  cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
+  const rows = getFullDataFiltered().map((p) => {
+    const row = [p.name, p.team];
+    cols.forEach((c) => {
+      const s = p.stats[c.code] || {};
+      row.push(s.l10 ?? "", s.ytd ?? "");
+    });
+    return row;
+  });
+  triggerDownload([headers.join(","), ...rows.map((row) => row.map(csvEscape).join(","))], `tome-edge-fastbreak-${lg}-fulldata-players-${dateSuffix}.csv`);
 }
 document.getElementById("fd-export-csv-btn").addEventListener("click", downloadFullDataCSV);
 
-// -- Admin: view schedule -----------------------------------------------------
+// -- Admin: mode picker (drives every admin section) ---------------------------
+let adminLeague = "WNBA";
+let adminMode = "Classic";
+
+function populateStatSelects() {
+  document.querySelectorAll("select.stat-select").forEach((sel) => {
+    if (sel.options.length) return;
+    sel.innerHTML = STAT_CODES.map((c) => `<option value="${c}">${c}</option>`).join("");
+  });
+}
+
+function refreshAdminView() {
+  const isHistoric = adminMode === "Historic";
+  const scope = `${adminLeague} ${adminMode}`;
+  document.getElementById("admin-picker-note").textContent = isHistoric
+    ? "Historic: simulated season, keyed by day number"
+    : `Objectives save to ${scope}; projections are shared across ${adminLeague} Classic + Pro`;
+  document.getElementById("admin-live-section").style.display = isHistoric ? "none" : "block";
+  document.getElementById("admin-live-forms").style.display = isHistoric ? "none" : "block";
+  document.getElementById("admin-historic-section").style.display = isHistoric ? "block" : "none";
+  document.getElementById("admin-historic-forms").style.display = isHistoric ? "block" : "none";
+  document.getElementById("admin-obj-scope").textContent = scope;
+  document.getElementById("admin-proj-scope").textContent = `${adminLeague} (Classic + Pro)`;
+  document.getElementById("admin-inv-scope").textContent = adminLeague;
+  const isPro = adminMode === "Pro";
+  document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
+  document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
+  // Default the date pickers into the selected league's run window.
+  const run = runFor(adminLeague);
+  for (const id of ["admin-date", "proj-date", "inv-date"]) {
+    const el = document.getElementById(id);
+    if (!el.value || el.value < run.runStart || el.value > run.runEnd) el.value = earliestSelectableRunDate(adminLeague);
+  }
+  if (isHistoric) loadHistoricStatus();
+  else loadAdminSchedule();
+}
+
+document.getElementById("admin-mode-picker").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  document.querySelectorAll("#admin-mode-picker button").forEach((b) => b.classList.remove("active"));
+  e.target.classList.add("active");
+  adminLeague = e.target.dataset.league;
+  adminMode = e.target.dataset.mode;
+  refreshAdminView();
+});
+
+document.getElementById("admin-has-second").addEventListener("change", (e) => {
+  document.getElementById("admin-second-row").style.display = e.target.checked ? "flex" : "none";
+});
+document.getElementById("hist-has-second").addEventListener("change", (e) => {
+  document.getElementById("hist-second-row").style.display = e.target.checked ? "flex" : "none";
+});
+
+// -- Admin: view schedule (selected league) ------------------------------------
+function dayNumberFor(league, date) {
+  const run = runFor(league);
+  const n = Math.round((new Date(`${date}T00:00:00Z`) - new Date(`${run.runStart}T00:00:00Z`)) / 86400000) + 1;
+  return date >= run.runStart && date <= run.runEnd ? `Day ${n}` : "--";
+}
+
 async function loadAdminSchedule() {
-const tbody = document.getElementById("admin-schedule-body");
-tbody.innerHTML = `<tr><td colspan="4">Loading...</td></tr>`;
-try {
-const res = await fetch(OBJECTIVES_URL);
-const data = await res.json();
-const days = Object.entries(data.schedule?.WNBA || {}).sort(([a], [b]) => a.localeCompare(b));
-if (!days.length) {
-tbody.innerHTML = `<tr><td colspan="4">No dates configured yet.</td></tr>`;
-return;
-}
-tbody.innerHTML = days.map(([date, entry]) => {
-const classic = (entry.objectives?.Classic || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
-const pro = (entry.objectives?.Pro || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
-return `<tr>
+  const tbody = document.getElementById("admin-schedule-body");
+  tbody.innerHTML = `<tr><td colspan="6">Loading...</td></tr>`;
+  try {
+    const res = await fetch(OBJECTIVES_URL);
+    const data = await res.json();
+    const days = Object.entries(data.schedule?.[adminLeague] || {}).sort(([a], [b]) => a.localeCompare(b));
+    if (!days.length) {
+      tbody.innerHTML = `<tr><td colspan="6">No ${adminLeague} dates configured yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = days
+      .map(([date, entry]) => {
+        const fmt = (list) => (list || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
+        const proj = Object.entries(entry.projections || {})
+          .map(([stat, vals]) => `${stat} (${Object.keys(vals).length})`)
+          .join(", ") || "--";
+        return `<tr>
 <td>${date}</td>
-<td>${classic}</td>
-<td>${pro}</td>
+<td>${dayNumberFor(adminLeague, date)}</td>
+<td>${fmt(entry.objectives?.Classic)}</td>
+<td>${fmt(entry.objectives?.Pro)}</td>
 <td>${entry.badgeSetName || "--"}</td>
+<td>${proj}</td>
 </tr>`;
-}).join("");
-} catch (err) {
-tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
-}
+      })
+      .join("");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Failed to load schedule: ${err.message}</td></tr>`;
+  }
 }
 
 // -- Admin: save a day (locked behind the password, never a direct DOM edit) ----
 document.getElementById("admin-save-btn").addEventListener("click", async () => {
-const statusEl = document.getElementById("admin-status");
-statusEl.style.color = "#a8aa9c";
-statusEl.textContent = "Saving...";
+  setStatus("admin-status", "Saving...");
+  const date = document.getElementById("admin-date").value;
+  const stat1 = document.getElementById("admin-stat-1").value;
+  const target1 = parseFloat(document.getElementById("admin-target-1").value);
+  const hasSecond = document.getElementById("admin-has-second").checked;
+  const badgeSetName = document.getElementById("admin-badge-name").value.trim();
 
-const mode = document.getElementById("admin-mode").value;
-const date = document.getElementById("admin-date").value;
-const stat1 = document.getElementById("admin-stat-1").value;
-const target1 = parseFloat(document.getElementById("admin-target-1").value);
-const hasSecond = document.getElementById("admin-has-second").checked;
-const badgeSetName = document.getElementById("admin-badge-name").value.trim();
+  if (!date || !target1) {
+    setStatus("admin-status", "Date and Objective 1 target are required.", false);
+    return;
+  }
+  const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1 }];
+  if (hasSecond) {
+    const stat2 = document.getElementById("admin-stat-2").value;
+    const target2 = parseFloat(document.getElementById("admin-target-2").value);
+    if (!target2) {
+      setStatus("admin-status", "Objective 2 target is required when adding a second objective.", false);
+      return;
+    }
+    objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2 });
+  }
 
-if (!date || !target1) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = "Date and Objective 1 target are required.";
-return;
-}
-
-const objectives = [{ stat: stat1, label: stat1, dailyTeamTarget: target1 }];
-if (hasSecond) {
-const stat2 = document.getElementById("admin-stat-2").value;
-const target2 = parseFloat(document.getElementById("admin-target-2").value);
-if (!target2) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = "Objective 2 target is required when adding a second objective.";
-return;
-}
-objectives.push({ stat: stat2, label: stat2, dailyTeamTarget: target2 });
-}
-
-try {
-const res = await fetch(OBJECTIVES_DAY_URL, {
-method: "POST",
-headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-body: JSON.stringify({ league: "WNBA", date, mode, objectives, badgeSetName: mode === "Pro" ? badgeSetName : undefined }),
-});
-const data = await res.json();
-if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-statusEl.style.color = "#34d399";
-statusEl.textContent = `Saved ${date} (${mode}). It will take effect immediately on next load.`;
-loadAdminSchedule();
-} catch (err) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = `Failed to save: ${err.message}`;
-}
+  try {
+    const res = await fetch(OBJECTIVES_DAY_URL, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ league: adminLeague, date, mode: adminMode, objectives, badgeSetName: adminMode === "Pro" ? badgeSetName : undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("admin-status", `Saved ${adminLeague} ${adminMode} for ${date}. Takes effect on next load.`, true);
+    loadAdminSchedule();
+  } catch (err) {
+    setStatus("admin-status", `Failed to save: ${err.message}`, false);
+  }
 });
 
 // -- Admin: bulk-load real (Rotowire-sourced) projections --------------------
-// Rotowire's exported column header -> our internal stat code. Only stats we
-// actually track as objectives are listed; other Rotowire columns (Min, Pos,
-// FG%, DREB, 3P%, etc.) are simply ignored during table parsing.
 const ROTOWIRE_HEADER_TO_STAT = {
-PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
-TO: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
+  PTS: "PTS", REB: "REB", AST: "AST", STL: "STL", BLK: "BLK",
+  TO: "TOV", TOV: "TOV", FGM: "FGM", FGA: "FGA", "3PM": "3PM", "3PA": "3PA", FTM: "FTM", FTA: "FTA", OREB: "OREB",
 };
 
-// Returns { byStat: { STAT: [{name,value}, ...] }, errors: [] }. A full
-// Rotowire table paste captures EVERY column we track as a stat in one go
-// (not just whichever one happens to be selected in the Stat dropdown) --
-// that's what lets one paste cover both objectives on a two-objective day
-// without re-pasting and re-selecting per stat. The Stat dropdown only
-// matters for the plain "Name, Value" fallback below, where there's no
-// column header to identify the stat from.
 function parseProjRows(text, stat) {
-const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
-if (!lines.length) return { byStat: {}, errors: [] };
+  const lines = text.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim());
+  if (!lines.length) return { byStat: {}, errors: [] };
 
-// Full Rotowire table paste: first line is a tab-separated header starting
-// with "Player". Pull out every column that matches a stat we track.
-const headerCells = lines[0].split("\t").map((c) => c.trim());
-if (headerCells[0] === "Player" && headerCells.length > 2) {
-const statColumns = headerCells
-.map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
-.filter((c) => c.stat);
-if (!statColumns.length) {
-return {
-byStat: {},
-errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`],
-};
-}
-const byStat = {};
-statColumns.forEach((c) => (byStat[c.stat] = []));
-const errors = [];
-lines.slice(1).forEach((line, i) => {
-const cells = line.split("\t").map((c) => c.trim());
-const name = cells[0];
-statColumns.forEach(({ stat: colStat, colIndex }) => {
-const value = parseFloat(cells[colIndex]);
-if (!name || Number.isNaN(value)) {
-errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
-return;
-}
-byStat[colStat].push({ name, value });
-});
-});
-return { byStat, errors };
-}
+  const headerCells = lines[0].split("\t").map((c) => c.trim());
+  if (headerCells[0] === "Player" && headerCells.length > 2) {
+    const statColumns = headerCells
+      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
+      .filter((c) => c.stat);
+    if (!statColumns.length) {
+      return { byStat: {}, errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`] };
+    }
+    const byStat = {};
+    statColumns.forEach((c) => (byStat[c.stat] = []));
+    const errors = [];
+    lines.slice(1).forEach((line, i) => {
+      const cells = line.split("\t").map((c) => c.trim());
+      const name = cells[0];
+      statColumns.forEach(({ stat: colStat, colIndex }) => {
+        const value = parseFloat(cells[colIndex]);
+        if (!name || Number.isNaN(value)) {
+          errors.push(`Row ${i + 2}, ${colStat}: could not read a name and value from "${line}"`);
+          return;
+        }
+        byStat[colStat].push({ name, value });
+      });
+    });
+    return { byStat, errors };
+  }
 
-// Fallback: simple "Name, Value" per line -- only identifies the single
-// stat selected in the dropdown, since there's no header to read from.
-const rows = [];
-const errors = [];
-lines.forEach((line, i) => {
-const trimmed = line.trim();
-const parts = trimmed.split(",");
-if (parts.length !== 2) {
-errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
-return;
-}
-const name = parts[0].trim();
-const value = parseFloat(parts[1].trim());
-if (!name || Number.isNaN(value)) {
-errors.push(`Line ${i + 1}: could not parse a name and number from "${trimmed}"`);
-return;
-}
-rows.push({ name, value });
-});
-return { byStat: rows.length ? { [stat]: rows } : {}, errors };
+  const rows = [];
+  const errors = [];
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    const parts = trimmed.split(",");
+    if (parts.length !== 2) {
+      errors.push(`Line ${i + 1}: expected "Name, Value" -- got "${trimmed}"`);
+      return;
+    }
+    const name = parts[0].trim();
+    const value = parseFloat(parts[1].trim());
+    if (!name || Number.isNaN(value)) {
+      errors.push(`Line ${i + 1}: could not parse a name and number from "${trimmed}"`);
+      return;
+    }
+    rows.push({ name, value });
+  });
+  return { byStat: rows.length ? { [stat]: rows } : {}, errors };
 }
 
 document.getElementById("proj-save-btn").addEventListener("click", async () => {
-const statusEl = document.getElementById("proj-status");
-statusEl.style.color = "#a8aa9c";
-statusEl.textContent = "Saving...";
-
-const date = document.getElementById("proj-date").value;
-const stat = document.getElementById("proj-stat").value;
-const rawText = document.getElementById("proj-rows").value;
-
-if (!date) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = "Date is required.";
-return;
-}
-
-const { byStat, errors } = parseProjRows(rawText, stat);
-if (errors.length) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = `Fix these rows before saving: ${errors.join(" | ")}`;
-return;
-}
-const stats = Object.keys(byStat);
-if (!stats.length) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = "Paste at least one \"Name, Value\" row, or a full Rotowire table.";
-return;
-}
-
-// A full-table paste can carry every stat it recognizes in one submission
-// (e.g. both 3PM and 3PA for a two-objective day) -- save each one with
-// its own request against the same single-stat endpoint, then report a
-// combined result. One request per stat either way; the difference is the
-// admin no longer has to change the Stat dropdown and re-paste per stat.
-const succeeded = [];
-const failed = [];
-for (const s of stats) {
-try {
-const res = await fetch(PROJECTIONS_URL, {
-method: "POST",
-headers: { "Content-Type": "application/json", "X-Admin-Token": adminPassword || "" },
-body: JSON.stringify({ league: "WNBA", date, stat: s, projections: byStat[s] }),
+  setStatus("proj-status", "Saving...");
+  const date = document.getElementById("proj-date").value;
+  const stat = document.getElementById("proj-stat").value;
+  const rawText = document.getElementById("proj-rows").value;
+  if (!date) {
+    setStatus("proj-status", "Date is required.", false);
+    return;
+  }
+  const { byStat, errors } = parseProjRows(rawText, stat);
+  if (errors.length) {
+    setStatus("proj-status", `Fix these rows before saving: ${errors.join(" | ")}`, false);
+    return;
+  }
+  const stats = Object.keys(byStat);
+  if (!stats.length) {
+    setStatus("proj-status", 'Paste at least one "Name, Value" row, or a full Rotowire table.', false);
+    return;
+  }
+  const succeeded = [];
+  const failed = [];
+  for (const s of stats) {
+    try {
+      const res = await fetch(PROJECTIONS_URL, {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ league: adminLeague, date, stat: s, projections: byStat[s] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      succeeded.push(`${s} (${byStat[s].length})`);
+    } catch (err) {
+      failed.push(`${s}: ${err.message}`);
+    }
+  }
+  if (failed.length) {
+    setStatus("proj-status", `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : ""), false);
+  } else {
+    setStatus("proj-status", `Loaded ${adminLeague} projections for ${date}: ${succeeded.join(", ")}. Takes effect on next load.`, true);
+    loadAdminSchedule();
+  }
 });
-const data = await res.json();
-if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-succeeded.push(`${s} (${byStat[s].length})`);
-} catch (err) {
-failed.push(`${s}: ${err.message}`);
-}
+
+// -- Admin: invalidate a day's cached snapshot ---------------------------------
+document.getElementById("inv-btn").addEventListener("click", async () => {
+  const date = document.getElementById("inv-date").value;
+  if (!date) {
+    setStatus("inv-status", "Date is required.", false);
+    return;
+  }
+  setStatus("inv-status", "Invalidating...");
+  try {
+    const res = await fetch(INVALIDATE_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ league: adminLeague, date }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("inv-status", `${adminLeague} ${date} will rebuild from BALLDONTLIE on its next load.`, true);
+  } catch (err) {
+    setStatus("inv-status", `Failed: ${err.message}`, false);
+  }
+});
+
+// -- Admin: NBA Historic --------------------------------------------------------
+async function loadHistoricStatus() {
+  const tbody = document.getElementById("admin-historic-body");
+  const statusEl = document.getElementById("admin-historic-status");
+  tbody.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
+  try {
+    const res = await fetch(HISTORIC_STATUS_URL);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const simulated = new Set(data.simulatedDays || []);
+    const objByDay = new Map((data.objectives || []).map((o) => [o.day, o]));
+    const rows = (data.scheduleDates || []).map((s) => {
+      const o = objByDay.get(s.day);
+      const objText = o ? o.objectives.map((x) => `${x.type} (${x.dailyTeamTarget})`).join(" + ") : "--";
+      const isCurrent = s.day === data.currentDay;
+      return `<tr${isCurrent ? ' style="color:var(--gold);"' : ""}><td>Day ${s.day}${isCurrent ? " (current)" : ""}</td><td>${s.date || o?.date || "--"}</td><td>${s.games}</td><td>${objText}</td><td>${simulated.has(s.day) ? "yes" : "--"}</td></tr>`;
+    });
+    tbody.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="5">No Historic schedule seeded yet.</td></tr>`;
+    statusEl.textContent = `Current day ${data.currentDay} · ${data.activePlayers} active of ${data.playersLoaded} players · ${data.scheduleDays} schedule days · ${data.objectivesDays} objective days · ${simulated.size} day(s) simulated. ${HISTORIC_ENABLED ? "Public Historic tab is ON." : "Public Historic tab is OFF (HISTORIC_ENABLED in index.html)."}`;
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Failed to load Historic status: ${err.message}</td></tr>`;
+    statusEl.textContent = "";
+  }
 }
 
-if (failed.length) {
-statusEl.style.color = "#f87171";
-statusEl.textContent = `Failed: ${failed.join(" | ")}` + (succeeded.length ? ` -- but loaded ${succeeded.join(", ")}.` : "");
-} else {
-statusEl.style.color = "#34d399";
-statusEl.textContent = `Loaded projections for ${date}: ${succeeded.join(", ")}. Takes effect immediately on next load.`;
+document.getElementById("hist-save-btn").addEventListener("click", async () => {
+  setStatus("hist-status", "Saving...");
+  const day = parseInt(document.getElementById("hist-day").value, 10);
+  const date = document.getElementById("hist-date-label").value.trim();
+  const target1 = parseFloat(document.getElementById("hist-target-1").value);
+  if (!day || !target1) {
+    setStatus("hist-status", "Day # and Objective 1 target are required.", false);
+    return;
+  }
+  const objectives = [{ stat: document.getElementById("hist-stat-1").value, dailyTeamTarget: target1 }];
+  if (document.getElementById("hist-has-second").checked) {
+    const target2 = parseFloat(document.getElementById("hist-target-2").value);
+    if (!target2) {
+      setStatus("hist-status", "Objective 2 target is required when adding a second objective.", false);
+      return;
+    }
+    objectives.push({ stat: document.getElementById("hist-stat-2").value, dailyTeamTarget: target2 });
+  }
+  try {
+    const res = await fetch(HISTORIC_OBJ_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ day, date: date || undefined, objectives }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("hist-status", `Saved Historic Day ${day}.`, true);
+    loadHistoricStatus();
+  } catch (err) {
+    setStatus("hist-status", `Failed to save: ${err.message}`, false);
+  }
+});
+
+async function postHistoricSeed(payload) {
+  const res = await fetch(HISTORIC_SEED_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
+
+function describeSeedResult(data) {
+  return [
+    data.playersLoaded != null ? `${data.playersLoaded} players` : null,
+    data.scheduleDaysLoaded != null ? `${data.scheduleDaysLoaded} schedule days` : null,
+    data.objectivesDaysLoaded != null ? `${data.objectivesDaysLoaded} objective days` : null,
+  ].filter(Boolean).join(", ");
+}
+
+document.getElementById("hist-seed-btn").addEventListener("click", async () => {
+  setStatus("hist-seed-status", "Uploading...");
+  let payload;
+  try {
+    payload = JSON.parse(document.getElementById("hist-seed-json").value);
+  } catch (err) {
+    setStatus("hist-seed-status", `Not valid JSON: ${err.message}`, false);
+    return;
+  }
+  if (!payload || typeof payload !== "object" || !(payload.players || payload.schedule || payload.objectives)) {
+    setStatus("hist-seed-status", "JSON must be an object with at least one of: players, schedule, objectives.", false);
+    return;
+  }
+  try {
+    const data = await postHistoricSeed({ players: payload.players, schedule: payload.schedule, objectives: payload.objectives });
+    setStatus("hist-seed-status", `Loaded ${describeSeedResult(data)}.`, true);
+    loadHistoricStatus();
+  } catch (err) {
+    setStatus("hist-seed-status", `Upload failed: ${err.message}`, false);
+  }
+});
+
+document.getElementById("hist-seed-repo-btn").addEventListener("click", async () => {
+  setStatus("hist-seed-status", "Fetching seed files from the repo...");
+  try {
+    const entries = await Promise.all(
+      Object.entries(HISTORIC_SEED_FILES).map(async ([key, path]) => {
+        const res = await fetch(path);
+        if (!res.ok) throw new Error(`${key}.json: HTTP ${res.status}`);
+        return [key, await res.json()];
+      })
+    );
+    const data = await postHistoricSeed(Object.fromEntries(entries));
+    setStatus("hist-seed-status", `Seeded from repo files: ${describeSeedResult(data)}.`, true);
+    loadHistoricStatus();
+  } catch (err) {
+    setStatus("hist-seed-status", `Seeding failed: ${err.message}`, false);
+  }
+});
+
+document.getElementById("hist-advance-btn").addEventListener("click", async () => {
+  setStatus("hist-advance-status", "Simulating...");
+  const dayRaw = document.getElementById("hist-advance-day").value;
+  const body = dayRaw ? { day: parseInt(dayRaw, 10) } : {};
+  try {
+    const res = await fetch(HISTORIC_ADVANCE_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("hist-advance-status", data.alreadySimulated ? `Day ${data.day} was already simulated; current day set to ${data.day}.` : `Simulated Day ${data.day} (${data.added} player lines); current day is now ${data.day}.`, true);
+    loadHistoricStatus();
+  } catch (err) {
+    setStatus("hist-advance-status", `Failed: ${err.message}`, false);
+  }
 });
 
 // -- Load ------------------------------------------------------------------------
-async function loadData() {
-const existingBanner = document.getElementById("data-error-banner");
-if (existingBanner) existingBanner.remove();
-try {
-// Historic has no live API/calendar date -- it fetches the worker's
-// current simulated day directly instead of WORKER_URL's date/mode query.
-const url = currentMode === "Historic" ? HISTORIC_URL : `${WORKER_URL}?date=${selectedDate}&mode=${currentMode}`;
-const res = await fetch(url);
-if (!res.ok) throw new Error(`HTTP ${res.status}`);
-const data = await res.json();
-dashboard = data;
-} catch (err) {
-const banner = document.createElement("p");
-banner.id = "data-error-banner";
-banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
-banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
-document.getElementById("view-main").insertBefore(banner, document.getElementById("run-days").closest(".run-row"));
-}
-renderScheduleTiles();
-renderObjectiveTiles();
-render();
+let loadSeq = 0;
+let pollTimer = null;
+
+function showLoadingBanner(text) {
+  let banner = document.getElementById("loading-banner");
+  if (!text) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement("p");
+    banner.id = "loading-banner";
+    banner.className = "loading-banner";
+    document.getElementById("view-main").insertBefore(banner, document.querySelector(".run-row"));
+  }
+  banner.textContent = text;
 }
 
-initRunDays();
-loadData();
-loadFullData({ silent: true }); // background-warm team PPG/PAPG hover tooltips + the Full Data tab
+async function loadData() {
+  const seq = ++loadSeq;
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+  const existingBanner = document.getElementById("data-error-banner");
+  if (existingBanner) existingBanner.remove();
+  try {
+    const url = currentMode === "Historic" ? HISTORIC_URL : `${WORKER_URL}?league=${currentLeague}&date=${selectedDate}&mode=${currentMode}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (seq !== loadSeq) return; // a newer selection superseded this fetch
+    dashboard = data;
+  } catch (err) {
+    if (seq !== loadSeq) return;
+    const banner = document.createElement("p");
+    banner.id = "data-error-banner";
+    banner.style.cssText = "font-size:0.75rem;color:var(--gold);margin:-8px 0 16px;";
+    banner.textContent = `Live data unavailable (${err.message}). Check back shortly.`;
+    document.getElementById("view-main").insertBefore(banner, document.querySelector(".run-row"));
+  }
+  renderScheduleTiles();
+  renderObjectiveTiles();
+  render();
+
+  // Big slates (a full NBA night) load across a couple of Worker calls; keep
+  // polling until the Worker reports the day is fully built.
+  if (dashboard.building || dashboard.refreshing) {
+    const p = dashboard.progress || {};
+    showLoadingBanner(dashboard.building ? `Loading players: ${p.loaded ?? 0} of ${p.total ?? "?"} so far...` : "Refreshing in the background...");
+    pollTimer = setTimeout(() => {
+      if (seq === loadSeq) loadData();
+    }, 2500);
+  } else {
+    showLoadingBanner("");
+  }
+}
+
+populateStatSelects();
+loadRuns().then(() => {
+  initRunDays();
+  loadData();
+  loadFullData(currentLeague, { silent: true }); // background-warm team PPG/PAPG hover tooltips + the Full Data tab
+});
 </script>
 </body>
 </html>
