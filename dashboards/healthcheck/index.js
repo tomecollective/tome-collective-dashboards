@@ -130,6 +130,60 @@ const FRESHNESS = [
   },
 ];
 
+// -- Worker error-rate check (alert only) --------------------------------------
+// Cloudflare's Notifications catalogue has no Workers error-rate alert type
+// on this account (53 types, only "Pages Project updates" touches Workers/
+// Pages), so this Worker queries the GraphQL Analytics API instead: errors
+// and invocations per script over the last hour. Needs the existing
+// CLOUDFLARE_API_TOKEN to also carry "Account Analytics: Read".
+const ERROR_RATE_SCRIPTS = ["tome-fastbreak", "tome-fastbreak-refresh", "tome-tcg", "tome-topshot", "tome-healthcheck"];
+const ERROR_RATE_THRESHOLD = 0.05; // 5% of invocations in the last hour
+const ERROR_MIN_COUNT = 3; // ...and at least this many errors (a single blip isn't worth a ping)
+
+async function checkErrorRates(env) {
+  const apiToken = env.CLOUDFLARE_API_TOKEN;
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+  if (!apiToken || !accountId) return { name: "worker-errors", healthy: false, reason: "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID" };
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const query = `query($account: String!, $since: Time!, $scripts: [String!]) {
+    viewer { accounts(filter: { accountTag: $account }) {
+      workersInvocationsAdaptive(limit: 100, filter: { datetime_geq: $since, scriptName_in: $scripts }) {
+        dimensions { scriptName }
+        sum { requests errors }
+      }
+    } }
+  }`;
+  try {
+    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables: { account: accountId, since, scripts: ERROR_RATE_SCRIPTS } }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await res.json();
+    if (data.errors?.length) {
+      return { name: "worker-errors", healthy: false, reason: `Analytics API error (token needs Account Analytics: Read): ${data.errors[0].message}`.slice(0, 200) };
+    }
+    const rows = data.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive || [];
+    const totals = {};
+    for (const r of rows) {
+      const t = (totals[r.dimensions.scriptName] ||= { requests: 0, errors: 0 });
+      t.requests += r.sum.requests || 0;
+      t.errors += r.sum.errors || 0;
+    }
+    const problems = [];
+    for (const [script, t] of Object.entries(totals)) {
+      const rate = t.requests ? t.errors / t.requests : 0;
+      if (t.errors >= ERROR_MIN_COUNT && rate >= ERROR_RATE_THRESHOLD) {
+        problems.push(`${script}: ${t.errors} errors / ${t.requests} invocations in the last hour (${Math.round(rate * 100)}%)`);
+      }
+    }
+    return problems.length ? { name: "worker-errors", healthy: false, reason: problems.join("; ") } : { name: "worker-errors", healthy: true, reason: null, totals };
+  } catch (err) {
+    return { name: "worker-errors", healthy: false, reason: err.message || "Analytics request failed" };
+  }
+}
+
 async function checkFreshness(target, env) {
   try {
     const service = env[target.binding];
@@ -148,7 +202,7 @@ async function alertDiscordFreshness(webhookUrl, failures) {
   await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: `Tome Analytics data freshness warning (no rollback -- pipeline/cron issue, needs a look)\n${lines}` }),
+    body: JSON.stringify({ content: `Tome Analytics pipeline warning (no rollback -- freshness / error-rate, needs a look)\n${lines}` }),
   });
 }
 
@@ -239,20 +293,23 @@ export default {
   async fetch(request, env, ctx) {
     // Manual trigger for testing -- visit this Worker's URL directly to run a
     // check on demand instead of waiting for the next scheduled run.
-    const [results, freshness] = await Promise.all([
+    const [results, freshness, errorRates] = await Promise.all([
       Promise.all(TARGETS.map(t => checkTarget(t, env))),
       Promise.all(FRESHNESS.map(t => checkFreshness(t, env))),
+      checkErrorRates(env),
     ]);
-    return new Response(JSON.stringify({ checked_at: new Date().toISOString(), results, freshness }, null, 2), {
+    return new Response(JSON.stringify({ checked_at: new Date().toISOString(), results, freshness, errorRates }, null, 2), {
       headers: { "Content-Type": "application/json" },
     });
   },
 
   async scheduled(event, env, ctx) {
-    const [results, freshness] = await Promise.all([
+    const [results, freshness, errorRates] = await Promise.all([
       Promise.all(TARGETS.map(t => checkTarget(t, env))),
       Promise.all(FRESHNESS.map(t => checkFreshness(t, env))),
+      checkErrorRates(env),
     ]);
+    freshness.push(errorRates); // alert-only, same de-duplicated channel as freshness
 
     // Log every run to KV, not just failures, so there's a real history.
     const logEntry = { checked_at: new Date().toISOString(), results, freshness };

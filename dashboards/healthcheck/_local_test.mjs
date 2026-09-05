@@ -6,8 +6,10 @@ import assert from "node:assert/strict";
 const worker = (await import("./index.js")).default;
 
 const posts = [];
+let analytics = { data: { viewer: { accounts: [{ workersInvocationsAdaptive: [{ dimensions: { scriptName: "tome-tcg" }, sum: { requests: 100, errors: 0 } }] }] } } };
 globalThis.fetch = async (url, init) => {
   posts.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+  if (String(url).includes("/graphql")) return new Response(JSON.stringify(analytics), { status: 200 });
   return new Response("{}", { status: 200 });
 };
 const kvStore = new Map();
@@ -19,6 +21,8 @@ function makeEnv({ fresh = true, tcgPublished = true, fbLatestAgeMin = 5 } = {})
   return {
     HEALTHCHECK_KV: kv,
     DISCORD_WEBHOOK_URL: "https://discord.test/hook",
+    CLOUDFLARE_API_TOKEN: "tok",
+    CLOUDFLARE_ACCOUNT_ID: "acct",
     TOME_SUBSCRIBER_KEY: "sub",
     FASTBREAK_SERVICE: svc((u, h) => (h["X-Tome-Key"] === "sub" ? ok({ players: [] }) : new Response(JSON.stringify({ locked: true }), { status: 401 }))),
     TCG_SERVICE: svc((u, h) => {
@@ -55,14 +59,31 @@ posts.length = 0;
 await worker.scheduled({}, makeEnv({ fresh: false, tcgPublished: false, fbLatestAgeMin: 300 }), {});
 const alerts = posts.filter((p) => p.url.includes("discord.test"));
 assert.equal(alerts.length, 1, "exactly one freshness alert");
-assert.match(alerts[0].body.content, /freshness warning/);
+assert.match(alerts[0].body.content, /pipeline warning/);
 assert.match(alerts[0].body.content, /WNBA: cron last ticked/);
 assert.match(alerts[0].body.content, /latest snapshot is/);
 assert.match(alerts[0].body.content, /did not publish/);
-assert.ok(!posts.some((p) => p.url.includes("api.cloudflare.com")), "no rollback for freshness problems");
+assert.ok(!posts.some((p) => p.url.includes("/deployments")), "no rollback for freshness problems");
 // Same problem again within 6h: no re-alert.
 posts.length = 0;
 await worker.scheduled({}, makeEnv({ fresh: false, tcgPublished: false, fbLatestAgeMin: 300 }), {});
 assert.equal(posts.filter((p) => p.url.includes("discord.test")).length, 0, "freshness alert de-duplicated");
 
+// Error-rate check: 5%+ and >=3 errors in the last hour -> alert (only), token
+// without analytics permission -> surfaced as a problem, not silently ignored.
+kvStore.delete("freshness:last_alert");
+analytics = { data: { viewer: { accounts: [{ workersInvocationsAdaptive: [{ dimensions: { scriptName: "tome-fastbreak-refresh" }, sum: { requests: 40, errors: 6 } }, { dimensions: { scriptName: "tome-tcg" }, sum: { requests: 100, errors: 1 } }] }] } } };
+posts.length = 0;
+await worker.scheduled({}, makeEnv(), {});
+let er = posts.filter((p) => p.url.includes("discord.test"));
+assert.equal(er.length, 1, "error-rate alert sent");
+assert.match(er[0].body.content, /tome-fastbreak-refresh: 6 errors \/ 40 invocations/);
+assert.ok(!er[0].body.content.includes("tome-tcg:"), "1% error rate does not alert");
+assert.ok(!posts.some((p) => p.url.includes("/deployments")), "no rollback for error-rate problems");
+analytics = { errors: [{ message: "authentication error" }] };
+kvStore.delete("freshness:last_alert");
+posts.length = 0;
+await worker.scheduled({}, makeEnv(), {});
+er = posts.filter((p) => p.url.includes("discord.test"));
+assert.match(er[0].body.content, /Account Analytics: Read/, "missing analytics permission is reported");
 console.log("ALL HEALTHCHECK LOCAL TESTS PASSED");

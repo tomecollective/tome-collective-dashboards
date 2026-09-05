@@ -57,7 +57,13 @@ Besides HTTP/shape, every run reads the pipelines' own status:
   under two cron intervals + 5 min, in or out of season), and in season: last cron error,
   latest snapshot age (same window), Full Data age (< 30 h).
 - `tome-tcg` `/api/refresh-status` -- last run must have `published: true` and be < 36 h old.
-Problems post a "data freshness warning" to Discord (de-duplicated: the same problem set is
+- **Worker error rates** via the GraphQL Analytics API (Cloudflare's Notifications catalogue
+  has no Workers error-rate alert type on this account): for `tome-fastbreak`,
+  `tome-fastbreak-refresh`, `tome-tcg`, `tome-topshot`, `tome-healthcheck`, alert when the
+  last hour has >= 3 errors AND >= 5% error rate. `CLOUDFLARE_API_TOKEN` must also carry
+  **Account Analytics: Read** (edit the token in My Profile -> API Tokens); until it does, the
+  check reports that instead of silently passing.
+Problems post a "pipeline warning" to Discord (de-duplicated: the same problem set is
 re-alerted at most every 6 h) and **never trigger a rollback** -- a rollback can't fix a cron
 that didn't run. Local check: `node dashboards/healthcheck/_local_test.mjs`.
 
