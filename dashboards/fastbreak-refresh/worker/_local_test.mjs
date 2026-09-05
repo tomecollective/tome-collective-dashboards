@@ -403,6 +403,19 @@ function countSince(mark) {
   await worker.scheduled({ cron: T.LEAGUE_CRONS.WNBA }, env);
   assert.ok(calls.length - mark <= T.MAX_SUBREQUESTS, `WNBA cron tick used ${calls.length - mark}`);
   assert.ok(env.FASTBREAK_KV.store.has("fastbreak:latest"), "WNBA latest cached by cron");
+  // Health route reflects the cron heartbeat and snapshot ages (pure KV, no
+  // upstream calls, ungated).
+  const hmark = calls.length;
+  res = await worker.fetch(new Request("https://x/api/fastbreak/health"), env);
+  assert.equal(res.status, 200);
+  const health = await res.json();
+  assert.equal(calls.length, hmark, "health route makes no upstream calls");
+  assert.ok(health.leagues.WNBA.lastCronTickAt, "WNBA cron heartbeat recorded");
+  assert.ok(health.leagues.WNBA.lastCronOkAt, "WNBA cron success recorded");
+  assert.ok(health.leagues.WNBA.latestAgeMs != null && health.leagues.WNBA.latestAgeMs < 60000, "latest snapshot age reported");
+  assert.equal(health.leagues.WNBA.cronIntervalMinutes, 30);
+  assert.ok(health.leagues.NBA.lastCronTickAt, "NBA off-season tick still heartbeats");
+  assert.equal(health.leagues.NBA.seasonActive, T.isSeasonActive("NBA", T.todayStr()));
   assert.ok(env.FASTBREAK_KV.store.has("fastbreak:fulldata:build"), "WNBA full-data build started by cron");
   // Drive the WNBA Full Data build to completion; the All-Star game in the
   // mock feed must not surface as a team.

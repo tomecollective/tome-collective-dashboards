@@ -39,13 +39,27 @@ in the Cloudflare dashboard -- the Worker will error without them:
   result to KV for history; without this binding it throws before ever reaching the
   rollback/alert logic. Create a namespace (e.g. `tome_healthcheck_kv`) and bind it as
   `HEALTHCHECK_KV` under the Worker's Bindings tab.
-- **Three Service Bindings**, one per dashboard: `FASTBREAK_SERVICE` -> `tome-fastbreak`,
-  `TCG_SERVICE` -> `tome-tcg`, `TOPSHOT_SERVICE` -> `tome-topshot`. Workers on `*.workers.dev`
+- **Four Service Bindings**: `FASTBREAK_SERVICE` -> `tome-fastbreak`,
+  `TCG_SERVICE` -> `tome-tcg`, `TOPSHOT_SERVICE` -> `tome-topshot`, and
+  `FASTBREAK_REFRESH_SERVICE` -> `tome-fastbreak-refresh` (freshness check only).
+- **`TOME_SUBSCRIBER_KEY`** (encrypted variable): one of the values in the dashboards'
+  `TOME_SUBSCRIBER_KEYS` secret. The data routes are subscriber-gated; without this the shape
+  checks fail (deliberately -- a 401 or a teaser must never count as healthy). Workers on `*.workers.dev`
   cannot call other Workers' `*.workers.dev` URLs via a plain `fetch()` -- Cloudflare blocks this
   as anti-loop protection (error 1042 / HTTP 404, with the target Worker never actually
   invoked). Service Bindings route the request Worker-to-Worker internally and bypass that
   restriction, which is why `index.js` uses `env[target.binding].fetch(...)` instead of
   `fetch(target.url)`.
+
+## Freshness checks (alert only)
+Besides HTTP/shape, every run reads the pipelines' own status:
+- `tome-fastbreak-refresh` `/api/fastbreak/health` -- per league: cron heartbeat age (must be
+  under two cron intervals + 5 min, in or out of season), and in season: last cron error,
+  latest snapshot age (same window), Full Data age (< 30 h).
+- `tome-tcg` `/api/refresh-status` -- last run must have `published: true` and be < 36 h old.
+Problems post a "data freshness warning" to Discord (de-duplicated: the same problem set is
+re-alerted at most every 6 h) and **never trigger a rollback** -- a rollback can't fix a cron
+that didn't run. Local check: `node dashboards/healthcheck/_local_test.mjs`.
 
 ## Setup (browser-based, no CLI -- same pattern as the other three Workers)
 
@@ -62,10 +76,11 @@ in the Cloudflare dashboard -- the Worker will error without them:
    - `DISCORD_WEBHOOK_URL`
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
+   - `TOME_SUBSCRIBER_KEY`
 6. Create a KV namespace and bind it as `HEALTHCHECK_KV` (see "Additional setup" above).
-7. Add three Service Bindings -- `FASTBREAK_SERVICE`, `TCG_SERVICE`, `TOPSHOT_SERVICE` -- pointing
-   at the `tome-fastbreak`, `tome-tcg`, and `tome-topshot` Workers respectively (see "Additional
-   setup" above).
+7. Add four Service Bindings -- `FASTBREAK_SERVICE`, `TCG_SERVICE`, `TOPSHOT_SERVICE`,
+   `FASTBREAK_REFRESH_SERVICE` -- pointing at `tome-fastbreak`, `tome-tcg`, `tome-topshot` and
+   `tome-fastbreak-refresh` respectively (see "Additional setup" above).
 8. In that Worker's Settings -> Trigger events -> Cron Triggers, add a schedule (e.g. `0 * * * *`
    for hourly).
 9. Confirm the `TARGETS` array in `index.js` matches your real deployed Worker URLs and exact

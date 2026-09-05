@@ -1255,7 +1255,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
   };
 
   if (!snapshot.teamIds.length) {
-    return { ...baseReturn, note: cfg.noGamesNote, players: [], teamAdvanced: {} };
+    return { ...baseReturn, note: cfg.noGamesNote, players: [], teamAdvanced: {}, _generated_at: new Date(snapshot.finishedAt || snapshot.startedAt || Date.now()).toISOString() };
   }
 
   const opponentByTeam = new Map();
@@ -1638,6 +1638,39 @@ export default {
       }
     }
 
+    // Freshness/health for the healthcheck Worker: pure KV reads, no
+    // BALLDONTLIE calls, no subscriber data. Reports per league whether the
+    // cron is ticking and how old the latest snapshot / Full Data are.
+    if (url.pathname === "/api/fastbreak/health" && request.method === "GET") {
+      const now = Date.now();
+      const today = todayStr();
+      const leagues = {};
+      for (const league of SUPPORTED_LEAGUES) {
+        const cfg = leagueConfig(league);
+        const latest = await loadJSON(env, cfg.keys.latest);
+        const fulldata = await loadJSON(env, cfg.keys.fulldata);
+        const cron = await loadJSON(env, `${CRON_STATE_PREFIX}${league}`);
+        const latestAt = latest?._generated_at ? Date.parse(latest._generated_at) : null;
+        const fullAt = fulldata?.generated_at ? Date.parse(fulldata.generated_at) : null;
+        leagues[league] = {
+          seasonActive: isSeasonActive(league, today),
+          cronIntervalMinutes: CRON_INTERVAL_MINUTES[league],
+          lastCronTickAt: cron?.lastTickAt || null,
+          lastCronTickAgeMs: cron?.lastTickAt ? now - Date.parse(cron.lastTickAt) : null,
+          lastCronOkAt: cron?.lastOkAt || null,
+          lastCronError: cron?.lastError || null,
+          latestGeneratedAt: latest?._generated_at || null,
+          latestAgeMs: latestAt ? now - latestAt : null,
+          latestDate: latest?.date || null,
+          latestPlayers: Array.isArray(latest?.players) ? latest.players.length : null,
+          fulldataGeneratedAt: fulldata?.generated_at || null,
+          fulldataAgeMs: fullAt ? now - fullAt : null,
+          fulldataTeams: fulldata?.teams ? Object.keys(fulldata.teams).length : null,
+        };
+      }
+      return json({ ok: true, todayET: today, checkedAt: new Date(now).toISOString(), snapshotSchema: SNAPSHOT_SCHEMA, leagues });
+    }
+
     // Run metadata for one league (or all) -- the frontend builds its day
     // toggle from this instead of hardcoding the windows.
     if (url.pathname === "/api/fastbreak/run" && request.method === "GET") {
@@ -1820,7 +1853,16 @@ export default {
   async scheduled(event, env) {
     const league = event.cron === LEAGUE_CRONS.NBA ? "NBA" : "WNBA";
     const today = todayStr();
+    // Heartbeat for /api/fastbreak/health -- written on every tick, in or out
+    // of season, so "the cron stopped firing" is distinguishable from "off
+    // season" by the healthcheck Worker.
+    const cronKey = `${CRON_STATE_PREFIX}${league}`;
+    const cronState = (await loadJSON(env, cronKey)) || {};
+    cronState.lastTickAt = new Date().toISOString();
+    cronState.cron = event.cron;
     if (!isSeasonActive(league, today)) {
+      cronState.lastSkippedOffSeasonAt = cronState.lastTickAt;
+      await saveJSON(env, cronKey, cronState);
       console.log(`${league} not in season on ${today}; skipping cron refresh.`);
       return;
     }
@@ -1828,9 +1870,13 @@ export default {
     let dashboard = null;
     try {
       dashboard = await refreshAndStore(env, league);
+      cronState.lastOkAt = new Date().toISOString();
+      cronState.lastError = null;
     } catch (err) {
+      cronState.lastError = `${new Date().toISOString()} ${err.message}`.slice(0, 300);
       console.error(`fastbreak-refresh ${league} scheduled run failed:`, err.message);
     }
+    await saveJSON(env, cronKey, cronState);
 
     let used = dashboard?._subrequests_used || 0;
 
@@ -1856,6 +1902,11 @@ export default {
     // NBA Historic is NOT advanced here -- see /api/fastbreak/historic/advance.
   },
 };
+
+const CRON_STATE_PREFIX = "fastbreak:cron:";
+// Minutes between ticks per league (derived from LEAGUE_CRONS; reported by
+// /api/fastbreak/health so the healthcheck can size its staleness window).
+const CRON_INTERVAL_MINUTES = { WNBA: 30, NBA: 15 };
 
 // Keep in sync with [triggers] crons in wrangler.toml.
 const LEAGUE_CRONS = {
