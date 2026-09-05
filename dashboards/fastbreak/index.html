@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tome Edge: Fast Break</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -119,6 +120,12 @@ td.tier-dark-green { background: var(--tier1-bg); color: #f2fdf9; font-weight: 7
 td.tier-light-green { background: var(--tier2-bg); color: var(--text); }
 td.tier-yellow { background: var(--tier3-bg); color: var(--text); }
 td.tier-light-yellow { background: var(--tier4-bg); color: var(--text); }
+/* Day-to-day: keep the tier colour but hatch it so it reads as at-risk. */
+td.tier-risk { background-image: repeating-linear-gradient(135deg, rgba(0,0,0,0) 0 6px, rgba(0,0,0,0.28) 6px 9px); }
+/* Out: dimmed row, no tier colours, no rank. */
+tr.row-out td { opacity: 0.45; }
+tr.row-out td:first-child { opacity: 0.7; }
+.rank-out { font-family: var(--sans); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.4px; color: #f87171; }
 
 .note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
 
@@ -168,6 +175,27 @@ visually with the dashboard itself) ----------------------------------- */
 
 ::-webkit-scrollbar{height:8px;width:8px;}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+/* -- Phones (<=600px): wrap the six-way toggle into two rows of 44px tap targets,
+   keep tables scrolling inside their own container, stack the header. -- */
+@media (max-width: 600px) {
+  .hdr{padding:0 12px;gap:8px;}
+  .hdr-product{display:none;}
+  .wrap{padding:1rem 12px 3rem;}
+  .pg-title{font-size:20px;}
+  .toggle-group{display:grid;grid-template-columns:repeat(3,1fr);width:100%;gap:4px;}
+  .toggle-group button{padding:12px 6px;font-size:0.8rem;min-height:44px;}
+  .admin-link-btn{margin-left:0;padding:10px 2px;font-size:0.78rem;min-height:44px;}
+  .run-row{gap:8px;}
+  .run-days{max-width:100%;-webkit-overflow-scrolling:touch;}
+  .run-day-btn{padding:11px 12px;font-size:0.78rem;min-height:44px;}
+  .schedule-row{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;}
+  .tbl-scroll{margin:0 -12px;padding:0 12px;}
+  th,td{padding:8px 6px;}
+  td{font-size:12px;}
+  .fd-search{min-width:0;width:100%;}
+  .fd-meta{margin-left:0;}
+  #locked-panel{padding:14px;}
+}
 </style>
 </head>
 <body>
@@ -900,9 +928,20 @@ function sortValue(p, key) {
   return obj && p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
 }
 
+function isOut(p) {
+  return p.availability === "out" || String(p.injuryStatus || "").toLowerCase() === "out";
+}
+function isDtd(p) {
+  return !isOut(p) && (p.availability === "dtd" || Boolean(p.injuryStatus));
+}
+
+// Out players always sink to the bottom whatever the sort column -- they are
+// shown for completeness, never as a lineup option.
 function getSorted() {
   const players = [...(dashboard.players || [])];
   players.sort((a, b) => {
+    const ao = isOut(a), bo = isOut(b);
+    if (ao !== bo) return ao ? 1 : -1;
     let av = sortValue(a, sortKey);
     let bv = sortValue(b, sortKey);
     if (av == null && bv == null) return 0;
@@ -936,14 +975,22 @@ function render() {
 
   sorted.forEach((p) => {
     const row = document.createElement("tr");
-    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td><strong>${p.ovrRank ?? "--"}</strong></td>`;
+    const out = isOut(p);
+    const dtd = isDtd(p);
+    if (out) row.className = "row-out";
+    else if (dtd) row.className = "row-dtd";
+    // Out: no rank (never a lineup option). DTD: ranked, but tier colours are
+    // hatched so the projection reads as "at risk" rather than a lock.
+    const rankCell = out ? `<span class="rank-out" title="Listed Out on the injury report -- not ranked">OUT</span>` : `<strong>${p.ovrRank ?? "--"}</strong>`;
+    const risk = dtd ? " tier-risk" : "";
+    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td>${rankCell}</td>`;
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
       const projText = ov.proj ?? (ov.projSource === "tbd" ? "TBD" : "--");
-      html += `<td class="${tierClass(ov.colorProj)}${groupStart}">${projText}</td>`;
-      html += `<td class="${tierClass(ov.colorYtd)}">${ov.ytd ?? "--"}</td>`;
-      html += `<td class="${tierClass(ov.colorL10)}">${ov.l10 ?? "--"}</td>`;
+      html += `<td class="${out ? "" : tierClass(ov.colorProj)}${risk}${groupStart}">${projText}</td>`;
+      html += `<td class="${out ? "" : tierClass(ov.colorYtd)}${risk}">${ov.ytd ?? "--"}</td>`;
+      html += `<td class="${out ? "" : tierClass(ov.colorL10)}${risk}">${ov.l10 ?? "--"}</td>`;
     });
     row.innerHTML = html;
     tbody.appendChild(row);
@@ -993,7 +1040,7 @@ function downloadCSV() {
   const headers = ["Player", "Team", "Opp", "Ovr Rank"];
   objCols.forEach((oc) => headers.push(`${oc.label} Proj`, `${oc.label} YTD`, `${oc.label} L10`));
   const rows = getSorted().map((p) => {
-    const row = [p.name, p.team, p.opp || "", p.ovrRank ?? ""];
+    const row = [p.name, p.team, p.opp || "", isOut(p) ? "OUT" : (p.ovrRank ?? "")];
     objCols.forEach((oc) => {
       const ov = p.objectives[oc.stat] || {};
       row.push(ov.proj ?? (ov.projSource === "tbd" ? "TBD" : ""), ov.ytd ?? "", ov.l10 ?? "");

@@ -44,6 +44,10 @@ const YTD_MAX_PAGES = 6; // safety cap on season-long game-id pagination for YTD
 const DAY_CACHE_FRESH_MS = 30 * 60 * 1000; // a finished day snapshot is served as-is for 30 min
 const PAST_DAY_CACHE_FRESH_MS = 6 * 60 * 60 * 1000; // a past date's finals don't move: 6 hours
 const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only changes as today's stats do: 3 hours
+// Bump when a build-time fix (e.g. the All-Star game filter) must invalidate
+// every snapshot already in KV: snapshots carrying an older schema are
+// treated as stale and rebuilt by the cron / next admin read.
+const SNAPSHOT_SCHEMA = 2;
 const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
@@ -247,18 +251,41 @@ async function getGamesForDate(cfg, dateStr, env) {
   const seen = new Set();
   const games = [];
   for (const g of dataA.data || []) {
-    if (seen.has(g.id)) continue;
+    if (seen.has(g.id) || isExhibitionGame(g)) continue;
     seen.add(g.id);
     const etDate = etDateStrForGame(g);
     if (etDate == null || etDate === dateStr) games.push(g);
   }
   for (const g of dataB.data || []) {
-    if (seen.has(g.id)) continue;
+    if (seen.has(g.id) || isExhibitionGame(g)) continue;
     seen.add(g.id);
     const etDate = etDateStrForGame(g);
     if (etDate === dateStr) games.push(g);
   }
   return games.map((g) => slimGame(cfg, g));
+}
+
+// BALLDONTLIE lists the All-Star Game in the regular games feed with
+// exhibition squads as the teams (WNBA 2026: "TEAM COOP" / "TEAM SPOON";
+// NBA uses "Team LeBron"-style names too). Left in, they leak into every
+// player's L10/YTD window and into Full Data's team list (the "17 teams"
+// bug). Drop any game where either side isn't a real franchise.
+function isExhibitionGame(g) {
+  const teams = [g.home_team, g.visitor_team].filter(Boolean);
+  for (const t of teams) {
+    const full = String(t.full_name || "").trim().toUpperCase();
+    const abbr = String(t.abbreviation || "").trim().toUpperCase();
+    // "TEAM COOP" / "TEAM SPOON" (WNBA 2026), "Team LeBron" (NBA) -- a full
+    // name that IS "Team <captain>" with nothing else (real franchises are
+    // "<City> <Nickname>", never "Team ...").
+    if (/^TEAM [A-Z.'-]+$/.test(full)) return true;
+    if (full.includes("ALL-STAR") || full.includes("ALL STAR") || full.includes("RISING STARS")) return true;
+    if (abbr === "COOP" || abbr === "SPO" || abbr === "SPOON") return true;
+    // A team object that carries a conference field but no value is a
+    // made-up squad (every real WNBA/NBA team is East or West).
+    if ("conference" in t && !t.conference) return true;
+  }
+  return false;
 }
 
 // One league-neutral shape for a game, so nothing downstream needs to know
@@ -344,10 +371,11 @@ async function getGamesInWindow(cfg, teamIds, env, { startStr, endStr, maxPages 
       env
     );
     requestsUsed += 1;
-    const pageData = (data.data || []).map((g) => slimGame(cfg, g));
+    const rawPage = data.data || [];
+    const pageData = rawPage.filter((g) => !isExhibitionGame(g)).map((g) => slimGame(cfg, g));
     games = games.concat(pageData);
     const nextCursor = data.meta?.next_cursor;
-    if (!nextCursor || pageData.length < 100) {
+    if (!nextCursor || rawPage.length < 100) {
       cursor = null;
       break;
     }
@@ -550,7 +578,7 @@ async function advanceFullDataBuild(env, league, budget) {
   let state = await loadJSON(env, cfg.keys.fulldataBuild);
   let used = 0;
 
-  const isStale = state?.status === "done" && Date.now() - (state.finishedAt || 0) > FULLDATA_REBUILD_INTERVAL_MS;
+  const isStale = state?.status === "done" && (state.schema !== SNAPSHOT_SCHEMA || Date.now() - (state.finishedAt || 0) > FULLDATA_REBUILD_INTERVAL_MS);
   const needsFreshStart = !state || state.status !== "building";
 
   if (needsFreshStart) {
@@ -596,6 +624,7 @@ async function advanceFullDataBuild(env, league, budget) {
 
     state = {
       status: "building",
+      schema: SNAPSHOT_SCHEMA,
       league,
       season,
       seasons: seasons.length ? seasons : [season],
@@ -1052,6 +1081,7 @@ function dateNeedsAdvanced(schedule, league, date) {
 
 function snapshotIsFresh(snapshot, date) {
   if (!snapshot || snapshot.status !== "done") return false;
+  if (snapshot.schema !== SNAPSHOT_SCHEMA) return false; // built before a data fix: rebuild
   const age = Date.now() - (snapshot.finishedAt || 0);
   const today = todayStr();
   const ttl = date < today ? PAST_DAY_CACHE_FRESH_MS : date > today ? FUTURE_DAY_CACHE_FRESH_MS : DAY_CACHE_FRESH_MS;
@@ -1069,6 +1099,7 @@ async function startDayBuild(cfg, env, { date, schedule }) {
   const teamIds = [...new Set(games.flatMap((g) => [g.homeId, g.awayId]).filter((id) => id != null))];
   const state = {
     status: "building",
+    schema: SNAPSHOT_SCHEMA,
     league: cfg.key,
     date,
     startedAt: Date.now(),
@@ -1302,7 +1333,18 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
       };
     });
 
-  const weightedObjectives = computeAutoWeights(objectives, playerBase);
+  // Availability from the injury report: a player listed Out is shown but
+  // never ranked (and doesn't count toward the auto-weights), so nobody
+  // builds a lineup around someone who won't play. Day-to-day / questionable
+  // players stay ranked but are flagged so the tier colours read as "at
+  // risk" on the page.
+  for (const p of playerBase) {
+    const st = String(p.injuryStatus || "").toLowerCase();
+    p.availability = st === "out" ? "out" : st ? "dtd" : null;
+  }
+  const rankable = playerBase.filter((p) => p.availability !== "out");
+
+  const weightedObjectives = computeAutoWeights(objectives, rankable);
   for (const p of playerBase) {
     for (const wo of weightedObjectives) {
       if (p.objectives[wo.stat]) p.objectives[wo.stat].weight = wo.weight;
@@ -1312,20 +1354,21 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
   // Weighted Ovr Rank: rank within each objective by Proj (desc), combine
   // ranks by the day's auto-computed weights. Lower combined score = better.
   const rankMaps = weightedObjectives.map((obj) =>
-    rankDescending(playerBase.map((p) => ({ id: p.id, value: p.objectives[obj.stat].proj })))
+    rankDescending(rankable.map((p) => ({ id: p.id, value: p.objectives[obj.stat].proj })))
   );
-  const combinedScores = playerBase.map((p) => {
+  const combinedScores = rankable.map((p) => {
     const score = weightedObjectives.reduce((sum, obj, i) => sum + rankMaps[i].get(p.id) * obj.weight, 0);
     return { id: p.id, value: -score };
   });
   const ovrRankMap = rankDescending(combinedScores);
-  const players = playerBase.map((p) => ({ ...p, ovrRank: ovrRankMap.get(p.id) }));
-  players.sort((a, b) => a.ovrRank - b.ovrRank);
+  const players = playerBase.map((p) => ({ ...p, ovrRank: p.availability === "out" ? null : ovrRankMap.get(p.id) }));
+  // Ranked players first (by rank), Out players at the bottom.
+  players.sort((a, b) => (a.ovrRank ?? Infinity) - (b.ovrRank ?? Infinity));
 
   const teamAdvanced = computeTeamAdvancedMetrics(snapshot.teamIds, snapshot.roster, snapshot.stats, snapshot.recentGames, last10Set);
 
   const notes = [
-    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; L10 reaches back into last season when fewer than 10 games have been played this season. PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight.`,
+    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; L10 reaches back into last season when fewer than 10 games have been played this season. PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight. Players listed Out on the injury report are shown but not ranked (Ovr Rank "OUT"); day-to-day players keep their rank and are flagged.`,
   ];
   for (const obj of weightedObjectives) {
     const overrides = projectionOverrides[obj.stat] || {};
@@ -1845,6 +1888,7 @@ export const __testables__ = {
   isWithinRun,
   isSeasonActive,
   getGamesForDate,
+  isExhibitionGame,
   etDateStrForGame,
   etDateStr,
   etHour,

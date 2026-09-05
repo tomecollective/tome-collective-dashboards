@@ -81,7 +81,11 @@ await page.route(`${WORKER}/**`, async (route) => {
       league, mode, date, dayNumber: 1, runLabel: "Run 11", building: false,
       objectives: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100, weight: 1 }],
       games: [{ awayAbbr: "MIN", homeAbbr: "ATL", time: "7:30 PM ET (23:30 UTC)", status: "pre" }],
-      players: [player("Napheesa Collier", "MIN", "@ ATL", 1, 24.1), player("Rhyne Howard", "ATL", "vs MIN", 2, 19.2)],
+      players: [
+        { ...player("Star Out", "MIN", "@ ATL", null, 30.0), injuryStatus: "Out", injuryNote: "knee", availability: "out" },
+        player("Napheesa Collier", "MIN", "@ ATL", 1, 24.1),
+        { ...player("Rhyne Howard", "ATL", "vs MIN", 2, 19.2), injuryStatus: "Day-To-Day", availability: "dtd" },
+      ],
       note: "wnba note", teamAdvanced: {}, badgeSetName: mode === "Pro" ? "Sapphire" : null,
     });
   }
@@ -120,6 +124,23 @@ assert.equal(await page.$eval("#locked-panel", (el) => getComputedStyle(el).disp
 
 // Default: WNBA Classic, Run 11 label, league param on the fetch.
 assert.equal(await page.textContent("#run-label"), "WNBA Run 11");
+
+// Out player: bottom row, "OUT" instead of a rank, no tier colours. DTD:
+// ranked, hatched tier cells.
+const rows = await page.$$eval("#players-body tr", (trs) => trs.map((tr) => ({ cls: tr.className, first: tr.cells[0].textContent, rank: tr.cells[3].textContent.trim(), projCls: tr.cells[4].className })));
+assert.equal(rows[rows.length - 1].rank, "OUT", "Out player shows OUT, not a rank");
+assert.equal(rows[rows.length - 1].cls, "row-out");
+assert.ok(rows[rows.length - 1].first.startsWith("Star Out"), "Out player sorted to the bottom");
+assert.ok(!rows[rows.length - 1].projCls.includes("tier-"), "Out player has no tier colour");
+const dtdRow = rows.find((r) => r.first.startsWith("Rhyne"));
+assert.equal(dtdRow.cls, "row-dtd");
+assert.ok(dtdRow.projCls.includes("tier-risk"), "DTD tier cell is hatched");
+assert.equal(dtdRow.rank, "2", "DTD player keeps rank");
+// Sorting by Proj descending still keeps the Out player last.
+await page.click('#table-head th[data-key="base:ovrRank"]');
+await page.click('#table-head th[data-key="base:ovrRank"]');
+const rows2 = await page.$$eval("#players-body tr", (trs) => trs.map((tr) => tr.cells[3].textContent.trim()));
+assert.equal(rows2[rows2.length - 1], "OUT", "Out player stays last after re-sort");
 assert.ok(requests.some((r) => r.includes("/api/fastbreak?league=WNBA&") && r.includes("mode=Classic")), "WNBA Classic fetched with league param");
 assert.equal((await page.$$("#mode-toggle button")).length, 6, "six single-select buttons");
 assert.equal(await page.getAttribute('#mode-toggle button[data-mode="Historic"]', "disabled"), "", "Historic greyed out by default");

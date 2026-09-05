@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tome Vault: Pokemon Chase Modern EN 50</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,6 +41,23 @@ h3.era-heading:first-of-type { margin-top: 8px; }
 .index-stats .stat-sub { font-size: 0.72rem; color: #6b7d76; margin-top: 2px; }
 .teaser-banner { border: 1px solid rgba(212,167,44,0.6); background: rgba(212,167,44,0.08); border-radius: 8px; padding: 14px 16px; margin: 12px 0 24px; font-size: 0.9rem; line-height: 1.5; }
 .teaser-banner a { color: #d4a72c; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 600px) {
+  .page-wrap { padding: 16px 12px 32px; }
+  .hdr { padding: 0 12px; gap: 8px; }
+  .hdr-product { display: none; }
+  h1 { font-size: 1.7rem; }
+  /* Stat tiles: two-column grid instead of a 32px-gap flex row. */
+  .index-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+  .index-stats .stat-value { font-size: 1.25rem; }
+  .timeframe-toggle { flex-wrap: wrap; }
+  .timeframe-toggle button { padding: 10px 14px; min-height: 44px; font-size: 0.85rem; }
+  .export-btn { min-height: 44px; }
+  table { font-size: 0.78rem; min-width: 560px; }
+  .table-scroll { margin: 0 -12px; padding: 0 12px; }
+  .sets-grid { grid-template-columns: 1fr; gap: 14px; }
+  .legend { gap: 12px; }
+}
 .change-up { color: #3ea86b; }
 .change-down { color: #c0392b; }
 .change-flat { color: #8fa89f; }
@@ -123,12 +141,14 @@ not recommend buying, selling, or holding any card based on this index.</p>
 
 <h2>Index Holdings</h2>
 <button class="export-btn" id="export-csv-btn">Download CSV</button>
+<div class="table-scroll">
 <table>
 <thead>
 <tr><th>Card</th><th>Set</th><th>Rarity</th><th>Price</th><th>1D Δ</th><th>7D Δ</th></tr>
 </thead>
 <tbody id="holdings-body"></tbody>
 </table>
+</div>
 <div id="teaser-banner" class="teaser-banner" style="display:none">
   <strong>Tome Edge subscribers see the full index.</strong>
   <span id="teaser-detail"></span>

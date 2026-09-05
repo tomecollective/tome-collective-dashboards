@@ -55,6 +55,7 @@ function makeLeagueFixture({ league, date, numGames, priorSeason, priorBase }) {
   }
   return { teams, players, todayGames, priorGames };
 }
+const ALL_STAR_GAME = { id: 77777, date: "2026-07-25", datetime: "2026-07-25T23:00:00.000Z", season: 2026, status: "post", home_team: { id: 900, abbreviation: "COOP", full_name: "TEAM COOP", conference: "" }, visitor_team: { id: 901, abbreviation: "SPO", full_name: "TEAM SPOON", conference: "" }, home_score: 122, away_score: 129 };
 
 function rawGame(league, { id, date, datetime, home, away, final, season }) {
   if (league === "WNBA") {
@@ -85,7 +86,7 @@ function installMockFetch(fixtures) {
     const fx = fixtures[league];
     const params = u.searchParams;
     const json = (data, meta = {}) => new Response(JSON.stringify({ data, meta }), { status: 200 });
-    const allGames = [...fx.todayGames, ...fx.priorGames];
+    const allGames = [...fx.todayGames, ...fx.priorGames, ...(league === "WNBA" ? [ALL_STAR_GAME] : [])];
 
     if (u.pathname.endsWith("/games")) {
       const dates = params.getAll("dates[]");
@@ -167,6 +168,12 @@ assert.equal(T.LEAGUES.WNBA.status({ status: "post" }), "post");
 const ranks = T.rankDescending([{ id: "a", value: 5 }, { id: "b", value: 5 }, { id: "c", value: 3 }, { id: "d", value: null }]);
 assert.deepEqual([ranks.get("a"), ranks.get("b"), ranks.get("c"), ranks.get("d")], [1, 1, 3, 4]);
 assert.throws(() => T.validateObjectives([{ stat: "XYZ", dailyTeamTarget: 5 }]));
+// All-Star exhibition games are dropped from every games feed (FB-D1).
+const allStar = { id: 77777, date: "2026-07-25", datetime: "2026-07-25T23:00:00.000Z", status: "post", home_team: { id: 900, abbreviation: "COOP", full_name: "TEAM COOP", conference: "" }, visitor_team: { id: 901, abbreviation: "SPO", full_name: "TEAM SPOON", conference: "" }, home_score: 122, away_score: 129 };
+assert.equal(T.isExhibitionGame(allStar), true, "TEAM COOP vs TEAM SPOON is an exhibition");
+assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "LAL", full_name: "Team LeBron" }, visitor_team: { id: 2, abbreviation: "MIL", full_name: "Team Giannis" } }), true, "NBA All-Star squads");
+assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "ATL", full_name: "Atlanta Dream", conference: "East" }, visitor_team: { id: 2, abbreviation: "TOR", full_name: "Toronto Tempo", conference: "East" } }), false, "real teams pass");
+assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "T0", full_name: "Team 0" }, visitor_team: { id: 2, abbreviation: "T1", full_name: "Team 1" } }), false, "fixture-style 'Team 0' is not treated as an exhibition");
 console.log("pure helpers ok");
 
 // -- Objectives + projections write paths ------------------------------------------
@@ -232,6 +239,14 @@ function countSince(mark) {
   assert.ok(!env.FASTBREAK_KV.store.has(T.dayBuildKey(T.LEAGUES.NBA, NBA_DATE)), "build key cleared");
 
   const p1 = payload.players.find((p) => p.name === "P100 N0");
+  // Player 1 is "Out" in the mock injury report: shown, but never ranked,
+  // sorted last, and excluded from the auto-weight base (FB-F3).
+  assert.equal(p1.injuryStatus, "Out");
+  assert.equal(p1.availability, "out");
+  assert.equal(p1.ovrRank, null, "Out player has no Ovr Rank");
+  assert.equal(payload.players[payload.players.length - 1].id, p1.id, "Out player sorted to the bottom");
+  assert.ok(payload.players.filter((p) => p.availability !== "out").every((p) => Number.isInteger(p.ovrRank)), "everyone else ranked");
+  assert.equal(payload.players[0].ovrRank, 1, "best available player is #1");
   assert.equal(p1.objectives.PTS.proj, 30);
   assert.equal(p1.objectives.PTS.projSource, "rotowire");
   assert.equal(p1.objectives.REB.projSource, "tbd");
@@ -389,6 +404,14 @@ function countSince(mark) {
   assert.ok(calls.length - mark <= T.MAX_SUBREQUESTS, `WNBA cron tick used ${calls.length - mark}`);
   assert.ok(env.FASTBREAK_KV.store.has("fastbreak:latest"), "WNBA latest cached by cron");
   assert.ok(env.FASTBREAK_KV.store.has("fastbreak:fulldata:build"), "WNBA full-data build started by cron");
+  // Drive the WNBA Full Data build to completion; the All-Star game in the
+  // mock feed must not surface as a team.
+  for (let i = 0; i < 20 && !env.FASTBREAK_KV.store.has("fastbreak:fulldata"); i++) {
+    await T.advanceFullDataBuild(env, "WNBA", T.MAX_SUBREQUESTS - 4);
+  }
+  const fd = JSON.parse(env.FASTBREAK_KV.store.get("fastbreak:fulldata"));
+  assert.ok(!Object.keys(fd.teams).some((k) => k === "COOP" || k === "SPO"), `All-Star squads excluded from Full Data teams (${Object.keys(fd.teams).join(",")})`);
+  assert.ok(!JSON.stringify(fd).includes("TEAM COOP"), "no exhibition team anywhere in Full Data");
   console.log("http surface + cron dispatch ok");
 }
 
