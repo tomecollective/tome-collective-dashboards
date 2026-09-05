@@ -1488,6 +1488,14 @@ export default {
       return json(runInfo(leagueParam(url)));
     }
 
+    // Admin password check for the frontend's unlock gate. The page never
+    // holds the password itself -- it sends what the admin typed and we
+    // compare against the FASTBREAK_ADMIN_TOKEN secret. Nothing is stored.
+    if (url.pathname === "/api/fastbreak/admin/verify" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      return json({ ok: true });
+    }
+
     // Objectives schedule: viewable by anyone (a locked *view*), editable
     // only with the admin password. Whole schedule (all leagues) is returned.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {

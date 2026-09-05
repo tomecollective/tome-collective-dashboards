@@ -86,6 +86,13 @@ export default {
       return new Response(cached, { headers: corsHeaders });
     }
 
+    // Admin password check (mirrors the refresh Worker's route so the page's
+    // unlock gate works against either host). Nothing is stored.
+    if (url.pathname === "/api/fastbreak/admin/verify" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return json({ error: "Invalid or missing admin password." }, 401);
+      return json({ ok: true });
+    }
+
     // Objectives schedule -- same KV object the refresh Worker owns, keyed
     // by league then date. GET is public; POST requires the admin password.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {

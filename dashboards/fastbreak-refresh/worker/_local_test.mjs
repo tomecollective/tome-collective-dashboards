@@ -313,6 +313,15 @@ function countSince(mark) {
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);
   assert.equal(res.status, 401, "admin token required");
+  // Password verify route used by the frontend's unlock gate.
+  res = await worker.fetch(new Request("https://x/api/fastbreak/admin/verify", { method: "POST" }), env);
+  assert.equal(res.status, 401, "verify without token");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/admin/verify", { method: "POST", headers: { "X-Admin-Token": "wrong" } }), env);
+  assert.equal(res.status, 401, "verify with wrong token");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/admin/verify", { method: "POST", headers: { "X-Admin-Token": "t" } }), env);
+  assert.equal(res.status, 200, "verify with right token");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/admin/verify", { method: "POST", headers: { "X-Admin-Token": "t" } }), { ...env, FASTBREAK_ADMIN_TOKEN: "" });
+  assert.equal(res.status, 401, "empty secret never verifies");
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", headers: { "X-Admin-Token": "t" }, body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);
   assert.equal(res.status, 200);
   body = await res.json();

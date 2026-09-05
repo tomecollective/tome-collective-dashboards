@@ -28,6 +28,7 @@ const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePa
 const page = await browser.newPage();
 page.on("pageerror", (e) => { throw e; });
 
+const TEST_ADMIN_TOKEN = "local-test-admin-token";
 await page.route(`${WORKER}/**`, async (route) => {
   const req = route.request();
   const url = new URL(req.url());
@@ -36,6 +37,10 @@ await page.route(`${WORKER}/**`, async (route) => {
   if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" } });
   if (req.method() === "POST") {
     posts.push({ path: url.pathname, body: JSON.parse(req.postData() || "{}"), token: req.headers()["x-admin-token"] });
+    if (url.pathname.endsWith("/admin/verify")) {
+      // Server-side password check: the page must not know the password.
+      return req.headers()["x-admin-token"] === TEST_ADMIN_TOKEN ? json({ ok: true }) : json({ error: "Invalid or missing admin password." }, 401);
+    }
     if (url.pathname.endsWith("/historic/seed")) return json({ ok: true, playersLoaded: 150, scheduleDaysLoaded: 90, objectivesDaysLoaded: 90 });
     if (url.pathname.endsWith("/historic/advance")) return json({ ok: true, day: 2, added: 300 });
     return json({ ok: true, schedule: {} });
@@ -137,9 +142,18 @@ await page.click("#admin-toggle-btn");
 await page.waitForFunction(() => document.querySelector("#admin-schedule-body")?.textContent.includes("2026-09-17"));
 assert.equal((await page.$$("#admin-mode-picker button")).length, 5, "five admin modes");
 assert.match(await page.textContent("#admin-schedule-body"), /PTS \(2\)/, "projection upload counts shown");
-await page.fill("#admin-password-input", "T0ME!");
+// Password gate: nothing hardcoded in the page; wrong password is rejected by
+// the Worker, right password unlocks and is only ever held in memory.
+assert.ok(!(await page.content()).includes(TEST_ADMIN_TOKEN), "admin password must not appear in page source");
+await page.fill("#admin-password-input", "wrong-password");
+await page.click("#admin-unlock-btn");
+await page.waitForFunction(() => document.querySelector("#admin-gate-status")?.textContent === "Incorrect password.");
+assert.equal(await page.$eval("#admin-locked-content", (el) => getComputedStyle(el).display), "none", "still locked after wrong password");
+await page.fill("#admin-password-input", TEST_ADMIN_TOKEN);
 await page.click("#admin-unlock-btn");
 await page.waitForFunction(() => getComputedStyle(document.querySelector("#admin-locked-content")).display === "block");
+assert.equal(await page.inputValue("#admin-password-input"), "", "password field cleared after unlock");
+assert.equal(await page.evaluate(() => { try { return Object.keys(localStorage).length + Object.keys(sessionStorage).length; } catch { return 0; } }), 0, "password never persisted to web storage");
 
 await page.click('#admin-mode-picker button[data-league="NBA"][data-mode="Pro"]');
 await page.waitForFunction(() => document.querySelector("#admin-schedule-body")?.textContent.includes("2026-10-20"));
@@ -158,7 +172,7 @@ await page.click("#admin-save-btn");
 await page.waitForFunction(() => document.querySelector("#admin-status")?.textContent.includes("Saved NBA Pro"));
 const objPost = posts.find((p) => p.path.endsWith("/objectives/day"));
 assert.deepEqual({ league: objPost.body.league, mode: objPost.body.mode, date: objPost.body.date, badge: objPost.body.badgeSetName, stat: objPost.body.objectives[0].stat }, { league: "NBA", mode: "Pro", date: "2026-10-21", badge: "Metallic Gold LE", stat: "AST" });
-assert.equal(objPost.token, "T0ME!");
+assert.equal(objPost.token, TEST_ADMIN_TOKEN, "saves carry the verified password as X-Admin-Token");
 
 await page.fill("#proj-date", "2026-10-21");
 await page.fill("#proj-rows", "Player\tTeam\tPTS\tREB\nJayson Tatum\tBOS\t27.5\t8.1\n");

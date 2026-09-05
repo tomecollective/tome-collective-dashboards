@@ -531,11 +531,13 @@ let RUNS = {
   NBA: { runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26" },
 };
 
-// The admin password gate. Whatever is entered here is also sent as the
-// X-Admin-Token header -- Cloudflare's FASTBREAK_ADMIN_TOKEN secret must be
-// set to this same value on the refresh Worker for saves to succeed.
-const ADMIN_PASSWORD = "T0ME!";
+// The admin password gate. The password is NEVER present in this file: what
+// the admin types is checked server-side (POST /api/fastbreak/admin/verify
+// against the refresh Worker's FASTBREAK_ADMIN_TOKEN secret), then held in
+// this variable for the life of the page only -- never written to
+// localStorage/sessionStorage or the URL. Reload = locked again.
 let adminPassword = null;
+const ADMIN_VERIFY_URL = WORKER_BASE + "/api/fastbreak/admin/verify";
 
 let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName: null, teamAdvanced: {} };
 
@@ -708,17 +710,42 @@ document.getElementById("admin-toggle-btn").addEventListener("click", () => {
 });
 
 // -- Admin password gate -------------------------------------------------------
-document.getElementById("admin-unlock-btn").addEventListener("click", () => {
-  const entered = document.getElementById("admin-password-input").value;
+async function tryAdminUnlock() {
+  const inputEl = document.getElementById("admin-password-input");
+  const entered = inputEl.value;
   const statusEl = document.getElementById("admin-gate-status");
-  if (entered === ADMIN_PASSWORD) {
-    adminPassword = entered;
-    document.getElementById("admin-gate").style.display = "none";
-    document.getElementById("admin-locked-content").style.display = "block";
-    statusEl.textContent = "";
-  } else {
-    statusEl.textContent = "Incorrect password.";
+  const btn = document.getElementById("admin-unlock-btn");
+  if (!entered) {
+    statusEl.textContent = "Enter the admin password.";
+    return;
   }
+  btn.disabled = true;
+  statusEl.textContent = "Checking...";
+  try {
+    const res = await fetch(ADMIN_VERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Admin-Token": entered },
+    });
+    if (res.ok) {
+      adminPassword = entered;
+      inputEl.value = "";
+      document.getElementById("admin-gate").style.display = "none";
+      document.getElementById("admin-locked-content").style.display = "block";
+      statusEl.textContent = "";
+    } else if (res.status === 401) {
+      statusEl.textContent = "Incorrect password.";
+    } else {
+      statusEl.textContent = `Could not verify password (HTTP ${res.status}).`;
+    }
+  } catch (err) {
+    statusEl.textContent = `Could not reach the admin service: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById("admin-unlock-btn").addEventListener("click", tryAdminUnlock);
+document.getElementById("admin-password-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") tryAdminUnlock();
 });
 
 function adminHeaders() {
