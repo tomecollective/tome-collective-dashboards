@@ -357,6 +357,84 @@ async function freshProgress(env) {
   };
 }
 
+// -- Subscriber gate for GET /api/chase-index --------------------------------
+// The full payload (all 50 holdings with 90-day histories + the whole
+// candidate pool) is the product. Without a valid X-Tome-Key (or ?key=)
+// matching one of the comma-separated TOME_SUBSCRIBER_KEYS values, the route
+// serves a teaser: index value series, top 10 holdings with an 8-day history
+// tail, no candidate pool. Admin token also unlocks the full payload. Unset
+// secret => everyone gets the teaser (fails closed on the paid part).
+const TEASER_TOP_N = 10;
+const TEASER_HISTORY_DAYS = 8;
+
+function subscriberKeys(env) {
+  return String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
+}
+
+function isSubscriber(request, url, env) {
+  if (checkAdminToken(request, env)) return true;
+  const keys = subscriberKeys(env);
+  const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
+  return keys.length > 0 && keys.includes(presented);
+}
+
+function buildTeaser(payload) {
+  const holdings = [];
+  for (const set of payload.sets || []) {
+    for (const c of set.top_5 || []) {
+      if (c.in_index) holdings.push({ ...c, set_name: set.set_name, era: set.era, release_date: set.release_date });
+    }
+  }
+  // Index value series: sum over all index cards, only on dates every card
+  // has a point (same rule as index.html so the two never disagree).
+  const totals = {};
+  const counts = {};
+  for (const c of holdings) {
+    for (const pt of c.history || []) {
+      totals[pt.date] = (totals[pt.date] || 0) + pt.price;
+      counts[pt.date] = (counts[pt.date] || 0) + 1;
+    }
+  }
+  const indexHistory = Object.keys(totals)
+    .filter((d) => counts[d] === holdings.length)
+    .sort()
+    .map((date) => ({ date, total: Math.round(totals[date] * 100) / 100 }));
+  const top = holdings
+    .filter((c) => typeof c.price === "number")
+    .sort((a, b) => b.price - a.price)
+    .slice(0, TEASER_TOP_N)
+    .map((c) => ({
+      name: c.name,
+      set_name: c.set_name,
+      rarity: c.rarity,
+      price: c.price,
+      history: (c.history || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-TEASER_HISTORY_DAYS),
+    }));
+  return {
+    index_name: payload.index_name,
+    last_updated: payload.last_updated,
+    note: payload.note,
+    teaser: true,
+    holdingsCount: holdings.length,
+    setsCount: (payload.sets || []).length,
+    indexHistory,
+    topHoldings: top,
+    sets: [],
+    lockedNote: `Showing the index value and the top ${TEASER_TOP_N} of ${holdings.length} holdings. The full holdings table, per-card 90-day price history and the ${(payload.sets || []).length}-set candidate pool are for Tome Edge subscribers.`,
+  };
+}
+
+async function rateLimited(request, env, corsHeaders) {
+  if (!env.PUBLIC_RATE_LIMITER) return null;
+  try {
+    const { success } = await env.PUBLIC_RATE_LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return new Response(JSON.stringify({ error: "Too many requests -- slow down." }), { status: 429, headers: corsHeaders });
+  } catch (err) {
+    console.error("rate limiter error (allowing request):", err.message);
+  }
+  return null;
+}
+
 // -- Admin auth for POST /api/refresh -----------------------------------------
 // A fresh run may only be started by the cron (scheduled(), no HTTP) or by an
 // admin presenting X-Admin-Token == TCG_ADMIN_TOKEN. Batch continuations
@@ -469,8 +547,14 @@ export default {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS, POST",
+      "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key",
       "Content-Type": "application/json",
     };
+
+    if (request.method !== "OPTIONS") {
+      const limited = await rateLimited(request, env, corsHeaders);
+      if (limited) return limited;
+    }
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
@@ -478,15 +562,17 @@ export default {
 
     if (url.pathname === "/api/chase-index") {
       const cached = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(CACHE_KEY_LATEST) : null;
-      if (cached) return new Response(cached, { headers: corsHeaders });
       // Cold start / KV not populated yet -- serve the bundled seed so the
       // page still renders, but flag it so a stale response is obvious from
       // the API itself rather than silently passing as live data.
-      const stale = {
-        ...chaseIndexData,
-        note: `${chaseIndexData.note} [STALE: serving bundled seed data, no KV cache yet -- POST /api/refresh or wait for the next cron run]`,
-      };
-      return new Response(JSON.stringify(stale), { headers: corsHeaders });
+      const payload = cached
+        ? JSON.parse(cached)
+        : {
+            ...chaseIndexData,
+            note: `${chaseIndexData.note} [STALE: serving bundled seed data, no KV cache yet -- POST /api/refresh or wait for the next cron run]`,
+          };
+      if (isSubscriber(request, url, env)) return new Response(JSON.stringify(payload), { headers: corsHeaders });
+      return new Response(JSON.stringify(buildTeaser(payload)), { headers: corsHeaders });
     }
 
     // TEMPORARY diagnostic endpoint -- returns JustTCG's raw response for one
@@ -502,6 +588,11 @@ export default {
     // ?raw=1 -- pass EVERY other query param straight through to JustTCG's
     // /v1/cards as-is (e.g. ?raw=1&q=Charizard&game=pokemon), so several
     // combinations can be tried without redeploying between each one.
+    // Diagnostic endpoints proxy JustTCG with the server-side key: admin only.
+    if (url.pathname === "/api/debug-card" && !checkAdminToken(request, env)) {
+      return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
+    }
+
     if (url.pathname === "/api/debug-card" && url.searchParams.get("raw") === "1") {
       if (!env.JUSTTCG_API_KEY) {
         return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });

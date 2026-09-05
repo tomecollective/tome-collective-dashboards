@@ -1,4 +1,4 @@
-name = "tome-fastbreak-dashboard"
+name = "tome-fastbreak" # the deployed service name (was "tome-fastbreak-dashboard" here, which would have created a second Worker)
 main = "worker/index.js"
 compatibility_date = "2026-08-08"
 
@@ -11,8 +11,14 @@ compatibility_date = "2026-08-08"
 # Workers read/write the same store.
 [[kv_namespaces]]
 binding = "FASTBREAK_KV"
-id = "REPLACE_WITH_REAL_ID"
+id = "b492b464fa3c45fa854eae3bb90e5f88" # tome_fastbreak_kv
 
 # Admin token gating writes to /api/fastbreak/objectives/day. Set with:
 #   wrangler secret put FASTBREAK_ADMIN_TOKEN
-# Never commit the actual token value.
+#   wrangler secret put TOME_SUBSCRIBER_KEYS   # same value(s) as the refresh Worker
+# Never commit the actual token values.
+
+[[ratelimits]]
+name = "PUBLIC_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }

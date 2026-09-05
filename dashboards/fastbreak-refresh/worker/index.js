@@ -43,6 +43,8 @@ const RECENT_GAMES_MAX_PAGES = 5; // safety cap on pagination (500 games) to bou
 const YTD_MAX_PAGES = 6; // safety cap on season-long game-id pagination for YTD
 const DAY_CACHE_FRESH_MS = 30 * 60 * 1000; // a finished day snapshot is served as-is for 30 min
 const PAST_DAY_CACHE_FRESH_MS = 6 * 60 * 60 * 1000; // a past date's finals don't move: 6 hours
+const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only changes as today's stats do: 3 hours
+const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
 // -- Leagues --------------------------------------------------------------------
@@ -1051,7 +1053,8 @@ function dateNeedsAdvanced(schedule, league, date) {
 function snapshotIsFresh(snapshot, date) {
   if (!snapshot || snapshot.status !== "done") return false;
   const age = Date.now() - (snapshot.finishedAt || 0);
-  const ttl = date < todayStr() ? PAST_DAY_CACHE_FRESH_MS : DAY_CACHE_FRESH_MS;
+  const today = todayStr();
+  const ttl = date < today ? PAST_DAY_CACHE_FRESH_MS : date > today ? FUTURE_DAY_CACHE_FRESH_MS : DAY_CACHE_FRESH_MS;
   return age < ttl;
 }
 
@@ -1361,7 +1364,11 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
 // Serve-or-advance: returns the best available payload for (league, date,
 // mode), spending up to `budget` BALLDONTLIE calls to start/continue the
 // day's build when the published snapshot is missing or stale.
-async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUESTS } = {}) {
+// serveOnly (public reads): never spend BALLDONTLIE calls on a viewer's
+// request. Serve the published snapshot (fresh or not, flagged `refreshing`
+// when stale), or the in-flight build's progress, or a "queued" stub. The
+// cron (scheduled()) and admin-authenticated reads do the actual building.
+async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUESTS, serveOnly = false } = {}) {
   const cfg = leagueConfig(SUPPORTED_LEAGUES.includes(league) ? league : DEFAULT_LEAGUE);
   const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
@@ -1371,6 +1378,38 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   const publishedOk = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, targetDate);
   if (publishedOk && snapshotIsFresh(published, targetDate)) {
     return renderDayPayload(cfg, published, { mode: targetMode, schedule });
+  }
+
+  if (serveOnly) {
+    if (published && published.status === "done") {
+      const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule });
+      payload.refreshing = true;
+      payload.note += " Refreshing on the next scheduled update.";
+      return payload;
+    }
+    const inflight = await loadJSON(env, dayBuildKey(cfg, targetDate));
+    if (inflight && inflight.status === "building") {
+      const payload = renderDayPayload(cfg, inflight, { mode: targetMode, schedule });
+      payload.note += " Building on the scheduled updater; check back in a few minutes.";
+      return payload;
+    }
+    return {
+      dashboard_name: "Fast Break Dashboard",
+      league: cfg.key,
+      mode: targetMode,
+      date: targetDate,
+      dayNumber: dayNumberForDate(cfg.key, targetDate),
+      runLabel: cfg.run.label,
+      building: true,
+      queued: true,
+      progress: { loaded: 0, total: 0 },
+      objectives: [],
+      games: [],
+      players: [],
+      teamAdvanced: {},
+      badgeSetName: null,
+      note: `This ${cfg.key} date hasn't been built yet. It is queued for the next scheduled update (every 15-30 minutes in season); check back shortly.`,
+    };
   }
 
   let state = await loadJSON(env, dayBuildKey(cfg, targetDate));
@@ -1415,9 +1454,37 @@ async function refreshAndStore(env, league) {
   return dashboard;
 }
 
+// Upcoming run dates the public may open (today+1 .. runEnd, capped) that
+// don't have a fresh snapshot yet. The cron warms the first of these with
+// its leftover budget each tick, so serveOnly reads find a snapshot.
+async function staleUpcomingRunDates(env, league) {
+  const cfg = leagueConfig(league);
+  const today = todayStr();
+  const schedule = await loadObjectivesSchedule(env);
+  const out = [];
+  for (let i = 1; i <= WARM_DAYS_AHEAD; i++) {
+    const date = addDaysStr(today, i);
+    if (date < cfg.run.start || date > cfg.run.end) continue;
+    const published = await loadJSON(env, dayKey(cfg, date));
+    const ok = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, date);
+    if (ok && snapshotIsFresh(published, date)) continue;
+    out.push(date);
+  }
+  return out;
+}
+
+async function warmUpcomingRunDate(env, league, budget) {
+  if (budget < 8) return null;
+  const dates = await staleUpcomingRunDates(env, league);
+  if (!dates.length) return null;
+  const date = dates[0];
+  const dashboard = await buildDashboard(env, { league, date, mode: "Classic", budget });
+  return { date, building: Boolean(dashboard.building), used: dashboard._subrequests_used || 0 };
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
+  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Content-Type": "application/json",
 };
@@ -1433,6 +1500,49 @@ function checkAdminToken(request, env) {
 
 function unauthorized() {
   return json({ error: "Invalid or missing admin password." }, 401);
+}
+
+// -- Subscriber gate ------------------------------------------------------------
+// Reads that return subscriber-tier data require X-Tome-Key (or ?key=) to
+// match one of the comma-separated values in the TOME_SUBSCRIBER_KEYS secret.
+// A comma-separated list lets a key rotate with an overlap window. The admin
+// token also passes. With the secret unset the gate fails CLOSED (503 with a
+// clear message) rather than silently serving everything.
+function subscriberKeys(env) {
+  return String(env.TOME_SUBSCRIBER_KEYS || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+function presentedKey(request, url) {
+  return request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
+}
+
+function subscriberGate(request, url, env) {
+  if (checkAdminToken(request, env)) return null;
+  const keys = subscriberKeys(env);
+  if (!keys.length) {
+    return json({ error: "Subscriber access is not configured on this service (TOME_SUBSCRIBER_KEYS secret is unset)." }, 503);
+  }
+  if (!keys.includes(presentedKey(request, url))) {
+    return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from your subscriber post.", locked: true }, 401);
+  }
+  return null;
+}
+
+// Optional Workers Rate Limiting binding (see wrangler.toml [[ratelimits]]).
+// Keyed by client IP; silently skipped when the binding isn't configured.
+async function rateLimited(request, env) {
+  if (!env.PUBLIC_RATE_LIMITER) return null;
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  try {
+    const { success } = await env.PUBLIC_RATE_LIMITER.limit({ key: ip });
+    if (!success) return json({ error: "Too many requests -- slow down." }, 429);
+  } catch (err) {
+    console.error("rate limiter error (allowing request):", err.message);
+  }
+  return null;
 }
 
 function leagueParam(url) {
@@ -1461,16 +1571,22 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    const limited = await rateLimited(request, env);
+    if (limited) return limited;
+
     // Live view for a given league/date/mode (defaults to WNBA/today/Classic).
-    // Serves the cached day snapshot when fresh; otherwise spends this
-    // request's BALLDONTLIE budget starting/continuing the build.
+    // Subscriber-gated. Public reads are serve-only (never spend BALLDONTLIE
+    // calls); an admin-authenticated read may build on demand.
     if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/api/fastbreak") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       try {
         const league = leagueParam(url);
         const date = url.searchParams.get("date") || todayStr();
         const mode = url.searchParams.get("mode") || "Classic";
-        const dashboard = await buildDashboard(env, { league, date, mode });
-        if (date === todayStr() && mode === "Classic" && !dashboard.building) {
+        const serveOnly = !checkAdminToken(request, env);
+        const dashboard = await buildDashboard(env, { league, date, mode, serveOnly });
+        if (!serveOnly && date === todayStr() && mode === "Classic" && !dashboard.building) {
           await saveJSON(env, leagueConfig(league).keys.latest, dashboard);
         }
         return json(dashboard);
@@ -1496,9 +1612,11 @@ export default {
       return json({ ok: true });
     }
 
-    // Objectives schedule: viewable by anyone (a locked *view*), editable
-    // only with the admin password. Whole schedule (all leagues) is returned.
+    // Objectives schedule (incl. uploaded Rotowire projections): subscriber-
+    // gated view, editable only with the admin password.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       const schedule = await loadObjectivesSchedule(env);
       return json({ leagues: SUPPORTED_LEAGUES, modes: SUPPORTED_MODES, schedule });
     }
@@ -1556,6 +1674,8 @@ export default {
 
     // Full Data tab: cached leaguewide L10/YTD snapshot (plain KV read).
     if (url.pathname === "/api/fastbreak/fulldata" && request.method === "GET") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       const cfg = leagueConfig(leagueParam(url));
       const cached = await env.FASTBREAK_KV.get(cfg.keys.fulldata);
       if (!cached) {
@@ -1593,6 +1713,8 @@ export default {
     // never touches BALLDONTLIE. Advancing a day is an explicit admin action.
 
     if (url.pathname === "/api/fastbreak/historic" && request.method === "GET") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       try {
         const dayParam = url.searchParams.get("day");
         const day = dayParam ? Number(dayParam) : undefined;
@@ -1667,8 +1789,20 @@ export default {
       console.error(`fastbreak-refresh ${league} scheduled run failed:`, err.message);
     }
 
-    const usedByDashboard = dashboard?._subrequests_used || 0;
-    const fullDataBudget = MAX_SUBREQUESTS - usedByDashboard - 4;
+    let used = dashboard?._subrequests_used || 0;
+
+    // Pre-build the next stale run date so public (serve-only) reads never
+    // wait on a build. Only when today's slate isn't itself mid-build.
+    if (!dashboard?.building) {
+      try {
+        const warmed = await warmUpcomingRunDate(env, league, MAX_SUBREQUESTS - used - 4);
+        if (warmed) used += warmed.used;
+      } catch (err) {
+        console.error(`${league} run-date warm tick failed (continuing):`, err.message);
+      }
+    }
+
+    const fullDataBudget = MAX_SUBREQUESTS - used - 4;
     if (fullDataBudget > 0) {
       try {
         await advanceFullDataBuild(env, league, fullDataBudget);
@@ -1682,7 +1816,7 @@ export default {
 
 // Keep in sync with [triggers] crons in wrangler.toml.
 const LEAGUE_CRONS = {
-  WNBA: "*/15 * * * *",
+  WNBA: "*/30 * * * *",
   NBA: "7-59/15 * * * *",
 };
 

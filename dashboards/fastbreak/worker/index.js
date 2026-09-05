@@ -12,7 +12,7 @@
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
+  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Content-Type": "application/json",
 };
@@ -34,6 +34,29 @@ function json(body, status = 200) {
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
   return Boolean(env.FASTBREAK_ADMIN_TOKEN) && token === env.FASTBREAK_ADMIN_TOKEN;
+}
+
+// Subscriber gate -- same contract as the refresh Worker: X-Tome-Key (or
+// ?key=) must match one of the comma-separated TOME_SUBSCRIBER_KEYS values;
+// the admin token also passes; unset secret fails closed.
+function subscriberGate(request, url, env) {
+  if (checkAdminToken(request, env)) return null;
+  const keys = String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
+  if (!keys.length) return json({ error: "Subscriber access is not configured on this service (TOME_SUBSCRIBER_KEYS secret is unset)." }, 503);
+  const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
+  if (!keys.includes(presented)) return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from your subscriber post.", locked: true }, 401);
+  return null;
+}
+
+async function rateLimited(request, env) {
+  if (!env.PUBLIC_RATE_LIMITER) return null;
+  try {
+    const { success } = await env.PUBLIC_RATE_LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return json({ error: "Too many requests -- slow down." }, 429);
+  } catch (err) {
+    console.error("rate limiter error (allowing request):", err.message);
+  }
+  return null;
 }
 
 function normalizeLeague(raw) {
@@ -67,7 +90,12 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    const limited = await rateLimited(request, env);
+    if (limited) return limited;
+
     if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/api/fastbreak") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       let league;
       try {
         league = normalizeLeague(url.searchParams.get("league"));
@@ -96,6 +124,8 @@ export default {
     // Objectives schedule -- same KV object the refresh Worker owns, keyed
     // by league then date. GET is public; POST requires the admin password.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
+      const gate = subscriberGate(request, url, env);
+      if (gate) return gate;
       const schedule = await loadSchedule(env);
       return json({ leagues: SUPPORTED_LEAGUES, modes: SUPPORTED_MODES, schedule });
     }

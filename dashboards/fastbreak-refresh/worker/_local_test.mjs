@@ -303,7 +303,7 @@ function countSince(mark) {
 
 {
   // HTTP surface: run metadata, league param, historic status, cron dispatch.
-  const env = { FASTBREAK_KV: makeKV(), FASTBREAK_ADMIN_TOKEN: "t", BALLDONTLIE_API_KEY: "k" };
+  const env = { FASTBREAK_KV: makeKV(), FASTBREAK_ADMIN_TOKEN: "t", BALLDONTLIE_API_KEY: "k", TOME_SUBSCRIBER_KEYS: "sub-old, sub-new" };
   let res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
   let body = await res.json();
   assert.equal(body.NBA.runStart, "2026-10-20");
@@ -327,10 +327,41 @@ function countSince(mark) {
   body = await res.json();
   assert.equal(body.schedule.NBA[NBA_DATE].objectives.Classic[0].stat, "AST", "lowercase league accepted");
 
+  // Subscriber gate: no key -> 401 (locked), wrong key -> 401, either listed
+  // key -> 200, admin token -> 200, secret unset -> 503 (fails closed).
   res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}&mode=Classic`), env);
+  assert.equal(res.status, 401, "no subscriber key");
+  assert.equal((await res.json()).locked, true);
+  res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}&key=nope`), env);
+  assert.equal(res.status, 401, "wrong subscriber key");
+  res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}`), { ...env, TOME_SUBSCRIBER_KEYS: "" });
+  assert.equal(res.status, 503, "unset subscriber secret fails closed");
+  for (const p of ["/api/fastbreak/objectives", "/api/fastbreak/fulldata?league=NBA", "/api/fastbreak/historic"]) {
+    res = await worker.fetch(new Request(`https://x${p}`), env);
+    assert.equal(res.status, 401, `${p} gated`);
+  }
+  // Public (subscriber) reads are serve-only: nothing cached for this date ->
+  // queued stub, zero BALLDONTLIE calls.
+  const c0 = calls.length;
+  res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}&mode=Classic`, { headers: { "X-Tome-Key": "sub-old" } }), env);
+  assert.equal(res.status, 200, "old key still valid during rotation overlap");
+  body = await res.json();
+  assert.equal(body.queued, true, "serve-only read never builds");
+  assert.equal(calls.length, c0, "serve-only read made no upstream calls");
+  // Admin read builds on demand.
+  res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}&mode=Classic`, { headers: { "X-Admin-Token": "t" } }), env);
   body = await res.json();
   assert.equal(body.league, "NBA");
   assert.equal(body.objectives[0].stat, "AST");
+  assert.ok(calls.length > c0, "admin read built the slate");
+  // ...and now the subscriber read is served from the snapshot.
+  res = await worker.fetch(new Request(`https://x/api/fastbreak?league=NBA&date=${NBA_DATE}&mode=Classic&key=sub-new`), env);
+  body = await res.json();
+  assert.equal(res.status, 200);
+  assert.ok(!body.queued && body.players.length > 0, "subscriber read served from snapshot");
+  // Rate limiter binding, when present, is honoured.
+  res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), { ...env, PUBLIC_RATE_LIMITER: { limit: async () => ({ success: false }) } });
+  assert.equal(res.status, 429, "rate limited");
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/historic/objectives/day", { method: "POST", headers: { "X-Admin-Token": "t" }, body: JSON.stringify({ day: 3, objectives: [{ stat: "REB", dailyTeamTarget: 30 }] }) }), env);
   body = await res.json();
@@ -346,7 +377,7 @@ function countSince(mark) {
 
   // Cron: NBA tick is a no-op before Oct 15 (today is real ET today, which
   // the harness can't fake, so just assert the WNBA/NBA dispatch strings).
-  assert.equal(T.LEAGUE_CRONS.WNBA, "*/15 * * * *");
+  assert.equal(T.LEAGUE_CRONS.WNBA, "*/30 * * * *");
   assert.equal(T.LEAGUE_CRONS.NBA, "7-59/15 * * * *");
   const before = calls.length;
   await worker.scheduled({ cron: T.LEAGUE_CRONS.NBA }, env);

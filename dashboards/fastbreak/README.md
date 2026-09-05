@@ -8,7 +8,7 @@ Two Cloudflare Workers share one KV namespace (`FASTBREAK_KV`):
   demand, caches each day's raw inputs in KV, refreshes today's slate on a cron schedule,
   owns the objectives schedule + Rotowire projection uploads, and hosts the NBA Historic
   simulation (`worker/historic.js`).
-- **`tome-fastbreak-dashboard`** (`dashboards/fastbreak/`, this directory) — a thin public
+- **`tome-fastbreak`** (`dashboards/fastbreak/`, this directory) — a thin public
   read/admin-write proxy over the same KV. `index.html` (GitHub Pages) calls the refresh
   Worker directly; this Worker is a cheap fallback that serves the last cron-cached slate.
 
@@ -50,7 +50,7 @@ paged up to `YTD_STAT_PAGES_PER_CHUNK` (3 pages = 30 games/player); beyond that 
 best-effort from the earliest games and the payload note says so. L10 is always complete.
 
 ## Cron
-`wrangler.toml` declares two schedules — `*/15 * * * *` (WNBA) and `7-59/15 * * * *`
+`wrangler.toml` declares two schedules — `*/30 * * * *` (WNBA) and `7-59/15 * * * *`
 (NBA) — and `scheduled()` maps `event.cron` back to a league via `LEAGUE_CRONS`. A tick is
 a no-op outside that league's `seasonActive` window, refreshes today's slate otherwise,
 and spends the leftover budget on that league's Full Data build. All "today" logic is
@@ -69,7 +69,26 @@ Eastern Time via `Intl` (handles the EDT/EST switch in November).
 | `GET /api/fastbreak/historic?day=` · `GET …/historic/status` | Historic public + status. |
 | `POST /api/fastbreak/historic/seed` · `POST …/historic/objectives/day` · `POST …/historic/advance` | Historic admin. |
 
-POSTs require the `X-Admin-Token` header (`FASTBREAK_ADMIN_TOKEN` secret).
+POSTs require the `X-Admin-Token` header (`FASTBREAK_ADMIN_TOKEN` secret). The admin
+password is never in `index.html`: the admin panel POSTs what was typed to
+`/api/fastbreak/admin/verify` and keeps it in memory for the page's lifetime only.
+
+## Subscriber gate
+Every data read (`/api/fastbreak`, `/objectives` GET, `/fulldata`, `/historic`) requires
+`X-Tome-Key` (or `?key=`) matching one of the comma-separated values in the
+`TOME_SUBSCRIBER_KEYS` secret (set on both Workers; unset = 503, fails closed). The key rides
+on the embed URL inside the subscriber post (`index.html?key=...`); the page moves it to
+`sessionStorage`, strips it from the address bar and sends it as a header. Rotate by setting
+`old,new` for an overlap window, updating the post, then dropping `old`.
+
+Public (subscriber) reads are **serve-only**: they never spend BALLDONTLIE calls. The cron
+refreshes today's slate and pre-builds the next stale run date each tick
+(`warmUpcomingRunDate`), so a date is normally cached before anyone opens it; an uncached date
+returns `queued: true` and the page polls every 60s. An admin-unlocked page (X-Admin-Token)
+still builds on demand.
+
+`[[ratelimits]]` in each `wrangler.toml` adds a per-IP 60 req/min limit (Workers Rate
+Limiting binding, `PUBLIC_RATE_LIMITER`); the Workers skip the check if the binding is absent.
 
 ## KV keys
 `fastbreak:objectives` (all leagues) · `fastbreak:latest` / `fastbreak:nba:latest` ·
@@ -94,8 +113,9 @@ it the build fails soft and PITP shows `--` with a note, rather than breaking th
 ## Deploy
 1. Create the shared KV namespace once (`wrangler kv:namespace create FASTBREAK_KV`) and put
    its id in **both** `wrangler.toml` files.
-2. Secrets on the refresh Worker: `BALLDONTLIE_API_KEY`, `FASTBREAK_ADMIN_TOKEN`
-   (also `FASTBREAK_ADMIN_TOKEN` on the public Worker).
+2. Secrets on the refresh Worker: `BALLDONTLIE_API_KEY`, `FASTBREAK_ADMIN_TOKEN`,
+   `TOME_SUBSCRIBER_KEYS` (also `FASTBREAK_ADMIN_TOKEN` + `TOME_SUBSCRIBER_KEYS` on the public
+   Worker).
 3. `cd dashboards/fastbreak-refresh && wrangler deploy` (this registers both crons), then
    `cd dashboards/fastbreak && wrangler deploy`.
 4. Push `index.html` to GitHub Pages. Existing WNBA KV data keeps working unchanged

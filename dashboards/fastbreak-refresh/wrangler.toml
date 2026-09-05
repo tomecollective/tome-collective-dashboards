@@ -8,18 +8,29 @@ compatibility_date = "2026-08-08"
 # SAME namespace id in both wrangler.toml files.
 [[kv_namespaces]]
 binding = "FASTBREAK_KV"
-id = "REPLACE_WITH_REAL_ID"
+id = "b492b464fa3c45fa854eae3bb90e5f88" # tome_fastbreak_kv
 
 # Required secrets (set once, never committed):
 #   wrangler secret put BALLDONTLIE_API_KEY
-#   wrangler secret put FASTBREAK_ADMIN_TOKEN
+#   wrangler secret put FASTBREAK_ADMIN_TOKEN   # admin writes + on-demand builds
+#   wrangler secret put TOME_SUBSCRIBER_KEYS    # comma-separated subscriber keys
+#                                               # (gates every data read; unset = 503)
 
-# Refresh cadence: every 15 minutes per league, on two offset schedules so
-# each league gets a full invocation's subrequest budget. The Worker maps
-# event.cron back to a league (see LEAGUE_CRONS in worker/index.js -- keep
-# these two strings identical to those). A league's tick is a no-op outside
-# its seasonActive window, so the NBA schedule costs nothing until Oct 15.
-#   "*/15 * * * *"    -> WNBA  (:00 :15 :30 :45)
+# Per-IP rate limit on every request (Workers Rate Limiting binding; not
+# visible in the dashboard, configured only here). 60 req/min is ~10x what
+# the page needs; the Worker skips the check if the binding is absent.
+[[ratelimits]]
+name = "PUBLIC_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+# Refresh cadence, one schedule per league, offset so each league gets a full
+# invocation's subrequest budget. The Worker maps event.cron back to a league
+# (see LEAGUE_CRONS in worker/index.js -- keep these strings identical to
+# those; anything that isn't the NBA string is treated as WNBA). A league's
+# tick is a no-op outside its seasonActive window, so the NBA schedule costs
+# nothing until Oct 15. These match what is live in the dashboard.
+#   "*/30 * * * *"    -> WNBA  (:00 :30)
 #   "7-59/15 * * * *" -> NBA   (:07 :22 :37 :52)
 [triggers]
-crons = ["*/15 * * * *", "7-59/15 * * * *"]
+crons = ["*/30 * * * *", "7-59/15 * * * *"]

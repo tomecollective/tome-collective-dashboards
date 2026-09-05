@@ -68,6 +68,27 @@ assert.equal(res.status, 200, "correct nonce continues the run");
 res = await post("/api/refresh", { "X-Admin-Token": "admin-secret" }).then(() => worker.fetch(new Request("https://x/api/refresh", { method: "POST", headers: { "X-Admin-Token": "admin-secret" } }), { ...env, TCG_ADMIN_TOKEN: "" }, ctx));
 assert.equal(res.status, 401, "unset secret fails closed");
 
+// Subscriber gate on the index: no key -> teaser only; key/admin -> full.
+env.TOME_SUBSCRIBER_KEYS = "sub-a, sub-b";
 res = await worker.fetch(new Request("https://x/api/chase-index"), env, ctx);
 assert.equal(res.status, 200, "public read still works");
+let teaser = await res.json();
+assert.equal(teaser.teaser, true, "anonymous gets teaser");
+assert.equal(teaser.sets.length, 0, "no candidate pool in teaser");
+assert.ok(teaser.topHoldings.length <= 10, "top 10 max");
+assert.ok(teaser.topHoldings.every((c) => (c.history || []).length <= 8), "history tail capped");
+assert.ok(Array.isArray(teaser.indexHistory), "index series present");
+res = await worker.fetch(new Request("https://x/api/chase-index?key=sub-b"), env, ctx);
+let full = await res.json();
+assert.ok(!full.teaser && full.sets.length > 0, "subscriber key gets the full payload");
+res = await worker.fetch(new Request("https://x/api/chase-index", { headers: { "X-Tome-Key": "nope" } }), env, ctx);
+assert.equal((await res.json()).teaser, true, "wrong key -> teaser");
+res = await worker.fetch(new Request("https://x/api/chase-index", { headers: { "X-Admin-Token": "admin-secret" } }), env, ctx);
+assert.ok(!(await res.json()).teaser, "admin token -> full");
+res = await worker.fetch(new Request("https://x/api/chase-index?key=sub-b"), { ...env, TOME_SUBSCRIBER_KEYS: "" }, ctx);
+assert.equal((await res.json()).teaser, true, "unset subscriber secret -> teaser for everyone");
+res = await worker.fetch(new Request("https://x/api/debug-card?raw=1&q=Charizard"), env, ctx);
+assert.equal(res.status, 401, "debug proxy needs admin token");
+res = await worker.fetch(new Request("https://x/api/chase-index?key=sub-b"), { ...env, PUBLIC_RATE_LIMITER: { limit: async () => ({ success: false }) } }, ctx);
+assert.equal(res.status, 429, "rate limited");
 console.log("ALL TCG LOCAL TESTS PASSED");

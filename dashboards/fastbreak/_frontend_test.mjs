@@ -29,11 +29,22 @@ const page = await browser.newPage();
 page.on("pageerror", (e) => { throw e; });
 
 const TEST_ADMIN_TOKEN = "local-test-admin-token";
+const TEST_SUB_KEY = "local-test-subscriber-key";
+const keyedReads = []; // GET requests that carried the subscriber key
 await page.route(`${WORKER}/**`, async (route) => {
   const req = route.request();
   const url = new URL(req.url());
   requests.push(`${req.method()} ${url.pathname}${url.search}`);
   const json = (body, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*" }, body: JSON.stringify(body) });
+  // Subscriber gate, same contract as the Workers: gated reads 401 {locked}
+  // without X-Tome-Key (admin token also passes); /run is ungated.
+  const GATED = ["/api/fastbreak", "/api/fastbreak/objectives", "/api/fastbreak/fulldata", "/api/fastbreak/historic"];
+  if (req.method() === "GET" && GATED.includes(url.pathname)) {
+    const key = req.headers()["x-tome-key"];
+    const admin = req.headers()["x-admin-token"];
+    if (key === TEST_SUB_KEY) keyedReads.push(url.pathname);
+    if (key !== TEST_SUB_KEY && admin !== TEST_ADMIN_TOKEN) return json({ error: "This data is for Tome Edge subscribers.", locked: true }, 401);
+  }
   if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" } });
   if (req.method() === "POST") {
     posts.push({ path: url.pathname, body: JSON.parse(req.postData() || "{}"), token: req.headers()["x-admin-token"] });
@@ -91,8 +102,21 @@ await page.route(`${WORKER}/**`, async (route) => {
   return json({ error: `unmocked ${url.pathname}` }, 404);
 });
 
+// Without a key: the lock panel shows and the dashboard is hidden.
 await page.goto(pathToFileURL(path.join(here, "index.html")).href);
+await page.waitForFunction(() => getComputedStyle(document.querySelector("#locked-panel")).display === "block");
+assert.equal(await page.$eval("#view-main", (el) => getComputedStyle(el).display), "none", "dashboard hidden when locked");
+
+// With ?key= on the embed URL: key is sent as X-Tome-Key, stripped from the
+// address bar, kept in sessionStorage only.
+requests.length = 0;
+await page.goto(pathToFileURL(path.join(here, "index.html")).href + `?key=${TEST_SUB_KEY}`);
 await page.waitForSelector("#players-body tr");
+assert.ok(!page.url().includes("key="), "key stripped from the URL");
+assert.equal(await page.evaluate(() => sessionStorage.getItem("tome_key")), TEST_SUB_KEY, "key kept in sessionStorage");
+assert.equal(await page.evaluate(() => { try { return localStorage.getItem("tome_key"); } catch { return null; } }), null, "key never in localStorage");
+assert.ok(keyedReads.includes("/api/fastbreak"), "dashboard read carried the subscriber key");
+assert.equal(await page.$eval("#locked-panel", (el) => getComputedStyle(el).display), "none", "lock panel hidden with a valid key");
 
 // Default: WNBA Classic, Run 11 label, league param on the fetch.
 assert.equal(await page.textContent("#run-label"), "WNBA Run 11");
@@ -118,7 +142,9 @@ assert.equal(nbaDays[0], "Day 1 - Oct 20");
 assert.equal(nbaDays[6], "Day 7 - Oct 26");
 assert.ok(requests.some((r) => r.includes("/api/fastbreak?league=NBA&date=2026-10-20&mode=Classic")), "NBA Day 1 fetched");
 await page.waitForFunction(() => document.querySelector("#loading-banner")?.textContent.includes("120 of 384"));
-await page.waitForFunction(() => !document.querySelector("#loading-banner") && document.querySelectorAll("#players-body tr").length === 2, null, { timeout: 8000 });
+// Subscriber (non-admin) pages poll an in-flight build every 20s, so the
+// scheduled updater does the work and the page never hammers the Worker.
+await page.waitForFunction(() => !document.querySelector("#loading-banner") && document.querySelectorAll("#players-body tr").length === 2, null, { timeout: 30000 });
 assert.ok(nbaBuildCalls >= 2, "polled the Worker until the build finished");
 assert.equal(await page.textContent("#pg-eye"), "Tome Collective · NBA · Fast Break");
 assert.match(await page.textContent("#players-body"), /TBD/, "TBD shown for missing projection");
@@ -153,7 +179,8 @@ await page.fill("#admin-password-input", TEST_ADMIN_TOKEN);
 await page.click("#admin-unlock-btn");
 await page.waitForFunction(() => getComputedStyle(document.querySelector("#admin-locked-content")).display === "block");
 assert.equal(await page.inputValue("#admin-password-input"), "", "password field cleared after unlock");
-assert.equal(await page.evaluate(() => { try { return Object.keys(localStorage).length + Object.keys(sessionStorage).length; } catch { return 0; } }), 0, "password never persisted to web storage");
+assert.equal(await page.evaluate(() => { try { return Object.keys(localStorage).length + Object.keys(sessionStorage).filter((k) => k !== "tome_key").length; } catch { return 0; } }), 0, "password never persisted to web storage");
+assert.ok(!(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).includes(TEST_ADMIN_TOKEN), "password value absent from web storage");
 
 await page.click('#admin-mode-picker button[data-league="NBA"][data-mode="Pro"]');
 await page.waitForFunction(() => document.querySelector("#admin-schedule-body")?.textContent.includes("2026-10-20"));

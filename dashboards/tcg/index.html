@@ -38,6 +38,8 @@ h3.era-heading:first-of-type { margin-top: 8px; }
 .index-stats .stat-value.down { color: #c0392b; }
 .index-stats .stat-value.flat { color: #8fa89f; }
 .index-stats .stat-sub { font-size: 0.72rem; color: #6b7d76; margin-top: 2px; }
+.teaser-banner { border: 1px solid rgba(212,167,44,0.6); background: rgba(212,167,44,0.08); border-radius: 8px; padding: 14px 16px; margin: 12px 0 24px; font-size: 0.9rem; line-height: 1.5; }
+.teaser-banner a { color: #d4a72c; }
 .change-up { color: #3ea86b; }
 .change-down { color: #c0392b; }
 .change-flat { color: #8fa89f; }
@@ -127,7 +129,14 @@ not recommend buying, selling, or holding any card based on this index.</p>
 </thead>
 <tbody id="holdings-body"></tbody>
 </table>
+<div id="teaser-banner" class="teaser-banner" style="display:none">
+  <strong>Tome Edge subscribers see the full index.</strong>
+  <span id="teaser-detail"></span>
+  Open this page from the link inside your subscriber post (it carries your access key), or subscribe at
+  <a href="https://tomecollective.com" target="_blank" rel="noopener">tomecollective.com</a>.
+</div>
 
+<div id="pool-section">
 <h2>Full Candidate Pool, By Set</h2>
 <p class="subtitle" style="max-width:700px">Top 5 chase-tier candidates per eligible set, spanning
 XY through Mega Evolution era. <span style="color:#d4a72c">Gold</span> marks cards that actually
@@ -141,6 +150,7 @@ and rank here, but none can turn gold until the set has been out for more than 9
 <span><span class="legend-swatch" style="background:#6b7d76"></span>Not shortlisted (ranks 4-5)</span>
 </div>
 <div id="sets-by-era"></div>
+</div>
 
 <h2>Historical Changes</h2>
 <p class="subtitle" style="max-width:700px">Cards added to and removed from the index at each monthly update, most recent first.</p>
@@ -155,6 +165,27 @@ and rank here, but none can turn gold until the set has been out for more than 9
 
 <script>
 const WORKER_URL = "https://tome-tcg.tomecollective.workers.dev/api/chase-index";
+
+// Subscriber access key: arrives on the embed URL inside the subscriber post
+// (?key=...), is kept for this tab in sessionStorage, stripped from the
+// address bar, never written to localStorage. Sent as X-Tome-Key; without a
+// valid key the Worker returns a teaser (index value + top 10) instead of
+// the full 50-card payload and candidate pool.
+const SUB_KEY = (() => {
+  let key = null;
+  try {
+    const params = new URLSearchParams(location.search);
+    key = params.get("key");
+    if (key) {
+      try { sessionStorage.setItem("tome_key", key); } catch (e) {}
+      params.delete("key");
+      history.replaceState(null, "", `${location.pathname}${params.toString() ? "?" + params.toString() : ""}${location.hash}`);
+    } else {
+      try { key = sessionStorage.getItem("tome_key"); } catch (e) {}
+    }
+  } catch (e) {}
+  return key || "";
+})();
 // Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
 
 // A set can't contribute a gold ("in final index") card until it's been out
@@ -574,9 +605,44 @@ return { card, tier };
 });
 }
 
+// Teaser payload (no subscriber key): index series + top 10 holdings with an
+// 8-day history tail, no candidate pool. Same tiles/chart/table code paths.
+function renderTeaser(data) {
+  if (data.last_updated) {
+    document.getElementById("subtitle").textContent =
+      `Pokemon TCG chase card index, XY forward. Data as of ${formatReleaseDate(data.last_updated)}.`;
+  }
+  indexCards = (data.topHoldings || []).map(c => ({ ...c, set: c.set_name }));
+  const tbody = document.getElementById("holdings-body");
+  indexCards.forEach(card => {
+    const row = document.createElement("tr");
+    const priceDisplay = card.price !== null ? "$" + card.price.toFixed(2) : '<span class="unverified">unverified</span>';
+    const { daily, wow } = cardChanges(card);
+    row.innerHTML = `<td>${card.name}</td><td>${card.set}</td><td>${card.rarity}</td><td>${priceDisplay}</td><td>${formatChangeCell(daily)}</td><td>${formatChangeCell(wow)}</td>`;
+    tbody.appendChild(row);
+  });
+  indexHistory = (data.indexHistory || []).map(p => ({ date: p.date, total: p.total }));
+  updateTimeframeAvailability();
+  updateChartCaption();
+  renderStats();
+  renderChart();
+  const banner = document.getElementById("teaser-banner");
+  banner.style.display = "block";
+  document.getElementById("teaser-detail").textContent = SUB_KEY
+    ? " The access key on this link is no longer valid -- open the index again from the latest subscriber post."
+    : ` ${data.lockedNote || ""}`;
+  document.getElementById("pool-section").style.display = "none";
+  document.getElementById("export-csv-btn").style.display = "none";
+}
+
 async function loadIndex() {
-const res = await fetch(WORKER_URL);
+const res = await fetch(WORKER_URL, { headers: SUB_KEY ? { "X-Tome-Key": SUB_KEY } : {} });
 const data = await res.json();
+
+if (data.teaser) {
+  renderTeaser(data);
+  return;
+}
 
 if (data.last_updated) {
 document.getElementById("subtitle").textContent =

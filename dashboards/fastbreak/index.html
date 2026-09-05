@@ -107,6 +107,10 @@ td:first-child{font-weight:600;}
 td strong{color:var(--text);font-weight:700;}
 /* -- Injury status pill (next to player name): red = Out, yellow = anything
 else the player_injuries endpoint reports (Day-To-Day, Questionable, etc.) */
+.locked-panel{border:0.5px solid rgba(255,181,21,0.5);background:rgba(255,181,21,0.06);border-radius:8px;padding:18px 20px;margin:0 0 20px;}
+.locked-title{font-family:var(--sans);font-weight:700;font-size:0.95rem;color:var(--gold);margin-bottom:6px;}
+.locked-body{font-size:0.85rem;line-height:1.5;margin:0 0 4px;}
+.locked-body a{color:var(--gold);}
 .injury-pill{display:inline-block;font-family:var(--sans);font-size:0.6rem;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
 .injury-pill.out{background:rgba(248,113,113,0.16);color:#f87171;border:0.5px solid rgba(248,113,113,0.4);}
 .injury-pill.dtd{background:rgba(255,181,21,0.14);color:var(--gold);border:0.5px solid rgba(255,181,21,0.4);}
@@ -203,6 +207,12 @@ HISTORIC_ENABLED is flipped in the script below. -->
 </div>
 <span class="toggle-note" id="mode-note"></span>
 <button class="admin-link-btn" id="admin-toggle-btn">Objectives Admin &rarr;</button>
+</div>
+
+<div id="locked-panel" class="locked-panel" style="display:none">
+  <div class="locked-title">Tome Edge subscribers only</div>
+  <p class="locked-body">This dashboard's live data is part of Tome Edge. Open it from the link inside your subscriber post (the link carries your access key), or subscribe at <a href="https://tomecollective.com" target="_blank" rel="noopener">tomecollective.com</a>.</p>
+  <p class="locked-body" id="locked-detail"></p>
 </div>
 
 <div id="view-main">
@@ -531,6 +541,54 @@ let RUNS = {
   NBA: { runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26" },
 };
 
+// -- Subscriber access key ------------------------------------------------------
+// Every data read on the Workers is gated by X-Tome-Key. The key arrives on
+// the embed URL inside the subscriber post (?key=...), is kept for this tab
+// in sessionStorage (so reloads inside the post keep working), and is
+// stripped from the address bar. It is never written to localStorage.
+const SUB_KEY = (() => {
+  let key = null;
+  try {
+    const params = new URLSearchParams(location.search);
+    key = params.get("key");
+    if (key) {
+      try { sessionStorage.setItem("tome_key", key); } catch (e) {}
+      params.delete("key");
+      const clean = `${location.pathname}${params.toString() ? "?" + params.toString() : ""}${location.hash}`;
+      history.replaceState(null, "", clean);
+    } else {
+      try { key = sessionStorage.getItem("tome_key"); } catch (e) {}
+    }
+  } catch (e) {}
+  return key || "";
+})();
+
+// GET against the Workers with the subscriber key (and the admin token when
+// the admin panel is unlocked, which lets the refresh Worker build a day on
+// demand instead of serve-only). A 401 with {locked:true} shows the lock
+// panel instead of the dashboard.
+function readHeaders() {
+  const h = {};
+  if (SUB_KEY) h["X-Tome-Key"] = SUB_KEY;
+  if (adminPassword) h["X-Admin-Token"] = adminPassword;
+  return h;
+}
+async function apiGet(url) {
+  const res = await fetch(url, { headers: readHeaders() });
+  if (res.status === 401) {
+    let body = null;
+    try { body = await res.clone().json(); } catch (e) {}
+    if (body && body.locked) showLocked(body.error);
+  }
+  return res;
+}
+function showLocked(detail) {
+  const panel = document.getElementById("locked-panel");
+  panel.style.display = "block";
+  document.getElementById("locked-detail").textContent = SUB_KEY ? "The access key on this link is no longer valid -- open the dashboard again from the latest subscriber post." : "";
+  document.getElementById("view-main").style.display = "none";
+}
+
 // The admin password gate. The password is NEVER present in this file: what
 // the admin types is checked server-side (POST /api/fastbreak/admin/verify
 // against the refresh Worker's FASTBREAK_ADMIN_TOKEN secret), then held in
@@ -646,7 +704,7 @@ function initRunDays() {
 
 async function loadRuns() {
   try {
-    const res = await fetch(`${RUN_URL}?league=ALL`);
+    const res = await apiGet(`${RUN_URL}?league=ALL`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     for (const league of Object.keys(RUNS)) {
@@ -955,7 +1013,7 @@ async function loadFullData(league, { silent } = {}) {
   const metaEl = document.getElementById("fd-meta");
   if (!silent && metaEl && league === fdLeague) metaEl.textContent = "Loading...";
   try {
-    const res = await fetch(`${FULLDATA_URL}?league=${league}`);
+    const res = await apiGet(`${FULLDATA_URL}?league=${league}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     fullDataByLeague[league] = data;
@@ -1257,7 +1315,7 @@ async function loadAdminSchedule() {
   const tbody = document.getElementById("admin-schedule-body");
   tbody.innerHTML = `<tr><td colspan="6">Loading...</td></tr>`;
   try {
-    const res = await fetch(OBJECTIVES_URL);
+    const res = await apiGet(OBJECTIVES_URL);
     const data = await res.json();
     const days = Object.entries(data.schedule?.[adminLeague] || {}).sort(([a], [b]) => a.localeCompare(b));
     if (!days.length) {
@@ -1447,7 +1505,7 @@ async function loadHistoricStatus() {
   const statusEl = document.getElementById("admin-historic-status");
   tbody.innerHTML = `<tr><td colspan="5">Loading...</td></tr>`;
   try {
-    const res = await fetch(HISTORIC_STATUS_URL);
+    const res = await apiGet(HISTORIC_STATUS_URL);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const simulated = new Set(data.simulatedDays || []);
@@ -1594,7 +1652,7 @@ async function loadData() {
   if (existingBanner) existingBanner.remove();
   try {
     const url = currentMode === "Historic" ? HISTORIC_URL : `${WORKER_URL}?league=${currentLeague}&date=${selectedDate}&mode=${currentMode}`;
-    const res = await fetch(url);
+    const res = await apiGet(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (seq !== loadSeq) return; // a newer selection superseded this fetch
@@ -1613,12 +1671,22 @@ async function loadData() {
 
   // Big slates (a full NBA night) load across a couple of Worker calls; keep
   // polling until the Worker reports the day is fully built.
+  // Public reads are serve-only: the scheduled updater does the building
+  // (every 15-30 min in season), so poll gently. An admin-unlocked page
+  // builds on demand and can poll fast.
   if (dashboard.building || dashboard.refreshing) {
     const p = dashboard.progress || {};
-    showLoadingBanner(dashboard.building ? `Loading players: ${p.loaded ?? 0} of ${p.total ?? "?"} so far...` : "Refreshing in the background...");
+    showLoadingBanner(
+      dashboard.queued
+        ? "This date is queued for the next scheduled update (usually within 30 minutes)..."
+        : dashboard.building
+          ? `Loading players: ${p.loaded ?? 0} of ${p.total ?? "?"} so far...`
+          : "Refreshing in the background..."
+    );
+    const delay = adminPassword ? 2500 : dashboard.queued || dashboard.refreshing ? 60000 : 20000;
     pollTimer = setTimeout(() => {
       if (seq === loadSeq) loadData();
-    }, 2500);
+    }, delay);
   } else {
     showLoadingBanner("");
   }

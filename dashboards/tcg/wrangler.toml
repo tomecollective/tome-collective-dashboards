@@ -29,3 +29,14 @@ id = "91fb21abc1084fe1ae7f723cec1b4e61"
 # window backfills any days a run gets missed.
 [triggers]
 crons = ["0 13 * * *"]
+
+# Secrets (never committed):
+#   wrangler secret put JUSTTCG_API_KEY
+#   wrangler secret put TCG_ADMIN_TOKEN        # POST /api/refresh, /api/debug-card
+#   wrangler secret put TOME_SUBSCRIBER_KEYS   # full /api/chase-index payload (teaser without)
+
+# Per-IP rate limit on every request (see the fastbreak wrangler.toml).
+[[ratelimits]]
+name = "PUBLIC_RATE_LIMITER"
+namespace_id = "1003"
+simple = { limit = 60, period = 60 }
