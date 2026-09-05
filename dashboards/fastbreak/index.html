@@ -372,6 +372,19 @@ projections upload lands in, and whether the Historic tools are shown. -->
 
 <div id="admin-locked-content">
 
+<!-- League on/off switch + BALLDONTLIE key entitlement probe (FB-3). -->
+<div class="admin-form" id="admin-league-form">
+<h2>League Status</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+A league that is OFF is greyed out on the public toggle. Keep NBA off until the BALLDONTLIE key
+is upgraded for NBA (GOAT tier for PITP); "Check NBA key" probes the active-players and
+advanced-stats endpoints and shows what the key can read.
+</p>
+<div id="admin-league-rows" style="margin-top:10px;font-size:0.72rem;"></div>
+<button id="admin-keycheck-btn">Check NBA key</button>
+<p class="note" id="admin-league-status" style="margin-top:8px;"></p>
+</div>
+
 <!-- Live leagues (WNBA / NBA x Classic / Pro) -->
 <div id="admin-live-forms">
 <div class="admin-form">
@@ -547,6 +560,9 @@ const HISTORIC_STATUS_URL = WORKER_BASE + "/api/fastbreak/historic/status";
 const HISTORIC_SEED_URL = WORKER_BASE + "/api/fastbreak/historic/seed";
 const HISTORIC_OBJ_URL = WORKER_BASE + "/api/fastbreak/historic/objectives/day";
 const HISTORIC_ADVANCE_URL = WORKER_BASE + "/api/fastbreak/historic/advance";
+const LEAGUE_STATUS_URL = WORKER_BASE + "/api/fastbreak/league/status";
+const LEAGUE_ENABLE_URL = WORKER_BASE + "/api/fastbreak/league/enable";
+const LEAGUE_KEYCHECK_URL = WORKER_BASE + "/api/fastbreak/league/keycheck";
 // Seed JSON checked into the repo, served by the same GitHub Pages site.
 const HISTORIC_SEED_FILES = {
   players: "../../dashboards/fastbreak-refresh/worker/historic-seed/players.json",
@@ -773,6 +789,24 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
   if (leagueChanged) loadFullData(currentLeague, { silent: true });
 });
 
+// A league the Worker reports as disabled (NBA until its BALLDONTLIE key is
+// entitled and an admin switches it on) is greyed out like Historic.
+function syncLeagueToggles() {
+  for (const league of Object.keys(RUNS)) {
+    const enabled = RUNS[league].enabled !== false;
+    document.querySelectorAll(`#mode-toggle button[data-league="${league}"]:not([data-mode="Historic"])`).forEach((btn) => {
+      btn.disabled = !enabled;
+      btn.title = enabled ? "" : `${league} ${RUNS[league].runLabel || ""} goes live on ${RUNS[league].runStart || "season start"} -- the ${league} data feed is not switched on yet`;
+    });
+  }
+  // If the active selection just got disabled, fall back to the first enabled button.
+  const active = document.querySelector("#mode-toggle button.active");
+  if (active && active.disabled) {
+    const first = document.querySelector("#mode-toggle button:not(:disabled)");
+    if (first) first.click();
+  }
+}
+
 // Historic stays disabled in the UI until HISTORIC_ENABLED is flipped on
 // above, even though the worker route and KV data behind it are already live.
 (function syncHistoricToggle() {
@@ -818,6 +852,7 @@ async function tryAdminUnlock() {
       document.getElementById("admin-gate").style.display = "none";
       document.getElementById("admin-locked-content").style.display = "block";
       statusEl.textContent = "";
+      loadLeagueStatus();
     } else if (res.status === 401) {
       statusEl.textContent = "Incorrect password.";
     } else {
@@ -1309,7 +1344,55 @@ function populateStatSelects() {
   });
 }
 
+async function loadLeagueStatus() {
+  const rows = document.getElementById("admin-league-rows");
+  try {
+    const res = await fetch(LEAGUE_STATUS_URL, { headers: adminHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    rows.innerHTML = Object.keys(RUNS).map((league) => {
+      const on = data.enabled[league] !== false;
+      const kc = data.keyCheck?.[league];
+      const kcText = kc ? `key check ${kc.checkedAt.slice(0, 16).replace("T", " ")}Z: active players ${kc.activePlayers === "ok" ? "OK" : "FAIL"}, advanced stats ${kc.advancedStats === "ok" ? "OK" : "FAIL"}` : "key not checked yet";
+      return `<div style="display:flex;gap:10px;align-items:center;margin:6px 0;flex-wrap:wrap;"><strong style="min-width:48px;">${league}</strong><span style="color:${on ? "#34d399" : "#f87171"};font-weight:700;">${on ? "ON" : "OFF"}</span><button data-league="${league}" data-enable="${on ? "false" : "true"}" class="league-toggle-btn" style="margin-top:0;">${on ? "Turn OFF" : "Turn ON"}</button><span style="color:var(--text-3);">${kcText}</span></div>`;
+    }).join("");
+  } catch (err) {
+    rows.textContent = `League status unavailable (${err.message}).`;
+  }
+}
+document.getElementById("admin-league-rows").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".league-toggle-btn");
+  if (!btn) return;
+  const league = btn.dataset.league;
+  const enabled = btn.dataset.enable === "true";
+  setStatus("admin-league-status", `Switching ${league} ${enabled ? "on" : "off"}...`);
+  try {
+    const res = await fetch(LEAGUE_ENABLE_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ league, enabled }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("admin-league-status", `${league} is now ${enabled ? "ON" : "OFF"} for the public toggle.`, true);
+    RUNS[league].enabled = enabled;
+    syncLeagueToggles();
+    loadLeagueStatus();
+  } catch (err) {
+    setStatus("admin-league-status", `Failed: ${err.message}`, false);
+  }
+});
+document.getElementById("admin-keycheck-btn").addEventListener("click", async () => {
+  setStatus("admin-league-status", "Probing the NBA endpoints with the current key...");
+  try {
+    const res = await fetch(LEAGUE_KEYCHECK_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ league: "NBA" }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("admin-league-status", data.entitled ? "NBA key is entitled (active players + advanced stats OK). You can turn NBA on." : `NBA key is NOT fully entitled -- active players: ${data.activePlayers}; advanced stats: ${data.advancedStats}`, data.entitled);
+    loadLeagueStatus();
+  } catch (err) {
+    setStatus("admin-league-status", `Key check failed: ${err.message}`, false);
+  }
+});
+
 function refreshAdminView() {
+  loadLeagueStatus();
   const isHistoric = adminMode === "Historic";
   const scope = `${adminLeague} ${adminMode}`;
   document.getElementById("admin-picker-note").textContent = isHistoric
@@ -1741,6 +1824,7 @@ async function loadData() {
 
 populateStatSelects();
 loadRuns().then(() => {
+  syncLeagueToggles();
   initRunDays();
   loadData();
   loadFullData(currentLeague, { silent: true }); // background-warm team PPG/PAPG hover tooltips + the Full Data tab

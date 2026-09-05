@@ -31,6 +31,7 @@ page.on("pageerror", (e) => { throw e; });
 const TEST_ADMIN_TOKEN = "local-test-admin-token";
 const TEST_SUB_KEY = "local-test-subscriber-key";
 const keyedReads = []; // GET requests that carried the subscriber key
+let nbaEnabled = false; // the Worker's league switch (FB-3); flipped on mid-test
 await page.route(`${WORKER}/**`, async (route) => {
   const req = route.request();
   const url = new URL(req.url());
@@ -58,9 +59,12 @@ await page.route(`${WORKER}/**`, async (route) => {
   }
   if (url.pathname === "/api/fastbreak/run") {
     return json({
-      WNBA: { league: "WNBA", runLabel: "Run 11", runStart: "2026-09-17", runEnd: "2026-09-24", runLength: 8 },
-      NBA: { league: "NBA", runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26", runLength: 7 },
+      WNBA: { league: "WNBA", runLabel: "Run 11", runStart: "2026-09-17", runEnd: "2026-09-24", runLength: 8, enabled: true },
+      NBA: { league: "NBA", runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26", runLength: 7, enabled: nbaEnabled },
     });
+  }
+  if (url.pathname === "/api/fastbreak/league/status") {
+    return json({ enabled: { WNBA: true, NBA: nbaEnabled }, keyCheck: {} });
   }
   if (url.pathname === "/api/fastbreak") {
     const league = url.searchParams.get("league");
@@ -153,6 +157,15 @@ assert.equal(await page.textContent("#pg-eye"), "Tome Collective · WNBA · Fast
 await page.click('#mode-toggle button[data-league="WNBA"][data-mode="Pro"]');
 await page.waitForFunction(() => document.querySelector("#objective-tiles")?.textContent.includes("Sapphire"));
 assert.match(await page.textContent("#mode-note"), /WNBA Pro/);
+
+// FB-3: with the NBA switch OFF, NBA Classic/Pro are greyed out like Historic.
+assert.equal(await page.$eval('#mode-toggle button[data-league="NBA"][data-mode="Classic"]', (b) => b.disabled), true, "NBA Classic disabled while the league is off");
+assert.equal(await page.$eval('#mode-toggle button[data-league="NBA"][data-mode="Pro"]', (b) => b.disabled), true, "NBA Pro disabled while the league is off");
+assert.equal(await page.$eval('#mode-toggle button[data-league="WNBA"][data-mode="Pro"]', (b) => b.disabled), false, "WNBA stays enabled");
+// Flip the switch on the Worker and re-sync (what the admin panel does).
+nbaEnabled = true;
+await page.evaluate(() => { RUNS.NBA.enabled = true; syncLeagueToggles(); });
+assert.equal(await page.$eval('#mode-toggle button[data-league="NBA"][data-mode="Classic"]', (b) => b.disabled), false, "NBA enabled after the switch");
 
 // NBA Classic: run label/days switch, league=NBA fetch, building -> polls -> done.
 await page.click('#mode-toggle button[data-league="NBA"][data-mode="Classic"]');

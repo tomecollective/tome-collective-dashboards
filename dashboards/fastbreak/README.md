@@ -28,6 +28,12 @@ Two Cloudflare Workers share one KV namespace (`FASTBREAK_KV`):
   `index.html`'s `RUNS`).
 - **Classic vs Pro** differ only in their objective sets (and Pro's badge/set label).
   Rotowire projections are uploaded once per league/date and shared by both.
+- **League switch (FB-3).** `/api/fastbreak/run` reports `enabled` per league (KV
+  `fastbreak:league:enabled`; NBA defaults OFF, WNBA ON). A disabled league's Classic/Pro
+  buttons are greyed out on the page. Objectives Admin → "League Status" flips it and
+  "Check NBA key" probes `/players/active` + advanced stats with the current BALLDONTLIE key.
+  Turn NBA on only after the key is upgraded (GOAT for PITP), ideally 24h before Oct 20 so the
+  cron has opening night cached.
 - **NBA Historic** is a simulated season with its own `fastbreak:historic:*` keys. The
   public toggle is greyed out until `HISTORIC_ENABLED` in `index.html` is flipped; it is
   fully manageable from Objectives Admin in the meantime (seed upload, per-day objectives,
@@ -60,7 +66,10 @@ Eastern Time via `Intl` (handles the EDT/EST switch in November).
 | Route | Notes |
 |---|---|
 | `GET /api/fastbreak?league=&date=&mode=` | Live view (serve-or-advance). |
-| `GET /api/fastbreak/run?league=ALL` | Run windows for the frontend. |
+| `GET /api/fastbreak/run?league=ALL` | Run windows + `enabled` per league (ungated). |
+| `GET /api/fastbreak/health` | Cron heartbeat + snapshot ages for the healthcheck (ungated). |
+| `POST /api/fastbreak/admin/verify` | Admin password check for the page's unlock gate. |
+| `GET /api/fastbreak/league/status` · `POST …/league/enable` · `POST …/league/keycheck` | League switch + key probe (admin). |
 | `GET /api/fastbreak/objectives` | Whole schedule, keyed `schedule[league][date]`. |
 | `POST /api/fastbreak/objectives/day` | `{league, date, mode, objectives, badgeSetName}` |
 | `POST /api/fastbreak/objectives/day/projections` | `{league, date, stat, projections}` |

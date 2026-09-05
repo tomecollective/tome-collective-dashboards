@@ -1593,7 +1593,44 @@ function leagueParam(url) {
   return SUPPORTED_LEAGUES.includes(raw) ? raw : DEFAULT_LEAGUE;
 }
 
-function runInfo(league) {
+// Public on/off switch per league (FB-3). NBA stays greyed out on the page
+// until the BALLDONTLIE key is entitled for NBA (GOAT tier for PITP) and an
+// admin flips it on; WNBA defaults to on. Stored in KV so it survives deploys.
+const LEAGUE_ENABLED_DEFAULT = { WNBA: true, NBA: false };
+const LEAGUE_ENABLED_KEY = "fastbreak:league:enabled";
+const KEY_CHECK_KEY = "fastbreak:keycheck";
+
+async function loadLeagueEnabled(env) {
+  const stored = (await loadJSON(env, LEAGUE_ENABLED_KEY)) || {};
+  return { ...LEAGUE_ENABLED_DEFAULT, ...stored };
+}
+
+// Probes whether the key can read this league's ALL-STAR/GOAT endpoints
+// (active players + advanced stats), which is what a live slate needs. One
+// or two cheap calls; result cached in KV for the admin panel.
+async function probeLeagueKey(env, league) {
+  const cfg = leagueConfig(league);
+  const result = { league, checkedAt: new Date().toISOString(), activePlayers: null, advancedStats: null };
+  try {
+    await leagueFetch(cfg, "/players/active?per_page=1", env);
+    result.activePlayers = "ok";
+  } catch (err) {
+    result.activePlayers = err.message.slice(0, 160);
+  }
+  try {
+    await bdlFetch(`${cfg.advancedUrl}?per_page=1`, env);
+    result.advancedStats = "ok";
+  } catch (err) {
+    result.advancedStats = err.message.slice(0, 160);
+  }
+  result.entitled = result.activePlayers === "ok" && result.advancedStats === "ok";
+  const all = (await loadJSON(env, KEY_CHECK_KEY)) || {};
+  all[league] = result;
+  await saveJSON(env, KEY_CHECK_KEY, all);
+  return result;
+}
+
+function runInfo(league, enabledMap = LEAGUE_ENABLED_DEFAULT) {
   const cfg = leagueConfig(league);
   return {
     league,
@@ -1602,6 +1639,7 @@ function runInfo(league) {
     runEnd: cfg.run.end,
     runLength: dayNumberForDate(league, cfg.run.end),
     seasonActive: cfg.seasonActive,
+    enabled: enabledMap[league] !== false,
     todayET: todayStr(),
   };
 }
@@ -1674,10 +1712,43 @@ export default {
     // Run metadata for one league (or all) -- the frontend builds its day
     // toggle from this instead of hardcoding the windows.
     if (url.pathname === "/api/fastbreak/run" && request.method === "GET") {
+      const enabledMap = await loadLeagueEnabled(env);
       if (url.searchParams.get("league") === "ALL") {
-        return json(Object.fromEntries(SUPPORTED_LEAGUES.map((l) => [l, runInfo(l)])));
+        return json(Object.fromEntries(SUPPORTED_LEAGUES.map((l) => [l, runInfo(l, enabledMap)])));
       }
-      return json(runInfo(leagueParam(url)));
+      return json(runInfo(leagueParam(url), enabledMap));
+    }
+
+    // Admin: league on/off switch + key entitlement probe (FB-3).
+    if (url.pathname === "/api/fastbreak/league/status" && request.method === "GET") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      return json({ enabled: await loadLeagueEnabled(env), keyCheck: (await loadJSON(env, KEY_CHECK_KEY)) || {} });
+    }
+    if (url.pathname === "/api/fastbreak/league/enable" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json();
+        const league = String(body.league || "").toUpperCase();
+        if (!SUPPORTED_LEAGUES.includes(league)) throw new Error(`league must be one of ${SUPPORTED_LEAGUES.join(", ")}`);
+        if (typeof body.enabled !== "boolean") throw new Error("enabled must be true or false");
+        const current = await loadLeagueEnabled(env);
+        current[league] = body.enabled;
+        await saveJSON(env, LEAGUE_ENABLED_KEY, current);
+        return json({ ok: true, enabled: current });
+      } catch (err) {
+        return json({ error: err.message }, 400);
+      }
+    }
+    if (url.pathname === "/api/fastbreak/league/keycheck" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json().catch(() => ({}));
+        const league = String(body.league || "NBA").toUpperCase();
+        if (!SUPPORTED_LEAGUES.includes(league)) throw new Error(`league must be one of ${SUPPORTED_LEAGUES.join(", ")}`);
+        return json({ ok: true, ...(await probeLeagueKey(env, league)) });
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
     }
 
     // Admin password check for the frontend's unlock gate. The page never

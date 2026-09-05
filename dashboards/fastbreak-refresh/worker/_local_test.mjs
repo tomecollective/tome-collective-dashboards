@@ -374,6 +374,25 @@ function countSince(mark) {
   body = await res.json();
   assert.equal(res.status, 200);
   assert.ok(!body.queued && body.players.length > 0, "subscriber read served from snapshot");
+  // League switch (FB-3): NBA defaults OFF in /run, admin can flip it; key
+  // probe reports what the key can read.
+  res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
+  body = await res.json();
+  assert.equal(body.NBA.enabled, false, "NBA defaults to disabled");
+  assert.equal(body.WNBA.enabled, true, "WNBA defaults to enabled");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/league/enable", { method: "POST", body: JSON.stringify({ league: "NBA", enabled: true }) }), env);
+  assert.equal(res.status, 401, "league switch needs admin");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/league/enable", { method: "POST", headers: { "X-Admin-Token": "t" }, body: JSON.stringify({ league: "NBA", enabled: true }) }), env);
+  assert.equal(res.status, 200);
+  res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=NBA"), env);
+  assert.equal((await res.json()).enabled, true, "NBA switched on");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/league/keycheck", { method: "POST", headers: { "X-Admin-Token": "t" }, body: JSON.stringify({ league: "NBA" }) }), env);
+  body = await res.json();
+  assert.equal(body.entitled, true, "mock key reads both endpoints");
+  res = await worker.fetch(new Request("https://x/api/fastbreak/league/status", { headers: { "X-Admin-Token": "t" } }), env);
+  body = await res.json();
+  assert.equal(body.enabled.NBA, true);
+  assert.equal(body.keyCheck.NBA.activePlayers, "ok");
   // Rate limiter binding, when present, is honoured.
   res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), { ...env, PUBLIC_RATE_LIMITER: { limit: async () => ({ success: false }) } });
   assert.equal(res.status, 429, "rate limited");
