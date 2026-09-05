@@ -174,6 +174,35 @@ assert.equal(T.isExhibitionGame(allStar), true, "TEAM COOP vs TEAM SPOON is an e
 assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "LAL", full_name: "Team LeBron" }, visitor_team: { id: 2, abbreviation: "MIL", full_name: "Team Giannis" } }), true, "NBA All-Star squads");
 assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "ATL", full_name: "Atlanta Dream", conference: "East" }, visitor_team: { id: 2, abbreviation: "TOR", full_name: "Toronto Tempo", conference: "East" } }), false, "real teams pass");
 assert.equal(T.isExhibitionGame({ home_team: { id: 1, abbreviation: "T0", full_name: "Team 0" }, visitor_team: { id: 2, abbreviation: "T1", full_name: "Team 1" } }), false, "fixture-style 'Team 0' is not treated as an exhibition");
+// Constant-time secret comparison: correct results, and the comparison path
+// never short-circuits -- with crypto.subtle.timingSafeEqual present it is
+// always called with equal-length buffers (it throws otherwise); without it
+// (Node) the XOR fold runs over every byte.
+assert.equal(T.secretEquals("abc", "abc"), true);
+assert.equal(T.secretEquals("abc", "abd"), false);
+assert.equal(T.secretEquals("abc", "abcd"), false, "length mismatch is false");
+assert.equal(T.secretEquals("", ""), false, "empty expected never matches");
+assert.equal(T.secretEquals("abc", ""), false);
+assert.equal(T.secretEquals(undefined, "abc"), false);
+assert.equal(T.secretInList("k2", ["k1", "k2", "k3"]), true);
+assert.equal(T.secretInList("k4", ["k1", "k2", "k3"]), false);
+assert.equal(T.secretInList("k1", []), false);
+{
+  const calls = [];
+  const subtle = globalThis.crypto.subtle;
+  const original = subtle.timingSafeEqual;
+  Object.defineProperty(subtle, "timingSafeEqual", { configurable: true, value: (a, b) => { calls.push([a.length, b.length]); let d = 0; for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i]; return d === 0; } });
+  try {
+    assert.equal(T.secretEquals("secret-token", "secret-token"), true);
+    assert.equal(T.secretEquals("secret-tokeX", "secret-token"), false);
+    assert.equal(T.secretEquals("short", "secret-token"), false);
+    assert.equal(T.secretInList("k9", ["k1", "k2"]), false);
+  } finally {
+    if (original) Object.defineProperty(subtle, "timingSafeEqual", { configurable: true, value: original }); else delete subtle.timingSafeEqual;
+  }
+  assert.equal(calls.length, 5, "every comparison (incl. every list candidate) goes through timingSafeEqual");
+  assert.ok(calls.every(([x, y]) => x === y), "timingSafeEqual always gets equal-length buffers");
+}
 console.log("pure helpers ok");
 
 // -- Objectives + projections write paths ------------------------------------------

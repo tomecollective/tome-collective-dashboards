@@ -375,7 +375,7 @@ function isSubscriber(request, url, env) {
   if (checkAdminToken(request, env)) return true;
   const keys = subscriberKeys(env);
   const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
-  return keys.length > 0 && keys.includes(presented);
+  return keys.length > 0 && secretInList(presented, keys);
 }
 
 function buildTeaser(payload) {
@@ -441,16 +441,48 @@ async function rateLimited(request, env, corsHeaders) {
 // (?resume=1) are authenticated by the per-run chainNonce stored in KV
 // progress and sent back as X-Refresh-Chain -- never by the admin token, so
 // the chain works even if the secret is rotated mid-run.
+// -- Constant-time secret comparison --------------------------------------------
+// Plain `===` short-circuits on the first differing byte, which leaks how many
+// leading characters of a guess match. Both branches below are constant-time:
+// crypto.subtle.timingSafeEqual (Workers runtime) when available, otherwise a
+// data-independent XOR fold over every byte. Length mismatches are handled by
+// comparing the guess against itself so the work done is the same either way.
+const __enc = new TextEncoder();
+function secretEquals(presented, expected) {
+  if (typeof presented !== "string" || typeof expected !== "string" || !expected) return false;
+  const a = __enc.encode(presented);
+  const b = __enc.encode(expected);
+  const sameLength = a.length === b.length;
+  const cmp = sameLength ? b : a; // always run a full comparison of a.length bytes
+  let equal;
+  if (globalThis.crypto?.subtle?.timingSafeEqual) {
+    equal = crypto.subtle.timingSafeEqual(a, cmp);
+  } else {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ cmp[i];
+    equal = diff === 0;
+  }
+  return sameLength && equal;
+}
+
+// True when `presented` equals ANY of `candidates`. Every candidate is
+// compared (no early exit), so the timing doesn't reveal which one matched.
+function secretInList(presented, candidates) {
+  let found = false;
+  for (const c of candidates) found = secretEquals(presented, c) || found;
+  return found;
+}
+
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
-  return Boolean(env.TCG_ADMIN_TOKEN) && token === env.TCG_ADMIN_TOKEN;
+  return secretEquals(token, env.TCG_ADMIN_TOKEN || "");
 }
 
 async function checkChainNonce(request, env) {
   const presented = request.headers.get("X-Refresh-Chain") || "";
   if (!presented || !env.CHASE_INDEX_KV) return false;
   const progress = await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json");
-  return Boolean(progress && progress.chainNonce && progress.chainNonce === presented);
+  return Boolean(progress && progress.chainNonce) && secretEquals(presented, progress.chainNonce);
 }
 
 // Processes one BATCH_SIZE-sized slice of cards, then either chains itself
@@ -573,76 +605,6 @@ export default {
           };
       if (isSubscriber(request, url, env)) return new Response(JSON.stringify(payload), { headers: corsHeaders });
       return new Response(JSON.stringify(buildTeaser(payload)), { headers: corsHeaders });
-    }
-
-    // TEMPORARY diagnostic endpoint -- returns JustTCG's raw response for one
-    // card so the actual field names can be confirmed (the blog-post-derived
-    // {t, p} priceHistory shape this file assumed turned out to be wrong: real
-    // runs update `price` fine but `history` comes back empty). The API key
-    // stays server-side; nothing secret is exposed by hitting this URL.
-    // Remove this block once toHistory()/refreshCard() are fixed and verified.
-    // ?mode=search (default) -- raw output of the name/set text search, to
-    // see why almost nothing is resolving.
-    // ?mode=price -- raw price+history fetch using an already-cached
-    // resolution (only works once something has resolved at least once).
-    // ?raw=1 -- pass EVERY other query param straight through to JustTCG's
-    // /v1/cards as-is (e.g. ?raw=1&q=Charizard&game=pokemon), so several
-    // combinations can be tried without redeploying between each one.
-    // Diagnostic endpoints proxy JustTCG with the server-side key: admin only.
-    if (url.pathname === "/api/debug-card" && !checkAdminToken(request, env)) {
-      return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
-    }
-
-    if (url.pathname === "/api/debug-card" && url.searchParams.get("raw") === "1") {
-      if (!env.JUSTTCG_API_KEY) {
-        return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
-      }
-      const passthrough = new URLSearchParams(url.searchParams);
-      passthrough.delete("raw");
-      const res = await fetch(`${JUSTTCG_BASE}?${passthrough.toString()}`, {
-        headers: { "x-api-key": env.JUSTTCG_API_KEY },
-      });
-      const body = await res.text();
-      return new Response(body, { status: res.status, headers: corsHeaders });
-    }
-
-    if (url.pathname === "/api/debug-card") {
-      if (!env.JUSTTCG_API_KEY) {
-        return new Response(JSON.stringify({ error: "JUSTTCG_API_KEY not set" }), { status: 500, headers: corsHeaders });
-      }
-      const name = url.searchParams.get("name") || "M Charizard EX (X) (Secret) - 108/106";
-      const setName = url.searchParams.get("set") || "Flashfire";
-      const mode = url.searchParams.get("mode") || "search";
-
-      if (mode === "search") {
-        const searchName = name.split(" - ")[0].trim();
-        const res = await fetch(
-          `${JUSTTCG_BASE}?${new URLSearchParams({ q: searchName, set: setName, game: GAME, limit: "5" }).toString()}`,
-          { headers: { "x-api-key": env.JUSTTCG_API_KEY } }
-        );
-        const body = await res.text();
-        return new Response(body, { status: res.status, headers: corsHeaders });
-      }
-
-      const cached = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(resolveKey(name, setName), "json") : null;
-      if (!cached) {
-        return new Response(JSON.stringify({ error: "no cached resolution for that name/set -- pass ?name=&set= matching a card already refreshed at least once, or use ?mode=search" }), {
-          status: 404,
-          headers: corsHeaders,
-        });
-      }
-      const params = {
-        cardId: cached.cardId,
-        condition: CONDITION,
-        include_price_history: "true",
-        priceHistoryDuration: PRICE_HISTORY_DURATION,
-      };
-      if (cached.variantId) params.variantId = cached.variantId;
-      const res = await fetch(`${JUSTTCG_BASE}?${new URLSearchParams(params).toString()}`, {
-        headers: { "x-api-key": env.JUSTTCG_API_KEY },
-      });
-      const body = await res.text();
-      return new Response(body, { status: res.status, headers: corsHeaders });
     }
 
     // Quick health check for the daily refresh, independent of the cron's

@@ -31,9 +31,41 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
 }
 
+// -- Constant-time secret comparison --------------------------------------------
+// Plain `===` short-circuits on the first differing byte, which leaks how many
+// leading characters of a guess match. Both branches below are constant-time:
+// crypto.subtle.timingSafeEqual (Workers runtime) when available, otherwise a
+// data-independent XOR fold over every byte. Length mismatches are handled by
+// comparing the guess against itself so the work done is the same either way.
+const __enc = new TextEncoder();
+function secretEquals(presented, expected) {
+  if (typeof presented !== "string" || typeof expected !== "string" || !expected) return false;
+  const a = __enc.encode(presented);
+  const b = __enc.encode(expected);
+  const sameLength = a.length === b.length;
+  const cmp = sameLength ? b : a; // always run a full comparison of a.length bytes
+  let equal;
+  if (globalThis.crypto?.subtle?.timingSafeEqual) {
+    equal = crypto.subtle.timingSafeEqual(a, cmp);
+  } else {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ cmp[i];
+    equal = diff === 0;
+  }
+  return sameLength && equal;
+}
+
+// True when `presented` equals ANY of `candidates`. Every candidate is
+// compared (no early exit), so the timing doesn't reveal which one matched.
+function secretInList(presented, candidates) {
+  let found = false;
+  for (const c of candidates) found = secretEquals(presented, c) || found;
+  return found;
+}
+
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
-  return Boolean(env.FASTBREAK_ADMIN_TOKEN) && token === env.FASTBREAK_ADMIN_TOKEN;
+  return secretEquals(token, env.FASTBREAK_ADMIN_TOKEN || "");
 }
 
 // Subscriber gate -- same contract as the refresh Worker: X-Tome-Key (or
@@ -44,7 +76,7 @@ function subscriberGate(request, url, env) {
   const keys = String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
   if (!keys.length) return json({ error: "Subscriber access is not configured on this service (TOME_SUBSCRIBER_KEYS secret is unset)." }, 503);
   const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
-  if (!keys.includes(presented)) return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from your subscriber post.", locked: true }, 401);
+  if (!secretInList(presented, keys)) return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from your subscriber post.", locked: true }, 401);
   return null;
 }
 
