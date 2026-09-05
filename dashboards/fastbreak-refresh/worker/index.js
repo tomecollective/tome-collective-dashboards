@@ -2,23 +2,29 @@
 // Scheduled Worker: pulls live BALLDONTLIE data, builds the Fast Break dashboard
 // payload (schedule tiles, per-objective Proj/YTD/L10 + color tiers, auto-
 // weighted Ovr Rank), and caches it in KV for the public-facing tome-fastbreak
-// Worker to serve. Also owns the objectives schedule (viewable by anyone,
-// editable only with the admin password) that this build reads from KV.
+// Worker (and the GitHub Pages frontend) to serve. Also owns the objectives
+// schedule (viewable by anyone, editable only with the admin password).
+//
+// LEAGUES: WNBA and NBA both run through the same live pipeline; everything
+// league-specific (API base, score/status field shapes, season numbering,
+// run window, KV keys) lives in the LEAGUES table below. NBA Historic is a
+// separate simulated pipeline in ./historic.js.
 //
 // RUN model: objectives/games/badge info are scheduled per calendar date
-// across a multi-day "Run" (Run 10: Aug 19-30, 2026). Each date can carry a
-// separate Classic objective set and Pro objective set (Pro also carries an
-// optional Top Shot badge/set name). The frontend's day toggle asks this
-// Worker to build any date in that window on demand.
+// across a multi-day "Run" per league (WNBA Run 11: Sept 17-24, 2026; NBA
+// Run 1: Oct 20-26, 2026). Each date carries a separate Classic objective set
+// and Pro objective set (Pro also carries an optional Top Shot badge/set
+// name). Rotowire projections are uploaded once per league/date and shared
+// by Classic and Pro (a player's projected PTS doesn't depend on the mode).
 //
-// NBA HISTORIC: a second, independent mode lives in ./historic.js -- a
-// simulated NBA season (no live game feed exists for it) seeded from last
-// season's fastbreak_historic_stats sheet. It reads/writes its own
-// "fastbreak:historic:*" KV keys only, so it cannot affect anything WNBA
-// (fastbreak:latest, fastbreak:objectives, fastbreak:fulldata, ...) in this
-// same namespace. See the three new /api/fastbreak/historic* routes below --
-// that's the entire integration surface; buildDashboard/refreshAndStore and
-// the scheduled() cron handler are untouched.
+// RESUMABLE DAY BUILD: a full NBA slate can be 10-15 games = 300-450 active
+// players, which is ~80 BALLDONTLIE calls -- well past the Cloudflare Free
+// plan's 50-subrequests-per-invocation ceiling. Instead of dropping players
+// to fit (the old behavior), each (league, date) build is persisted in KV as
+// it goes and resumed by the next request or cron tick until every player
+// is loaded. The finished snapshot is published under its own KV key and
+// served (fresh for DAY_CACHE_FRESH_MS) to every viewer without re-fetching,
+// so on-demand page loads are cheap and no player is ever silently cut.
 
 import {
   simulateHistoricDay,
@@ -26,47 +32,122 @@ import {
   seedHistoric,
   getCurrentHistoricDay,
   setCurrentHistoricDay,
+  upsertHistoricObjectivesDay,
+  getHistoricStatus,
 } from "./historic.js";
 
-const BALLDONTLIE_BASE = "https://api.balldontlie.io/wnba/v1";
+const BDL_ROOT = "https://api.balldontlie.io";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
 const MAX_SUBREQUESTS = 45; // stay under Cloudflare Free plan's 50 subrequests/invocation ceiling
-const RECENT_GAMES_LOOKBACK_DAYS = 45; // roughly weekly cadence + byes; combined with full
-// pagination below (not just page 1), this reliably captures >=10 games/team.
 const RECENT_GAMES_MAX_PAGES = 5; // safety cap on pagination (500 games) to bound subrequest cost
 const YTD_MAX_PAGES = 6; // safety cap on season-long game-id pagination for YTD
+const DAY_CACHE_FRESH_MS = 30 * 60 * 1000; // a finished day snapshot is served as-is for 30 min
+const PAST_DAY_CACHE_FRESH_MS = 6 * 60 * 60 * 1000; // a past date's finals don't move: 6 hours
+const ET_TZ = "America/New_York";
 
-// -- Run schedule --------------------------------------------------------------
-// Run 10: Day 1 = Aug 19, 2026 through Day 12 = Aug 30, 2026 (inclusive).
-const RUN_START = "2026-08-19";
-const RUN_END = "2026-08-30";
+// -- Leagues --------------------------------------------------------------------
+// Everything that differs between the two live BALLDONTLIE leagues. Add a
+// league here (and in the frontend's MODES table) to bring another one online.
+const LEAGUES = {
+  WNBA: {
+    key: "WNBA",
+    base: `${BDL_ROOT}/wnba/v1`,
+    statsPath: "/player_stats",
+    advancedUrl: `${BDL_ROOT}/wnba/v1/player_game_advanced_stats`,
+    // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
+    // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
+    run: { label: "Run 11", start: "2026-09-17", end: "2026-09-24" },
+    // Cron refreshes only run while a league is in season (playoffs included).
+    seasonActive: { start: "2026-05-01", end: "2026-10-31" },
+    // How far back to look for a team's last 10 completed games. WNBA plays
+    // roughly every other day, so 45 days comfortably covers 10 games + byes.
+    recentLookbackDays: 45,
+    // BALLDONTLIE numbers a WNBA season by its calendar year.
+    seasonFor: (dateStr) => Number(dateStr.slice(0, 4)),
+    homeScore: (g) => (typeof g.home_score === "number" ? g.home_score : null),
+    awayScore: (g) => (typeof g.away_score === "number" ? g.away_score : null),
+    // Live-confirmed: WNBA uses "pre" / "in" / "post".
+    status: (g) => (g.status === "post" || g.status === "in" || g.status === "pre" ? g.status : "pre"),
+    minutesPerGame: 40,
+    keys: {
+      latest: "fastbreak:latest",
+      fulldata: "fastbreak:fulldata",
+      fulldataBuild: "fastbreak:fulldata:build",
+      dayPrefix: "fastbreak:day:",
+    },
+    noGamesNote: "No WNBA games scheduled on this date.",
+  },
+  NBA: {
+    key: "NBA",
+    base: `${BDL_ROOT}/v1`,
+    statsPath: "/stats",
+    // v2 advanced stats carries points_paint (flat, top-level). GOAT tier.
+    advancedUrl: `${BDL_ROOT}/nba/v2/stats/advanced`,
+    // Run 1 (2026-27 season): opening night Tue Oct 20 through Mon Oct 26.
+    run: { label: "Run 1", start: "2026-10-20", end: "2026-10-26" },
+    seasonActive: { start: "2026-10-15", end: "2027-06-30" },
+    // At season start there are no current-season games yet, so L10 has to
+    // reach back into last season (which ended in June). 240 days covers it.
+    recentLookbackDays: 240,
+    // BALLDONTLIE numbers an NBA season by its starting year: 2026 = 2026-27.
+    seasonFor: (dateStr) => {
+      const y = Number(dateStr.slice(0, 4));
+      const m = Number(dateStr.slice(5, 7));
+      return m >= 8 ? y : y - 1;
+    },
+    homeScore: (g) => (typeof g.home_team_score === "number" ? g.home_team_score : null),
+    awayScore: (g) => (typeof g.visitor_team_score === "number" ? g.visitor_team_score : null),
+    // NBA status is a display string ("Final", "1st Qtr", "7:00 pm ET", ...)
+    // plus a newer status_state field. Normalize to the WNBA vocabulary.
+    status: (g) => {
+      const st = String(g.status_state || "").toLowerCase();
+      if (st === "final" || st === "post") return "post";
+      if (st === "in" || st === "in_progress" || st === "live") return "in";
+      if (st === "pre" || st === "scheduled") return "pre";
+      const s = String(g.status || "");
+      if (/^final/i.test(s)) return "post";
+      if (typeof g.period === "number" && g.period > 0) return "in";
+      return "pre";
+    },
+    minutesPerGame: 48,
+    keys: {
+      latest: "fastbreak:nba:latest",
+      fulldata: "fastbreak:nba:fulldata",
+      fulldataBuild: "fastbreak:nba:fulldata:build",
+      dayPrefix: "fastbreak:nba:day:",
+    },
+    noGamesNote: "No NBA games scheduled on this date.",
+  },
+};
+const SUPPORTED_LEAGUES = Object.keys(LEAGUES);
+const DEFAULT_LEAGUE = "WNBA";
+const SUPPORTED_MODES = ["Classic", "Pro"];
 
-function dayNumberForDate(dateStr) {
-  const start = new Date(`${RUN_START}T00:00:00Z`);
+function leagueConfig(league) {
+  return LEAGUES[league] || LEAGUES[DEFAULT_LEAGUE];
+}
+
+function dayNumberForDate(league, dateStr) {
+  const start = new Date(`${leagueConfig(league).run.start}T00:00:00Z`);
   const d = new Date(`${dateStr}T00:00:00Z`);
   return Math.round((d - start) / 86400000) + 1;
 }
 
-function isWithinRun(dateStr) {
-  return dateStr >= RUN_START && dateStr <= RUN_END;
+function isWithinRun(league, dateStr) {
+  const run = leagueConfig(league).run;
+  return dateStr >= run.start && dateStr <= run.end;
 }
 
-// -- League / mode -----------------------------------------------------------
-// Only WNBA has live data right now. NBA (season not in progress) is disabled
-// in the frontend toggle. Historic (NBA) now has a pipeline -- see
-// ./historic.js and the /api/fastbreak/historic* routes below -- but it runs
-// fully independently of buildDashboard/SUPPORTED_LEAGUE, so this constant
-// deliberately still describes only the live BALLDONTLIE-backed path.
-// Classic and Pro each carry their own objective set for a given date (see
-// objectivesForDate below) -- Pro additionally carries a Top Shot badge/set
-// requirement (badgeSetName).
-const SUPPORTED_LEAGUE = "WNBA";
-const SUPPORTED_MODES = ["Classic", "Pro"];
+function isSeasonActive(league, dateStr) {
+  const s = leagueConfig(league).seasonActive;
+  return dateStr >= s.start && dateStr <= s.end;
+}
 
 // -- Objective -> stat field mapping ------------------------------------------
-// `source: "stats"` reads from /player_stats. `source: "advanced"` reads from
-// /player_game_advanced_stats (needed for PITP, which isn't a standard
-// box-score stat). Add new objective codes here as they come up.
+// Fields read from the slim per-game rows this Worker stores in its day
+// cache (see slimStatRow / slimAdvRow). `source: "stats"` rows come from the
+// box-score endpoint; `source: "advanced"` rows come from the advanced-stats
+// endpoint (needed for PITP, which isn't a standard box-score stat).
 const STAT_FIELD_MAP = {
   PTS: { source: "stats", field: (s) => s.pts, label: "PTS" },
   REB: { source: "stats", field: (s) => s.reb, label: "REB" },
@@ -81,15 +162,9 @@ const STAT_FIELD_MAP = {
   FTM: { source: "stats", field: (s) => s.ftm, label: "FTM" },
   FTA: { source: "stats", field: (s) => s.fta, label: "FTA" },
   OREB: { source: "stats", field: (s) => s.oreb, label: "OREB" },
-  // PITP: points in the paint. Not a standard box-score stat -- lives under
-  // player_game_advanced_stats.stats.misc.points_paint. Confirmed working
-  // against the live endpoint.
-  PITP: {
-    source: "advanced",
-    field: (a) => a.stats?.misc?.points_paint ?? a.misc?.points_paint,
-    label: "PITP",
-  },
+  PITP: { source: "advanced", field: (a) => a.pitp, label: "PITP" },
 };
+const BOX_STAT_KEYS = ["pts", "reb", "ast", "stl", "blk", "turnover", "fgm", "fga", "fg3m", "fg3a", "ftm", "fta", "oreb"];
 
 // Defaults when a date in the run has no admin-set objectives yet.
 const DEFAULT_OBJECTIVES = {
@@ -97,25 +172,43 @@ const DEFAULT_OBJECTIVES = {
   Pro: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 80 }],
 };
 
+// -- BALLDONTLIE plumbing ---------------------------------------------------------
+
 function bdlHeaders(env) {
   return { Authorization: env.BALLDONTLIE_API_KEY };
 }
 
-async function bdlFetch(path, env) {
-  const res = await fetch(`${BALLDONTLIE_BASE}${path}`, { headers: bdlHeaders(env) });
+async function bdlFetch(url, env) {
+  const res = await fetch(url, { headers: bdlHeaders(env) });
   if (!res.ok) {
     const bodyText = await res.text().catch(() => "");
-    throw new Error(`BALLDONTLIE ${path} failed: ${res.status} | body=${bodyText.slice(0, 200)}`);
+    throw new Error(`BALLDONTLIE ${url.replace(BDL_ROOT, "")} failed: ${res.status} | body=${bodyText.slice(0, 200)}`);
   }
   return res.json();
 }
 
-function currentSeason() {
-  return new Date().getFullYear();
+function leagueFetch(cfg, path, env) {
+  return bdlFetch(`${cfg.base}${path}`, env);
 }
 
+// -- Dates (Eastern Time, via Intl -- handles the EDT/EST switch) ----------------
+
+function etDateStr(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function etHour(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: ET_TZ, hour: "numeric", hour12: false }).formatToParts(d);
+  const h = Number(parts.find((p) => p.type === "hour")?.value);
+  return h === 24 ? 0 : h;
+}
+
+// "Today" for every build is the ET calendar date, not UTC -- a 9pm CT cron
+// tick is already "tomorrow" in UTC and used to build the wrong day.
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return etDateStr(new Date());
 }
 
 function addDaysStr(dateStr, days) {
@@ -124,39 +217,30 @@ function addDaysStr(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// Derives a game's real ET calendar date from its tip-off datetime, using
-// the same fixed ET_OFFSET_HOURS used for display. Returns null when no
-// parseable datetime is available.
+// A game's real ET calendar date from its tip-off datetime. A plain
+// YYYY-MM-DD (NBA's `date` field, which is already the ET calendar date) is
+// returned as-is rather than being parsed as UTC midnight (which would shift
+// it to the previous ET day). Returns null when nothing parseable exists.
 function etDateStrForGame(g) {
   const iso = g.datetime || g.date;
   if (!iso) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const et = new Date(d.getTime() + ET_OFFSET_HOURS * 3600 * 1000);
-  return et.toISOString().slice(0, 10);
+  return etDateStr(d);
 }
 
 // BUG FIX (verified live 2026-08-22): BALLDONTLIE's `dates[]=` filter buckets
-// games by the UTC calendar date of their actual tip-off time, not by the
-// Run's ET calendar date. A 9-10pm ET game tips off after midnight UTC -- on
-// the *next* UTC date -- so a naive dates[]=dateStr query silently dropped
-// those late games from "today" (they surfaced under tomorrow's query
-// instead) and could pull in the tail end of a prior ET night's late game
-// that happened to cross into today's UTC date. Confirmed live: Aug 22's
-// true ET slate (IND@NY 7pm, CON@LAS 9pm, ATL@PHX 10pm) was split across the
-// Aug 22 and Aug 23 UTC-date queries, while a leftover Aug 21 late game
-// (POR@TOR) leaked into the Aug 22 UTC bucket.
-//
-// Fix: query both UTC dates a full ET day can straddle (dateStr and the day
-// after), then keep only games whose real ET calendar date -- derived from
-// their tip-off datetime -- actually equals dateStr. When a game has no
-// parseable datetime (defensive fallback only), trust whichever original
-// UTC-date query bucket it came from rather than dropping it.
-async function getGamesForDate(dateStr, env) {
+// WNBA games by the UTC calendar date of their actual tip-off time, not by
+// the Run's ET calendar date, so a 9-10pm ET game surfaces under the next
+// UTC date. Fix: query both UTC dates a full ET day can straddle, then keep
+// only games whose real ET calendar date equals dateStr. Applied to both
+// leagues -- for NBA (whose `date` is already ET) it is a harmless no-op.
+async function getGamesForDate(cfg, dateStr, env) {
   const nextDateStr = addDaysStr(dateStr, 1);
   const [dataA, dataB] = await Promise.all([
-    bdlFetch(`/games?dates[]=${dateStr}`, env),
-    bdlFetch(`/games?dates[]=${nextDateStr}`, env),
+    leagueFetch(cfg, `/games?dates[]=${dateStr}&per_page=100`, env),
+    leagueFetch(cfg, `/games?dates[]=${nextDateStr}&per_page=100`, env),
   ]);
   const seen = new Set();
   const games = [];
@@ -172,31 +256,62 @@ async function getGamesForDate(dateStr, env) {
     const etDate = etDateStrForGame(g);
     if (etDate === dateStr) games.push(g);
   }
-  return games;
+  return games.map((g) => slimGame(cfg, g));
 }
 
-async function getTeamRosters(teamIds, env) {
-  // Live-confirmed: plain /players returns every player EVER on a team, sorted
-  // oldest-first by id. With per_page=100, teams with a long history fill the
-  // page with retired/legacy players before ever reaching current roster
-  // members. /players/active returns only currently active players.
+// One league-neutral shape for a game, so nothing downstream needs to know
+// about home_score vs home_team_score or "post" vs "Final".
+function slimGame(cfg, g) {
+  return {
+    id: g.id,
+    date: g.date || null,
+    datetime: g.datetime || null,
+    season: g.season ?? null,
+    status: cfg.status(g),
+    homeId: g.home_team?.id ?? null,
+    homeAbbr: g.home_team?.abbreviation || "",
+    homeName: g.home_team?.full_name || "",
+    awayId: g.visitor_team?.id ?? null,
+    awayAbbr: g.visitor_team?.abbreviation || "",
+    awayName: g.visitor_team?.full_name || "",
+    homeScore: cfg.homeScore(g),
+    awayScore: cfg.awayScore(g),
+  };
+}
+
+async function getTeamRosters(cfg, teamIds, env) {
+  // Live-confirmed: plain /players returns every player EVER on a team,
+  // oldest-first. /players/active returns only currently active players.
+  // A 15-game NBA slate is 30 teams * ~17 = ~500 active players, so follow
+  // the cursor (capped) instead of trusting one page of 100.
   const qs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
-  const data = await bdlFetch(`/players/active?${qs}&per_page=100`, env);
-  return data.data || [];
+  let players = [];
+  let cursor = null;
+  let requestsUsed = 0;
+  for (let page = 0; page < 6; page++) {
+    const cursorQs = cursor != null ? `&cursor=${cursor}` : "";
+    const data = await leagueFetch(cfg, `/players/active?${qs}&per_page=100${cursorQs}`, env);
+    requestsUsed += 1;
+    const pageData = data.data || [];
+    players = players.concat(pageData);
+    const nextCursor = data.meta?.next_cursor;
+    if (!nextCursor || pageData.length < 100) break;
+    cursor = nextCursor;
+  }
+  return { players, requestsUsed };
 }
 
-// Current injury reports for the teams playing today. player_injuries always
-// returns live data (never historical), and status values seen in the wild
-// include "Out", "Day-To-Day", and "Questionable" -- the frontend maps those
-// to a red ("Out") or yellow (everything else, i.e. probable/questionable/
-// day-to-day) pill next to the player name. Requires ALL-STAR tier or higher
-// on the BALLDONTLIE key; if the key lacks access, this fails soft (empty
-// map) rather than breaking the whole dashboard build.
-async function getInjuriesForTeams(teamIds, env) {
+// Current injury reports for the teams playing today (ALL-STAR tier). Fails
+// soft (empty list) rather than breaking the whole build.
+async function getInjuriesForTeams(cfg, teamIds, env) {
   const qs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
   try {
-    const data = await bdlFetch(`/player_injuries?${qs}&per_page=100`, env);
-    return data.data || [];
+    const data = await leagueFetch(cfg, `/player_injuries?${qs}&per_page=100`, env);
+    return (data.data || []).map((inj) => ({
+      playerId: inj.player?.id ?? null,
+      status: inj.status || null,
+      note: inj.description || inj.comment || inj.return_date || null,
+    }));
   } catch (err) {
     console.error(`player_injuries fetch failed (continuing without injury data): ${err.message}`);
     return [];
@@ -209,14 +324,11 @@ function chunk(arr, size) {
   return out;
 }
 
-// Batched call(s) across ALL relevant teams to get real recent games we trust, so
-// we can sort/pick "last 10" ourselves instead of relying on default API ordering.
-// Live-confirmed bug: this endpoint returns games OLDEST-FIRST and caps at
-// per_page=100. Fix: follow meta.next_cursor and fetch every page in the window
-// (capped at maxPages as a subrequest-budget safety valve), then sort ourselves.
-async function getGamesForTeamsInWindow(teamIds, env, { startStr, endStr, maxPages }) {
-  const qs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
-
+// Games in a date window for a set of teams (or leaguewide when teamIds is
+// empty). Live-confirmed: returns OLDEST-FIRST and caps at per_page=100, so
+// follow meta.next_cursor (capped at maxPages) and sort ourselves.
+async function getGamesInWindow(cfg, teamIds, env, { startStr, endStr, maxPages }) {
+  const teamQs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
   let games = [];
   let cursor = null;
   let requestsUsed = 0;
@@ -224,12 +336,13 @@ async function getGamesForTeamsInWindow(teamIds, env, { startStr, endStr, maxPag
 
   for (let page = 0; page < maxPages; page++) {
     const cursorQs = cursor != null ? `&cursor=${cursor}` : "";
-    const data = await bdlFetch(
-      `/games?${qs}&start_date=${startStr}&end_date=${endStr}&per_page=100${cursorQs}`,
+    const data = await leagueFetch(
+      cfg,
+      `/games?${teamQs ? teamQs + "&" : ""}start_date=${startStr}&end_date=${endStr}&per_page=100${cursorQs}`,
       env
     );
     requestsUsed += 1;
-    const pageData = data.data || [];
+    const pageData = (data.data || []).map((g) => slimGame(cfg, g));
     games = games.concat(pageData);
     const nextCursor = data.meta?.next_cursor;
     if (!nextCursor || pageData.length < 100) {
@@ -243,22 +356,22 @@ async function getGamesForTeamsInWindow(teamIds, env, { startStr, endStr, maxPag
   return { games, requestsUsed, truncated };
 }
 
-// Group by team, sort each team's games by date descending ourselves (never
-// trust API default ordering), take the most recent `n` completed games/team.
+function gameSortDate(g) {
+  return new Date(g.datetime || g.date || 0);
+}
+
+// Group by team, sort each team's completed games by date descending, take the
+// most recent `n` per team.
 function pickLastNGameIdsPerTeam(games, teamIds, n) {
   const byTeam = new Map(teamIds.map((id) => [id, []]));
   for (const g of games) {
-    // Live-confirmed: BALLDONTLIE uses "post" (not "Final") for completed
-    // games, "in" for in-progress, "pre" for upcoming. Only completed games count.
-    if (g.status && g.status !== "post") continue;
-    const homeId = g.home_team?.id;
-    const visId = g.visitor_team?.id;
-    if (homeId && byTeam.has(homeId)) byTeam.get(homeId).push(g);
-    if (visId && byTeam.has(visId)) byTeam.get(visId).push(g);
+    if (g.status !== "post") continue;
+    if (g.homeId != null && byTeam.has(g.homeId)) byTeam.get(g.homeId).push(g);
+    if (g.awayId != null && byTeam.has(g.awayId)) byTeam.get(g.awayId).push(g);
   }
   const gameIds = new Set();
   for (const [, teamGames] of byTeam) {
-    teamGames.sort((a, b) => new Date(b.date) - new Date(a.date));
+    teamGames.sort((a, b) => gameSortDate(b) - gameSortDate(a));
     for (const g of teamGames.slice(0, n)) gameIds.add(g.id);
   }
   return gameIds;
@@ -268,21 +381,73 @@ function buildQs(parts) {
   return parts.filter(Boolean).join("&");
 }
 
-async function getStatsForChunk(playerIds, season, gameIds, env) {
-  const playerQs = playerIds.map((id) => `player_ids[]=${id}`).join("&");
-  const gameQs = [...gameIds].map((id) => `game_ids[]=${id}`).join("&");
-  const qs = buildQs([playerQs, `seasons[]=${season}`, gameQs, "per_page=100"]);
-  const data = await bdlFetch(`/player_stats?${qs}`, env);
-  return data.data || [];
+function seasonsQs(seasons) {
+  return [...new Set(seasons.filter((s) => s != null))].map((s) => `seasons[]=${s}`).join("&");
 }
 
-async function getAdvancedForChunk(playerIds, season, gameIds, env) {
+// Both stat endpoints return rows OLDEST-FIRST and cap at per_page=100. An
+// L10-scoped query (10 players x 10 games) always fits one page; a season-
+// scoped (YTD) query does not once teams pass 10 games, so it follows the
+// cursor up to `maxPages` (see YTD_STAT_PAGES_PER_CHUNK). Returns
+// { rows, requestsUsed, truncated }.
+async function fetchStatPages(url, env, { maxPages }) {
+  let rows = [];
+  let cursor = null;
+  let requestsUsed = 0;
+  let truncated = false;
+  for (let page = 0; page < maxPages; page++) {
+    const cursorQs = cursor != null ? `&cursor=${cursor}` : "";
+    const data = await bdlFetch(`${url}${cursorQs}`, env);
+    requestsUsed += 1;
+    const pageData = data.data || [];
+    rows = rows.concat(pageData);
+    const nextCursor = data.meta?.next_cursor;
+    if (!nextCursor || pageData.length < 100) break;
+    cursor = nextCursor;
+    if (page === maxPages - 1) truncated = true;
+  }
+  return { rows, requestsUsed, truncated };
+}
+
+function getStatsForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages = 1 } = {}) {
+  const playerQs = playerIds.map((id) => `player_ids[]=${id}`).join("&");
+  const gameQs = [...gameIds].map((id) => `game_ids[]=${id}`).join("&");
+  const qs = buildQs([playerQs, seasonsQs(seasons), gameQs, "per_page=100"]);
+  return fetchStatPages(`${cfg.base}${cfg.statsPath}?${qs}`, env, { maxPages });
+}
+
+function getAdvancedForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages = 1 } = {}) {
   const playerQs = playerIds.map((id) => `player_ids[]=${id}`).join("&");
   const gameQs = [...gameIds].map((id) => `game_ids[]=${id}`).join("&");
   // period=0 = full game, avoids duplicate rows from quarter-level breakdowns.
-  const qs = buildQs([playerQs, `seasons[]=${season}`, gameQs, "period=0", "per_page=100"]);
-  const data = await bdlFetch(`/player_game_advanced_stats?${qs}`, env);
-  return data.data || [];
+  const qs = buildQs([playerQs, seasonsQs(seasons), gameQs, "period=0", "per_page=100"]);
+  return fetchStatPages(`${cfg.advancedUrl}?${qs}`, env, { maxPages });
+}
+
+// Pages allowed per YTD-scoped stats query per 10-player chunk: 3 pages = 300
+// rows = 10 players x 30 games. Past that (deep into an NBA season) YTD is
+// best-effort from the earliest games in the window and the payload says so.
+const YTD_STAT_PAGES_PER_CHUNK = 3;
+
+// Slim per-game rows stored in the day cache. Keeping only the numbers we
+// use keeps a 450-player NBA day well under KV's value size limit.
+function slimStatRow(row) {
+  const out = {
+    gid: row.game?.id ?? row.game_id,
+    date: row.game?.date || null,
+  };
+  for (const k of BOX_STAT_KEYS) out[k] = typeof row[k] === "number" ? row[k] : null;
+  return out;
+}
+
+function slimAdvRow(row) {
+  // WNBA: stats.misc.points_paint. NBA v2: flat points_paint.
+  const pitp = row.points_paint ?? row.stats?.misc?.points_paint ?? row.misc?.points_paint;
+  return {
+    gid: row.game?.id ?? row.game_id,
+    date: row.game?.date || null,
+    pitp: typeof pitp === "number" ? pitp : null,
+  };
 }
 
 function average(nums) {
@@ -295,42 +460,21 @@ function round1(n) {
   return n == null ? null : Math.round(n * 10) / 10;
 }
 
-// Defensive: even with explicit game_ids[] filtering upstream, sort each
-// player's returned rows by game date descending and cap at `n` before
-// averaging. Belt-and-suspenders against ever trusting API default ordering.
+// Defensive: sort a player's rows by game date descending and cap at `n`
+// before averaging, never trusting API default ordering.
 function lastNByDate(lines, n) {
-  return [...lines].sort((a, b) => new Date(b.game?.date || 0) - new Date(a.game?.date || 0)).slice(0, n);
+  return [...lines].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, n);
 }
 
 // -- Full Data (leaguewide L10/YTD for every active player) -------------------
-// A separate build from the day's Fast Break slate: instead of ~2 teams'
-// rosters, this covers every active WNBA player and every Fast Break-relevant
-// box-score stat, not just the day's 1-2 objectives. That is roughly 13-15x
-// more player-chunks than a normal day build, which does not fit in one
-// invocation's subrequest budget -- so this build resumes across multiple
-// scheduled ticks, persisting progress in KV between ticks (see
-// advanceFullDataBuild below), and only replaces the published cache once a
-// full pass finishes. Team PPG/PAPG are computed directly from this season's
-// final scores (data already fetched for stat-window scoping) rather than
-// from BALLDONTLIE's team_season_stats/team_season_advanced_stats endpoints,
-// which require GOAT tier -- this dashboard runs on an ALL-STAR key.
-const FULLDATA_KV_KEY = "fastbreak:fulldata";
-const FULLDATA_BUILD_KV_KEY = "fastbreak:fulldata:build";
+// Resumes across scheduled ticks, persisting progress in KV, and only
+// replaces the published cache once a full pass finishes. Per league.
 const FULLDATA_REBUILD_INTERVAL_MS = 20 * 60 * 60 * 1000; // rebuild roughly once/day
-const FULLDATA_ROSTER_MAX_PAGES = 4; // safety cap: 4 * per_page(100) = room for 400 active players
-// Basic box-score stats only (excludes PITP, which lives under the separate
-// player_game_advanced_stats endpoint and would double the per-chunk request
-// cost across the whole league roster).
+const FULLDATA_ROSTER_MAX_PAGES = 6; // 6 * 100 = room for an NBA-sized active pool
 const FULLDATA_STAT_CODES = Object.keys(STAT_FIELD_MAP).filter((code) => STAT_FIELD_MAP[code].source === "stats");
-// Box-score codes summed per-team (YTD) to build the Team Data tab's season
-// averages (REB, OREB, AST, STL, BLK, TOV, FGM, FGA, 3PM, 3PA) -- FG%/3P% are
-// derived from these sums at finish time rather than averaged directly.
 const TEAM_BOX_CODES = ["REB", "OREB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "3PM", "3PA"];
 
-// All active players leaguewide (no team filter), paginated -- a full WNBA
-// roster is 150-200+ active players, well past the per_page=100 cap that the
-// day-view's team-scoped getTeamRosters never has to worry about.
-async function getAllActivePlayers(env, { maxPages }) {
+async function getAllActivePlayers(cfg, env, { maxPages }) {
   let players = [];
   let cursor = null;
   let requestsUsed = 0;
@@ -338,7 +482,7 @@ async function getAllActivePlayers(env, { maxPages }) {
 
   for (let page = 0; page < maxPages; page++) {
     const cursorQs = cursor != null ? `&cursor=${cursor}` : "";
-    const data = await bdlFetch(`/players/active?per_page=100${cursorQs}`, env);
+    const data = await leagueFetch(cfg, `/players/active?per_page=100${cursorQs}`, env);
     requestsUsed += 1;
     const pageData = data.data || [];
     players = players.concat(pageData);
@@ -354,56 +498,21 @@ async function getAllActivePlayers(env, { maxPages }) {
   return { players, requestsUsed, truncated };
 }
 
-// Leaguewide games in a date window (no team filter) -- same
-// oldest-first/pagination behavior as getGamesForTeamsInWindow above, just
-// without scoping to a specific slate's teams.
-async function getLeagueGamesInWindow(env, { startStr, endStr, maxPages }) {
-  let games = [];
-  let cursor = null;
-  let requestsUsed = 0;
-  let truncated = false;
-
-  for (let page = 0; page < maxPages; page++) {
-    const cursorQs = cursor != null ? `&cursor=${cursor}` : "";
-    const data = await bdlFetch(`/games?start_date=${startStr}&end_date=${endStr}&per_page=100${cursorQs}`, env);
-    requestsUsed += 1;
-    const pageData = data.data || [];
-    games = games.concat(pageData);
-    const nextCursor = data.meta?.next_cursor;
-    if (!nextCursor || pageData.length < 100) {
-      cursor = null;
-      break;
-    }
-    cursor = nextCursor;
-    if (page === maxPages - 1) truncated = true;
-  }
-
-  return { games, requestsUsed, truncated };
-}
-
-// Each team's PPG/PAPG (points allowed per game), computed directly from
-// completed games in the YTD window -- no BALLDONTLIE calls beyond the games
-// fetch already needed for stat-window scoping.
+// Each team's PPG/PAPG from completed games in the window -- no extra calls.
 function computeTeamScoring(games) {
-  const byTeam = new Map(); // team id -> {abbr, name, ptsFor:[], ptsAgainst:[]}
+  const byTeam = new Map();
   for (const g of games) {
     if (g.status !== "post") continue;
-    // BALLDONTLIE's WNBA game schema uses home_score/away_score (confirmed
-    // against the live openapi/wnba.yml spec) -- not home_team_score/
-    // visitor_team_score, which silently returned undefined and made this
-    // function (and the schedule tiles below) always skip every game.
-    if (typeof g.home_score !== "number" || typeof g.away_score !== "number") continue;
-    const home = g.home_team;
-    const away = g.visitor_team;
-    if (home?.id != null) {
-      if (!byTeam.has(home.id)) byTeam.set(home.id, { abbr: home.abbreviation, name: home.full_name, ptsFor: [], ptsAgainst: [] });
-      byTeam.get(home.id).ptsFor.push(g.home_score);
-      byTeam.get(home.id).ptsAgainst.push(g.away_score);
+    if (typeof g.homeScore !== "number" || typeof g.awayScore !== "number") continue;
+    if (g.homeId != null) {
+      if (!byTeam.has(g.homeId)) byTeam.set(g.homeId, { abbr: g.homeAbbr, name: g.homeName, ptsFor: [], ptsAgainst: [] });
+      byTeam.get(g.homeId).ptsFor.push(g.homeScore);
+      byTeam.get(g.homeId).ptsAgainst.push(g.awayScore);
     }
-    if (away?.id != null) {
-      if (!byTeam.has(away.id)) byTeam.set(away.id, { abbr: away.abbreviation, name: away.full_name, ptsFor: [], ptsAgainst: [] });
-      byTeam.get(away.id).ptsFor.push(g.away_score);
-      byTeam.get(away.id).ptsAgainst.push(g.home_score);
+    if (g.awayId != null) {
+      if (!byTeam.has(g.awayId)) byTeam.set(g.awayId, { abbr: g.awayAbbr, name: g.awayName, ptsFor: [], ptsAgainst: [] });
+      byTeam.get(g.awayId).ptsFor.push(g.awayScore);
+      byTeam.get(g.awayId).ptsAgainst.push(g.homeScore);
     }
   }
   const result = {};
@@ -418,32 +527,25 @@ function computeTeamScoring(games) {
   return result;
 }
 
-async function loadFullDataBuildState(env) {
-  const raw = await env.FASTBREAK_KV.get(FULLDATA_BUILD_KV_KEY);
-  if (!raw) return null;
+async function loadJSON(env, key, fallback = null) {
+  const raw = await env.FASTBREAK_KV.get(key);
+  if (!raw) return fallback;
   try {
     return JSON.parse(raw);
   } catch {
-    return null;
+    return fallback;
   }
 }
 
-async function saveFullDataBuildState(env, state) {
-  await env.FASTBREAK_KV.put(FULLDATA_BUILD_KV_KEY, JSON.stringify(state));
+async function saveJSON(env, key, value) {
+  await env.FASTBREAK_KV.put(key, JSON.stringify(value));
 }
 
-// Advances the leaguewide Full Data build by at most `budget` BALLDONTLIE
-// subrequests. On a fresh start (no build in progress, or the last completed
-// build is stale) it fetches the full roster plus leaguewide recent/YTD game
-// windows and stores that as resumable state; on later calls it works
-// through the player-chunk queue left over from last time. The published
-// cache (FULLDATA_KV_KEY) is only overwritten once every chunk is processed,
-// so the Full Data tab always serves the last *complete* snapshot rather
-// than a partial one mid-build.
-async function advanceFullDataBuild(env, budget) {
+async function advanceFullDataBuild(env, league, budget) {
+  const cfg = leagueConfig(league);
   if (budget < 4) return { advanced: false, reason: "budget too small this tick" };
 
-  let state = await loadFullDataBuildState(env);
+  let state = await loadJSON(env, cfg.keys.fulldataBuild);
   let used = 0;
 
   const isStale = state?.status === "done" && Date.now() - (state.finishedAt || 0) > FULLDATA_REBUILD_INTERVAL_MS;
@@ -454,51 +556,47 @@ async function advanceFullDataBuild(env, budget) {
       return { advanced: false, reason: "last build is still fresh" };
     }
 
-    // Setup costs roster pagination + both league game-window fetches.
     const setupCeiling = FULLDATA_ROSTER_MAX_PAGES + RECENT_GAMES_MAX_PAGES + YTD_MAX_PAGES;
     if (budget < setupCeiling) {
       return { advanced: false, reason: `budget too small to start a fresh build (need ~${setupCeiling})` };
     }
 
-    const rosterResult = await getAllActivePlayers(env, { maxPages: FULLDATA_ROSTER_MAX_PAGES });
+    const rosterResult = await getAllActivePlayers(cfg, env, { maxPages: FULLDATA_ROSTER_MAX_PAGES });
     used += rosterResult.requestsUsed;
 
     const today = todayStr();
-    const recentEnd = new Date();
-    const recentStart = new Date(recentEnd.getTime() - RECENT_GAMES_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-    const recentResult = await getLeagueGamesInWindow(env, {
-      startStr: recentStart.toISOString().slice(0, 10),
-      endStr: recentEnd.toISOString().slice(0, 10),
+    const season = cfg.seasonFor(today);
+    const recentResult = await getGamesInWindow(cfg, [], env, {
+      startStr: addDaysStr(today, -cfg.recentLookbackDays),
+      endStr: today,
       maxPages: RECENT_GAMES_MAX_PAGES,
     });
     used += recentResult.requestsUsed;
 
-    const season = currentSeason();
-    const ytdResult = await getLeagueGamesInWindow(env, {
-      startStr: `${season}-01-01`,
+    const ytdResult = await getGamesInWindow(cfg, [], env, {
+      startStr: seasonStartStr(cfg, season),
       endStr: today,
       maxPages: YTD_MAX_PAGES,
     });
     used += ytdResult.requestsUsed;
 
-    const teamIds = [...new Set(rosterResult.players.map((p) => p.team?.id).filter(Boolean))];
+    const teamIds = [...new Set(rosterResult.players.map((p) => p.team?.id).filter((id) => id != null))];
     const last10GameIds = [...pickLastNGameIdsPerTeam(recentResult.games, teamIds, 10)];
     const ytdGameIds = [...new Set(ytdResult.games.filter((g) => g.status === "post").map((g) => g.id))];
     const teamScoring = computeTeamScoring(ytdResult.games);
+    const seasons = [...new Set([...recentResult.games, ...ytdResult.games].map((g) => g.season).filter((s) => s != null))];
 
     const rosterById = {};
     for (const p of rosterResult.players) {
-      rosterById[p.id] = {
-        id: p.id,
-        name: `${p.first_name} ${p.last_name}`,
-        team: p.team?.abbreviation || "",
-      };
+      rosterById[p.id] = { id: p.id, name: `${p.first_name} ${p.last_name}`, team: p.team?.abbreviation || "" };
     }
     const playerIds = Object.keys(rosterById).map(Number);
 
     state = {
       status: "building",
+      league,
       season,
+      seasons: seasons.length ? seasons : [season],
       startedAt: Date.now(),
       rosterById,
       last10GameIds,
@@ -514,36 +612,39 @@ async function advanceFullDataBuild(env, budget) {
   }
 
   const remaining = budget - used;
-  const chunksThisTick = Math.max(0, Math.floor(remaining / 2));
   const last10Set = new Set(state.last10GameIds);
   const ytdSet = new Set(state.ytdGameIds);
+  // Early in a season YTD is a subset of L10, so one query covers both.
+  const ytdIsSubset = [...ytdSet].every((id) => last10Set.has(id));
+  const perChunk = ytdIsSubset ? 1 : 1 + YTD_STAT_PAGES_PER_CHUNK;
+  const chunksThisTick = Math.max(0, Math.floor(remaining / perChunk));
 
   let processedChunks = 0;
   while (processedChunks < chunksThisTick && state.pendingChunks.length > 0) {
     const c = state.pendingChunks.shift();
-    const recentStats = await getStatsForChunk(c, state.season, last10Set, env);
-    used += 1;
-    const ytdStats = await getStatsForChunk(c, state.season, ytdSet, env);
-    used += 1;
-
-    const byPlayerRecent = new Map();
-    const byPlayerYtd = new Map();
-    for (const row of recentStats) {
-      const pid = row.player?.id;
-      if (!byPlayerRecent.has(pid)) byPlayerRecent.set(pid, []);
-      byPlayerRecent.get(pid).push(row);
+    const recentRes = await getStatsForChunk(cfg, c, state.seasons, last10Set, env);
+    used += recentRes.requestsUsed;
+    const recentStats = recentRes.rows.map((r) => ({ pid: r.player?.id, ...slimStatRow(r) }));
+    let ytdStats = [];
+    if (!ytdIsSubset) {
+      const ytdRes = await getStatsForChunk(cfg, c, state.seasons, ytdSet, env, { maxPages: YTD_STAT_PAGES_PER_CHUNK });
+      used += ytdRes.requestsUsed;
+      if (ytdRes.truncated) state.truncatedYtdStats = true;
+      ytdStats = ytdRes.rows.map((r) => ({ pid: r.player?.id, ...slimStatRow(r) }));
     }
-    for (const row of ytdStats) {
-      const pid = row.player?.id;
-      if (!byPlayerYtd.has(pid)) byPlayerYtd.set(pid, []);
-      byPlayerYtd.get(pid).push(row);
+
+    const byPlayer = new Map();
+    for (const row of [...recentStats, ...ytdStats]) {
+      if (!byPlayer.has(row.pid)) byPlayer.set(row.pid, new Map());
+      byPlayer.get(row.pid).set(row.gid, row);
     }
 
     for (const pid of c) {
       const player = state.rosterById[pid];
       if (!player) continue;
-      const l10Rows = lastNByDate((byPlayerRecent.get(pid) || []).filter((r) => last10Set.has(r.game?.id)), 10);
-      const ytdRows = (byPlayerYtd.get(pid) || []).filter((r) => ytdSet.has(r.game?.id));
+      const rows = [...(byPlayer.get(pid)?.values() || [])];
+      const l10Rows = lastNByDate(rows.filter((r) => last10Set.has(r.gid)), 10);
+      const ytdRows = rows.filter((r) => ytdSet.has(r.gid));
       const stats = {};
       for (const code of FULLDATA_STAT_CODES) {
         const def = STAT_FIELD_MAP[code];
@@ -559,13 +660,6 @@ async function advanceFullDataBuild(env, budget) {
       }
       state.results[pid] = { id: pid, name: player.name, team: player.team, stats };
 
-      // Accumulate this player's raw YTD box-score totals into their roster
-      // team's running sums (used to build season/YTD team averages at
-      // finish time). Summing raw per-game values across all of a team's
-      // players' rows and dividing by the team's games-played (from
-      // teamScoring) yields the team's per-game average -- no extra
-      // BALLDONTLIE subrequests needed since ytdRows is already fetched
-      // above for this player's own L10/YTD stat lines.
       if (player.team) {
         if (!state.teamBoxSums[player.team]) {
           state.teamBoxSums[player.team] = { REB: 0, OREB: 0, AST: 0, STL: 0, BLK: 0, TOV: 0, FGM: 0, FGA: 0, "3PM": 0, "3PA": 0 };
@@ -588,11 +682,6 @@ async function advanceFullDataBuild(env, budget) {
   if (finished) {
     const players = Object.values(state.results).sort((a, b) => a.name.localeCompare(b.name));
 
-    // Combine teamScoring (PPG/PAPG from final scores) with teamBoxSums
-    // (season totals of box-score categories) into one per-team detail
-    // object for the Team Data tab. Averages = sum / gamesPlayed;
-    // percentages derived from the summed makes/attempts (not averaged
-    // per-player percentages, which would be mathematically wrong).
     const teamsDetail = {};
     for (const [abbr, scoring] of Object.entries(state.teamScoring)) {
       const sums = state.teamBoxSums[abbr] || { REB: 0, OREB: 0, AST: 0, STL: 0, BLK: 0, TOV: 0, FGM: 0, FGA: 0, "3PM": 0, "3PA": 0 };
@@ -620,7 +709,7 @@ async function advanceFullDataBuild(env, budget) {
 
     const payload = {
       dashboard_name: "Fast Break Full Data",
-      league: SUPPORTED_LEAGUE,
+      league,
       season: state.season,
       generated_at: new Date().toISOString(),
       statCodes: FULLDATA_STAT_CODES,
@@ -628,37 +717,37 @@ async function advanceFullDataBuild(env, budget) {
       teamsDetail,
       players,
       note:
-        "Leaguewide L10/YTD for every active WNBA player across all Fast Break-relevant box-score stats. PITP is intentionally excluded here (it lives under a separate advanced-stats endpoint) to stay within the ALL-STAR-tier BALLDONTLIE key's subrequest budget across the full roster. Team PPG/PAPG are computed directly from this season's final scores, not from BALLDONTLIE's GOAT-tier team season stats endpoints." +
+        `Leaguewide L10/YTD for every active ${league} player across all Fast Break-relevant box-score stats. PITP is intentionally excluded here (it lives under a separate advanced-stats endpoint) to stay within the BALLDONTLIE subrequest budget across the full roster. L10 reaches back into the prior season when the current one has fewer than 10 games played; YTD is the current season only. Team PPG/PAPG are computed directly from this season's final scores.` +
         (state.truncatedRoster ? " NOTE: roster pagination hit its safety cap; some players may be missing." : "") +
-        (state.truncatedRecent || state.truncatedYtd ? " NOTE: league game-window pagination hit its safety cap; some players' windows may be incomplete." : ""),
+        (state.truncatedRecent || state.truncatedYtd ? " NOTE: league game-window pagination hit its safety cap; some players' windows may be incomplete." : "") +
+        (state.truncatedYtdStats ? " NOTE: YTD for some players is based on the earliest games of the season only (stat pagination cap)." : ""),
     };
-    await env.FASTBREAK_KV.put(FULLDATA_KV_KEY, JSON.stringify(payload));
-    state = { status: "done", finishedAt: Date.now() };
+    await saveJSON(env, cfg.keys.fulldata, payload);
+    state = { status: "done", league, finishedAt: Date.now() };
   }
 
-  await saveFullDataBuildState(env, state);
+  await saveJSON(env, cfg.keys.fulldataBuild, state);
   return { advanced: true, finished, chunksProcessed: processedChunks, subrequestsUsed: used };
 }
 
+// The first calendar day of a numbered season, for YTD windows. NBA seasons
+// start in the fall of their numbering year; WNBA seasons are one calendar year.
+function seasonStartStr(cfg, season) {
+  return cfg.key === "NBA" ? `${season}-09-01` : `${season}-01-01`;
+}
+
 // -- Objectives schedule (admin-managed, stored in KV) ------------------------
+// Shape: { [league]: { [date]: { objectives: { Classic: [...], Pro: [...] },
+//   badgeSetName, projections: { [stat]: { [normalizedName]: {name, value} } } } } }
+// Objectives are per mode; projections are per league/date (shared by
+// Classic and Pro -- a player's projected PTS doesn't depend on the mode).
 
 const OBJECTIVES_KV_KEY = "fastbreak:objectives";
 
 async function loadObjectivesSchedule(env) {
-  const raw = await env.FASTBREAK_KV.get(OBJECTIVES_KV_KEY);
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
+  return (await loadJSON(env, OBJECTIVES_KV_KEY, {})) || {};
 }
 
-// Weight is no longer entered manually -- see computeAutoWeights, which
-// derives it at build time from how many players are projected to clear
-// 100% of the per-player target. validateObjectives only checks the shape
-// of what an admin *can* set: stat code + a positive daily team target,
-// plus an optional badgeSetName string (Pro mode only).
 function validateObjectives(objectives) {
   if (!Array.isArray(objectives) || objectives.length < 1 || objectives.length > 2) {
     throw new Error("objectives must be an array of 1 or 2 entries");
@@ -673,12 +762,13 @@ function validateObjectives(objectives) {
   }
 }
 
+function validateLeague(league) {
+  if (!SUPPORTED_LEAGUES.includes(league)) throw new Error(`league must be one of ${SUPPORTED_LEAGUES.join(", ")}`);
+}
+
 // Auto-computed weighting: for a 2-objective day, the objective with FEWER
 // players projected at >=100% of their per-player target gets the HIGHER
-// weight (it's the harder objective to clear, so hitting it says more).
-// Example from spec: 3PM has 10/50 players clearing 100%, 3PA has 25/50 -->
-// 3PM (the rarer feat) gets the higher weight. A single-objective day is
-// always weight 1 (100%).
+// weight. A single-objective day is always weight 1.
 function computeAutoWeights(objectives, playerBase) {
   if (objectives.length === 1) {
     return [{ ...objectives[0], weight: 1 }];
@@ -691,8 +781,6 @@ function computeAutoWeights(objectives, playerBase) {
     }).length;
     return hit / total;
   });
-  // Guard against a 0% fraction producing an infinite weight -- floor it at
-  // "as if 1 more player than actually cleared it" cleared it instead.
   const epsilon = 1 / (2 * total);
   const raw = fractions.map((f) => 1 / Math.max(f, epsilon));
   const sum = raw[0] + raw[1];
@@ -700,14 +788,9 @@ function computeAutoWeights(objectives, playerBase) {
 }
 
 // -- Projections (manual, Rotowire-sourced where available) ------------------
-// BALLDONTLIE has no projections endpoint, so real Proj values come from a
-// manual admin upload (David sources them from Rotowire via spreadsheet).
-// Confirmed per-objective: 3PM, 3PA, and OREB all have genuine Rotowire
-// projections that are NOT the same as L10 and must be preserved exactly as
-// given. PITP is the one confirmed exception -- neither Rotowire nor standard
-// WNBA stats sites project it, so PITP intentionally has no override entry
-// and always falls back to the L10 average (see the lookup in buildDashboard
-// below). Do not "fix" that by requiring an override for every stat.
+// PITP is the one confirmed exception -- Rotowire doesn't project it, so it
+// always falls back to the L10 average. Every other stat with no uploaded
+// override shows Proj as TBD rather than silently defaulting to L10.
 function normalizePlayerName(name) {
   return String(name || "")
     .trim()
@@ -716,8 +799,8 @@ function normalizePlayerName(name) {
 }
 
 async function upsertProjections(env, { league, date, stat, projections }) {
-  if (league !== SUPPORTED_LEAGUE) throw new Error(`unsupported league: ${league}`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+  validateLeague(league);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("date must be YYYY-MM-DD");
   if (!stat || !STAT_FIELD_MAP[stat]) throw new Error(`unknown stat code: ${stat}`);
   if (!Array.isArray(projections) || !projections.length) {
     throw new Error("projections must be a non-empty array of {name, value}");
@@ -735,7 +818,7 @@ async function upsertProjections(env, { league, date, stat, projections }) {
   if (!schedule[league][date]) schedule[league][date] = { objectives: {} };
   if (!schedule[league][date].projections) schedule[league][date].projections = {};
   schedule[league][date].projections[stat] = values;
-  await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
+  await saveJSON(env, OBJECTIVES_KV_KEY, schedule);
   return schedule;
 }
 
@@ -744,8 +827,8 @@ function projectionsForDate(schedule, league, date, stat) {
 }
 
 async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeSetName }) {
-  if (league !== SUPPORTED_LEAGUE) throw new Error(`unsupported league: ${league}`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+  validateLeague(league);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("date must be YYYY-MM-DD");
   if (!SUPPORTED_MODES.includes(mode)) throw new Error(`mode must be one of ${SUPPORTED_MODES.join(", ")}`);
   validateObjectives(objectives);
 
@@ -753,7 +836,6 @@ async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeS
   if (!schedule[league]) schedule[league] = {};
   const existing = schedule[league][date] || {};
   const existingObjectives = existing.objectives || {};
-  // Strip any legacy/incoming weight field -- weight is always recomputed.
   const cleanObjectives = objectives.map(({ stat, label, dailyTeamTarget }) => ({
     stat,
     label: label || stat,
@@ -764,7 +846,7 @@ async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeS
     objectives: { ...existingObjectives, [mode]: cleanObjectives },
     badgeSetName: mode === "Pro" && badgeSetName ? badgeSetName : existing.badgeSetName || null,
   };
-  await env.FASTBREAK_KV.put(OBJECTIVES_KV_KEY, JSON.stringify(schedule));
+  await saveJSON(env, OBJECTIVES_KV_KEY, schedule);
   return schedule;
 }
 
@@ -779,27 +861,10 @@ function badgeSetNameForDate(schedule, league, date) {
   return schedule?.[league]?.[date]?.badgeSetName || null;
 }
 
-// FUTURE ENHANCEMENT (not built): badgeSetName is currently just an admin-
-// typed label ("Rookie Year") shown on the Pro objective tile -- it doesn't
-// know which *players* actually own a moment from that badge/set. Integrating
-// with Flow/Cadence (the blockchain NBA Top Shot moments live on) could let
-// this Worker look up real moment ownership per player and automatically
-// flag/filter who qualifies, instead of the badge/set name being purely
-// informational text.
-
-// FUTURE ENHANCEMENT (not built): NBA Top Shot's own Fast Break page surfaces
-// which players are being utilized most heavily (i.e. picked into the most
-// lineups). Worth investigating whether that utilization signal -- or a
-// Cadence/Flow-sourced equivalent -- could be captured and surfaced here as
-// a "Top 10 Players by Utilization" tile/graphic alongside the objectives.
-
 // -- Ranking + color tiers -----------------------------------------------------
 
-// Standard competition ranking (1224-style): equal values share the lower
-// rank, and the next distinct value's rank skips the tied slots.
+// Standard competition ranking (1224-style).
 function rankDescending(values) {
-  // values: array of {id, value}. Returns Map(id -> rank), null values sink to
-  // the bottom (they didn't play / no data, so they can't be "likeliest").
   const withValue = values.filter((v) => v.value != null);
   const withoutValue = values.filter((v) => v.value == null);
   withValue.sort((a, b) => b.value - a.value);
@@ -832,21 +897,15 @@ function colorTier(value, perPlayerTarget) {
 
 // -- Schedule tiles -------------------------------------------------------------
 
-// Eastern Time, with UTC in parentheses. Run 10 (Aug 19-30, 2026) falls
-// entirely in EDT (UTC-4), so a fixed offset is safe here without pulling in
-// a full timezone library.
-const ET_OFFSET_HOURS = -4;
-
 function formatGameTime(game) {
-  const iso = game.datetime || game.date;
   if (game.status === "post") return "Final";
   if (game.status === "in") return "In Progress";
+  const iso = game.datetime;
   if (!iso) return "TBD";
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "TBD";
-    const et = new Date(d.getTime() + ET_OFFSET_HOURS * 3600 * 1000);
-    const etStr = et.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+    const etStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: ET_TZ });
     const utcStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC", hour12: false });
     return `${etStr} ET (${utcStr} UTC)`;
   } catch {
@@ -857,33 +916,27 @@ function formatGameTime(game) {
 function buildScheduleTiles(games) {
   return games.map((g) => ({
     id: g.id,
-    awayAbbr: g.visitor_team?.abbreviation || "",
-    awayName: g.visitor_team?.full_name || "",
-    homeAbbr: g.home_team?.abbreviation || "",
-    homeName: g.home_team?.full_name || "",
+    awayAbbr: g.awayAbbr,
+    awayName: g.awayName,
+    homeAbbr: g.homeAbbr,
+    homeName: g.homeName,
     time: formatGameTime(g),
     status: g.status || "pre",
-    awayScore: g.away_score ?? null,
-    homeScore: g.home_score ?? null,
+    awayScore: g.awayScore,
+    homeScore: g.homeScore,
   }));
 }
 
 // L10 advanced team metrics (ORtg/DRtg/Pace/eFG%/TOV%/OREB%(est.)/record) for
-// the day's playing teams, shown on the daily schedule-matchup hover. Computed
-// entirely from data buildDashboard already fetches for its own player-level
-// purposes (recentResult.games + statsByPlayer) -- zero extra BALLDONTLIE
-// subrequests. Possessions are estimated per-game via the standard formula
-// (FGA - OREB + TOV + 0.44*FTA); OREB% has no true opponent-DREB data
-// available within budget, so it is approximated as
-// OREB / (FGA - FGM) (offensive rebounds per own missed shot) and must be
-// labeled "(est.)" wherever it's surfaced. Pace is raw estimated possessions
-// per game (WNBA plays 40-minute games, not the NBA's 48) -- do not label it
-// as a standard "per-48" pace stat.
+// the day's playing teams, from data the build already holds -- zero extra
+// BALLDONTLIE calls. Possessions estimated per game (FGA - OREB + TOV +
+// 0.44*FTA). OREB% is approximated as OREB / (FGA - FGM) and labeled "(est.)".
+// Pace is raw estimated possessions per game (not per-48/per-40).
 function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames, last10GameIds) {
   const result = {};
   const rosterByTeam = new Map();
   for (const p of roster) {
-    const tid = p.team?.id;
+    const tid = p.teamId;
     if (tid == null) continue;
     if (!rosterByTeam.has(tid)) rosterByTeam.set(tid, []);
     rosterByTeam.get(tid).push(p.id);
@@ -891,21 +944,13 @@ function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames,
 
   for (const teamId of teamIds) {
     const teamGames = recentGames
-      .filter(
-        (g) =>
-          g.status === "post" &&
-          last10GameIds.has(g.id) &&
-          (g.home_team?.id === teamId || g.visitor_team?.id === teamId)
-      )
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .filter((g) => g.status === "post" && last10GameIds.has(g.id) && (g.homeId === teamId || g.awayId === teamId))
+      .sort((a, b) => gameSortDate(b) - gameSortDate(a))
       .slice(0, 10);
 
     if (teamGames.length === 0) continue;
 
-    const abbr =
-      teamGames[0].home_team?.id === teamId
-        ? teamGames[0].home_team?.abbreviation
-        : teamGames[0].visitor_team?.abbreviation;
+    const abbr = teamGames[0].homeId === teamId ? teamGames[0].homeAbbr : teamGames[0].awayAbbr;
     const teamPlayerIds = rosterByTeam.get(teamId) || [];
 
     let sumTeamPts = 0;
@@ -921,10 +966,10 @@ function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames,
     let gamesCounted = 0;
 
     for (const g of teamGames) {
-      if (typeof g.home_score !== "number" || typeof g.away_score !== "number") continue;
-      const isHome = g.home_team?.id === teamId;
-      const teamPts = isHome ? g.home_score : g.away_score;
-      const oppPts = isHome ? g.away_score : g.home_score;
+      if (typeof g.homeScore !== "number" || typeof g.awayScore !== "number") continue;
+      const isHome = g.homeId === teamId;
+      const teamPts = isHome ? g.homeScore : g.awayScore;
+      const oppPts = isHome ? g.awayScore : g.homeScore;
 
       let gFGM = 0;
       let gFGA = 0;
@@ -933,8 +978,7 @@ function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames,
       let gTOV = 0;
       let gFTA = 0;
       for (const pid of teamPlayerIds) {
-        const byGame = statsByPlayer.get(pid);
-        const row = byGame?.get(g.id);
+        const row = statsByPlayer[pid]?.[g.id];
         if (!row) continue;
         if (typeof row.fgm === "number") gFGM += row.fgm;
         if (typeof row.fga === "number") gFGA += row.fga;
@@ -978,230 +1022,283 @@ function computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentGames,
   return result;
 }
 
-// -- Main build -----------------------------------------------------------------
+// -- Day build (resumable, cached per league + date) ----------------------------
+//
+// KV keys (per league, see LEAGUES[].keys.dayPrefix):
+//   <dayPrefix><date>         published, finished snapshot of raw inputs
+//   <dayPrefix><date>:build   in-progress state (pending player chunks etc.)
+//
+// The snapshot holds league-neutral raw inputs (games, roster, injuries,
+// slim per-game stat rows) rather than a rendered payload, so one snapshot
+// serves both Classic and Pro -- the mode only changes which objectives are
+// applied on top (renderDayPayload below), which is pure computation.
 
-async function buildDashboard(env, { date, mode } = {}) {
+function dayKey(cfg, date) {
+  return `${cfg.keys.dayPrefix}${date}`;
+}
+function dayBuildKey(cfg, date) {
+  return `${cfg.keys.dayPrefix}${date}:build`;
+}
+
+// Does any mode's objective set for this date need the advanced endpoint?
+// Decided once per snapshot so it can serve both modes.
+function dateNeedsAdvanced(schedule, league, date) {
+  return SUPPORTED_MODES.some((mode) =>
+    objectivesForDate(schedule, league, date, mode).some((o) => STAT_FIELD_MAP[o.stat]?.source === "advanced")
+  );
+}
+
+function snapshotIsFresh(snapshot, date) {
+  if (!snapshot || snapshot.status !== "done") return false;
+  const age = Date.now() - (snapshot.finishedAt || 0);
+  const ttl = date < todayStr() ? PAST_DAY_CACHE_FRESH_MS : DAY_CACHE_FRESH_MS;
+  return age < ttl;
+}
+
+// Starts a fresh build state for (league, date): the day's games, both
+// rosters, injuries, and the L10/YTD game-id windows. Costs ~5-15 calls.
+async function startDayBuild(cfg, env, { date, schedule }) {
   let subrequests = 0;
-  const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
-  const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
   const today = todayStr();
-  const schedule = await loadObjectivesSchedule(env);
-  const objectives = objectivesForDate(schedule, SUPPORTED_LEAGUE, targetDate, targetMode);
-  const badgeSetName = targetMode === "Pro" ? badgeSetNameForDate(schedule, SUPPORTED_LEAGUE, targetDate) : null;
+  const games = await getGamesForDate(cfg, date, env);
+  subrequests += 2;
 
-  const games = await getGamesForDate(targetDate, env);
-  subrequests += 2; // two UTC-date queries -- see getGamesForDate's ET-bucketing fix
-
-  const teamIds = [...new Set(games.flatMap((g) => [g.home_team?.id, g.visitor_team?.id]).filter(Boolean))];
-  const scheduleTiles = buildScheduleTiles(games);
-
-  const baseReturn = {
-    dashboard_name: "Fast Break Dashboard",
-    league: SUPPORTED_LEAGUE,
-    mode: targetMode,
-    date: targetDate,
-    dayNumber: dayNumberForDate(targetDate),
-    runLength: dayNumberForDate(RUN_END),
-    last_updated: today,
-    objectives,
-    badgeSetName,
-    games: scheduleTiles,
+  const teamIds = [...new Set(games.flatMap((g) => [g.homeId, g.awayId]).filter((id) => id != null))];
+  const state = {
+    status: "building",
+    league: cfg.key,
+    date,
+    startedAt: Date.now(),
+    games,
+    teamIds,
+    roster: [],
+    injuries: [],
+    last10GameIds: [],
+    ytdGameIds: [],
+    seasons: [cfg.seasonFor(date)],
+    recentGames: [],
+    needsAdvanced: dateNeedsAdvanced(schedule, cfg.key, date),
+    pendingChunks: [],
+    stats: {},
+    adv: {},
+    truncatedRecent: false,
+    truncatedYtd: false,
+    subrequestsUsed: 0,
+    totalPlayers: 0,
   };
 
   if (teamIds.length === 0) {
-    return { ...baseReturn, note: "No WNBA games scheduled on this date.", players: [] };
+    state.subrequestsUsed = subrequests;
+    return state;
   }
 
-  const opponentByTeam = new Map();
-  for (const g of games) {
-    if (g.home_team?.id && g.visitor_team) opponentByTeam.set(g.home_team.id, `vs ${g.visitor_team.abbreviation}`);
-    if (g.visitor_team?.id && g.home_team) opponentByTeam.set(g.visitor_team.id, `@ ${g.home_team.abbreviation}`);
-  }
-
-  const roster = await getTeamRosters(teamIds, env);
+  const rosterResult = await getTeamRosters(cfg, teamIds, env);
+  subrequests += rosterResult.requestsUsed;
+  state.roster = rosterResult.players.map((p) => ({
+    id: p.id,
+    name: `${p.first_name} ${p.last_name}`,
+    teamId: p.team?.id ?? null,
+    team: p.team?.abbreviation || "",
+  }));
+  state.injuries = await getInjuriesForTeams(cfg, teamIds, env);
   subrequests += 1;
-  const injuries = await getInjuriesForTeams(teamIds, env);
-  subrequests += 1;
-  const injuryByPlayerId = new Map(injuries.map((inj) => [inj.player?.id, inj]));
-  const season = currentSeason();
 
   // Last-10 / YTD windows are always computed relative to the REAL today
-  // (current known form), regardless of which scheduled date is being
-  // viewed -- a future run day shows today's YTD/L10 plus that day's games;
-  // BALLDONTLIE has no future stats to show.
-  const recentEnd = new Date();
-  const recentStart = new Date(recentEnd.getTime() - RECENT_GAMES_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const recentResult = await getGamesForTeamsInWindow(teamIds, env, {
-    startStr: recentStart.toISOString().slice(0, 10),
-    endStr: recentEnd.toISOString().slice(0, 10),
+  // (current known form), regardless of which run date is being viewed.
+  const recentResult = await getGamesInWindow(cfg, teamIds, env, {
+    startStr: addDaysStr(today, -cfg.recentLookbackDays),
+    endStr: today,
     maxPages: RECENT_GAMES_MAX_PAGES,
   });
   subrequests += recentResult.requestsUsed;
   const last10GameIds = pickLastNGameIdsPerTeam(recentResult.games, teamIds, 10);
 
-  // YTD window: full season to date.
-  const seasonStartStr = `${season}-01-01`;
-  const ytdResult = await getGamesForTeamsInWindow(teamIds, env, {
-    startStr: seasonStartStr,
+  const season = cfg.seasonFor(today);
+  const ytdResult = await getGamesInWindow(cfg, teamIds, env, {
+    startStr: seasonStartStr(cfg, season),
     endStr: today,
     maxPages: YTD_MAX_PAGES,
   });
   subrequests += ytdResult.requestsUsed;
-  const ytdGameIds = new Set(
-    ytdResult.games.filter((g) => g.status === "post").map((g) => g.id)
-  );
-  // Union of L10 + YTD game ids -- one set of stat calls covers both windows;
-  // per-player averaging below re-slices L10 vs. season out of the same rows.
-  const allGameIds = new Set([...last10GameIds, ...ytdGameIds]);
+  const ytdGameIds = new Set(ytdResult.games.filter((g) => g.status === "post").map((g) => g.id));
 
-  let playerIds = [...new Set(roster.map((p) => p.id))];
+  state.last10GameIds = [...last10GameIds];
+  state.ytdGameIds = [...ytdGameIds];
+  state.seasons = [...new Set([season, ...recentResult.games.map((g) => g.season), ...ytdResult.games.map((g) => g.season)].filter((s) => s != null))];
+  state.recentGames = recentResult.games.filter((g) => last10GameIds.has(g.id));
+  state.truncatedRecent = recentResult.truncated;
+  state.truncatedYtd = ytdResult.truncated;
+  const playerIds = [...new Set(state.roster.map((p) => p.id))];
+  state.totalPlayers = playerIds.length;
+  state.pendingChunks = chunk(playerIds, PLAYER_CHUNK_SIZE);
+  state.subrequestsUsed = subrequests;
+  return state;
+}
 
-  // Reserve 2 subrequests per player chunk for stats (recent-scoped + YTD-
-  // scoped, see fix note below), plus 2 more for advanced stats if PITP is
-  // one of today's objectives. If the full player list would exceed the
-  // Free-plan subrequest ceiling, trim it and say so honestly rather than
-  // silently dropping players or crashing mid-run.
-  const needsAdvanced = objectives.some((o) => STAT_FIELD_MAP[o.stat].source === "advanced");
-  const perChunkRequests = needsAdvanced ? 4 : 2;
-  const chunksNeeded = Math.ceil(playerIds.length / PLAYER_CHUNK_SIZE) * perChunkRequests;
-  let droppedCount = 0;
-  if (subrequests + chunksNeeded > MAX_SUBREQUESTS) {
-    const maxPlayers =
-      Math.floor((MAX_SUBREQUESTS - subrequests) / perChunkRequests) * PLAYER_CHUNK_SIZE;
-    droppedCount = playerIds.length - maxPlayers;
-    playerIds = playerIds.slice(0, Math.max(0, maxPlayers));
-  }
+// Works through pending player chunks with the given call budget. Two
+// narrower queries per chunk (L10-scoped, YTD-scoped) rather than one
+// season-wide one, because the API returns rows OLDEST-FIRST and caps at 100
+// per page -- see the 2026-08-21 bug note in the repo history. When YTD is a
+// subset of L10 (early season), one query covers both.
+async function advanceDayBuild(cfg, env, state, budget) {
+  let used = 0;
+  const last10Set = new Set(state.last10GameIds);
+  const ytdSet = new Set(state.ytdGameIds);
+  const ytdIsSubset = [...ytdSet].every((id) => last10Set.has(id));
+  // Worst-case calls per chunk: L10 page + YTD pages, doubled when PITP needs
+  // the advanced endpoint too. Early in a season YTD is a subset of L10, so
+  // the YTD queries are skipped entirely.
+  const perChunk = (ytdIsSubset ? 1 : 1 + YTD_STAT_PAGES_PER_CHUNK) * (state.needsAdvanced ? 2 : 1);
 
-  // BUG FIX (verified live 2026-08-21): a single combined query scoped to
-  // `allGameIds` (L10 union YTD, i.e. the whole season) silently overflowed the
-  // API's per_page=100 cap for any chunk with real game history -- and since
-  // /player_stats and /player_game_advanced_stats return rows OLDEST-FIRST
-  // (same ordering quirk documented above for /games), the surviving page-1
-  // rows skewed toward early-season games. YTD still looked "plausible" off
-  // that partial sample, but L10 -- which specifically needs the most recent
-  // games -- came back empty for every player. Fix: issue two narrower,
-  // separately-scoped queries per chunk. The last10GameIds-scoped query is
-  // guaranteed to fit one page (PLAYER_CHUNK_SIZE=10 players * 10 games =
-  // <=100 rows), so L10 is always complete. The ytdGameIds-scoped query keeps
-  // the prior single-page best-effort behavior (unchanged from before this
-  // fix) for season-long rows. Rows are deduped per (player, game) since the
-  // two scopes overlap on a player's most recent games.
-  const playerChunks = chunk(playerIds, PLAYER_CHUNK_SIZE);
-  const statsByPlayer = new Map();
-  const advByPlayer = new Map();
-
-  function mergeRows(targetMap, rows) {
-    for (const row of rows) {
-      const pid = row.player?.id ?? row.player_id;
-      const gid = row.game?.id ?? row.game_id;
-      if (!targetMap.has(pid)) targetMap.set(pid, new Map());
-      targetMap.get(pid).set(gid, row);
+  while (state.pendingChunks.length > 0 && used + perChunk <= budget) {
+    const c = state.pendingChunks[0];
+    const scopes = ytdIsSubset ? [[last10Set, 1]] : [[last10Set, 1], [ytdSet, YTD_STAT_PAGES_PER_CHUNK]];
+    for (const [scope, maxPages] of scopes) {
+      const statRes = await getStatsForChunk(cfg, c, state.seasons, scope, env, { maxPages });
+      used += statRes.requestsUsed;
+      if (statRes.truncated) state.truncatedYtdStats = true;
+      for (const r of statRes.rows) {
+        const pid = r.player?.id ?? r.player_id;
+        if (pid == null) continue;
+        if (!state.stats[pid]) state.stats[pid] = {};
+        const slim = slimStatRow(r);
+        state.stats[pid][slim.gid] = slim;
+      }
+      if (state.needsAdvanced) {
+        try {
+          const advRes = await getAdvancedForChunk(cfg, c, state.seasons, scope, env, { maxPages });
+          used += advRes.requestsUsed - 1;
+          for (const r of advRes.rows) {
+            const pid = r.player?.id ?? r.player_id;
+            if (pid == null) continue;
+            if (!state.adv[pid]) state.adv[pid] = {};
+            const slim = slimAdvRow(r);
+            state.adv[pid][slim.gid] = slim;
+          }
+        } catch (err) {
+          // PITP needs a higher BALLDONTLIE tier on the NBA side; fail soft
+          // (PITP shows "--") rather than sinking the whole build.
+          state.advancedError = err.message;
+        }
+        used += 1;
+      }
     }
+    state.pendingChunks.shift();
   }
 
-  for (const c of playerChunks) {
-    const recentStats = await getStatsForChunk(c, season, last10GameIds, env);
-    subrequests += 1;
-    mergeRows(statsByPlayer, recentStats);
-    const ytdStats = await getStatsForChunk(c, season, ytdGameIds, env);
-    subrequests += 1;
-    mergeRows(statsByPlayer, ytdStats);
+  state.subrequestsUsed = (state.subrequestsUsed || 0) + used;
+  if (state.pendingChunks.length === 0) {
+    state.status = "done";
+    state.finishedAt = Date.now();
+  }
+  return used;
+}
 
-    if (needsAdvanced) {
-      const recentAdv = await getAdvancedForChunk(c, season, last10GameIds, env);
-      subrequests += 1;
-      mergeRows(advByPlayer, recentAdv);
-      const ytdAdv = await getAdvancedForChunk(c, season, ytdGameIds, env);
-      subrequests += 1;
-      mergeRows(advByPlayer, ytdAdv);
-    }
+// Pure: turns a snapshot (finished or partial) plus the requested mode's
+// objectives into the dashboard payload the frontend renders.
+function renderDayPayload(cfg, snapshot, { mode, schedule }) {
+  const league = cfg.key;
+  const date = snapshot.date;
+  const objectives = objectivesForDate(schedule, league, date, mode);
+  const badgeSetName = mode === "Pro" ? badgeSetNameForDate(schedule, league, date) : null;
+  const building = snapshot.status !== "done";
+  const loadedPlayers = snapshot.totalPlayers - snapshot.pendingChunks.reduce((n, c) => n + c.length, 0);
+
+  const baseReturn = {
+    dashboard_name: "Fast Break Dashboard",
+    league,
+    mode,
+    date,
+    dayNumber: dayNumberForDate(league, date),
+    runLength: dayNumberForDate(league, cfg.run.end),
+    runLabel: cfg.run.label,
+    last_updated: todayStr(),
+    objectives,
+    badgeSetName,
+    games: buildScheduleTiles(snapshot.games),
+    building,
+    progress: { loaded: loadedPlayers, total: snapshot.totalPlayers },
+  };
+
+  if (!snapshot.teamIds.length) {
+    return { ...baseReturn, note: cfg.noGamesNote, players: [], teamAdvanced: {} };
   }
 
-  // L10 advanced team metrics for the daily schedule-matchup hover -- reuses
-  // recentResult.games and statsByPlayer already fetched above, so this adds
-  // zero BALLDONTLIE subrequests.
-  const teamAdvanced = computeTeamAdvancedMetrics(teamIds, roster, statsByPlayer, recentResult.games, last10GameIds);
-
-  const rosterById = new Map(roster.map((p) => [p.id, p]));
-
-  function rowsForObjective(stat, pid) {
-    const def = STAT_FIELD_MAP[stat];
-    const byGame = def.source === "advanced" ? advByPlayer.get(pid) : statsByPlayer.get(pid);
-    const lines = byGame ? [...byGame.values()] : [];
-    return { def, lines };
+  const opponentByTeam = new Map();
+  for (const g of snapshot.games) {
+    if (g.homeId != null) opponentByTeam.set(g.homeId, `vs ${g.awayAbbr}`);
+    if (g.awayId != null) opponentByTeam.set(g.awayId, `@ ${g.homeAbbr}`);
   }
+  const last10Set = new Set(snapshot.last10GameIds);
+  const ytdSet = new Set(snapshot.ytdGameIds);
+  const injuryByPlayerId = new Map(snapshot.injuries.map((inj) => [inj.playerId, inj]));
+  const pendingIds = new Set(snapshot.pendingChunks.flat());
 
-  function statValue(def, line) {
-    const v = def.field(line);
-    return typeof v === "number" ? v : null;
-  }
-
-  // Load any admin-uploaded Rotowire projections for this date's objective(s).
-  // Keyed by stat -> { normalizedName: {name, value} }. See upsertProjections.
   const projectionOverrides = {};
   for (const obj of objectives) {
-    projectionOverrides[obj.stat] = projectionsForDate(schedule, SUPPORTED_LEAGUE, targetDate, obj.stat) || {};
+    projectionOverrides[obj.stat] = projectionsForDate(schedule, league, date, obj.stat) || {};
   }
 
-  const playerBase = playerIds.map((pid) => {
-    const player = rosterById.get(pid);
-    const playerName = `${player.first_name} ${player.last_name}`;
-    const nameKey = normalizePlayerName(playerName);
-    const objectiveValues = {};
+  const playerBase = snapshot.roster
+    .filter((p) => !pendingIds.has(p.id))
+    .map((p) => {
+      const nameKey = normalizePlayerName(p.name);
+      const objectiveValues = {};
+      for (const obj of objectives) {
+        const def = STAT_FIELD_MAP[obj.stat];
+        const rowsByGame = (def.source === "advanced" ? snapshot.adv[p.id] : snapshot.stats[p.id]) || {};
+        const lines = Object.values(rowsByGame);
+        const l10Lines = lastNByDate(lines.filter((l) => last10Set.has(l.gid)), 10);
+        const ytdLines = lines.filter((l) => ytdSet.has(l.gid));
+        const statValue = (line) => {
+          const v = def.field(line);
+          return typeof v === "number" ? v : null;
+        };
+        const l10 = round1(average(l10Lines.map(statValue)));
+        const ytd = round1(average(ytdLines.map(statValue)));
 
-    for (const obj of objectives) {
-      const { def, lines } = rowsForObjective(obj.stat, pid);
-      const l10Lines = lastNByDate(
-        lines.filter((l) => last10GameIds.has(l.game?.id)),
-        10
-      );
-      const ytdLines = lines.filter((l) => ytdGameIds.has(l.game?.id));
+        const override = projectionOverrides[obj.stat]?.[nameKey];
+        let proj;
+        let projSource;
+        if (override != null) {
+          proj = round1(override.value);
+          projSource = "rotowire";
+        } else if (obj.stat === "PITP") {
+          proj = l10;
+          projSource = "l10-fallback";
+        } else {
+          proj = null;
+          projSource = "tbd";
+        }
 
-      const l10 = round1(average(l10Lines.map((l) => statValue(def, l))));
-      const ytd = round1(average(ytdLines.map((l) => statValue(def, l))));
-
-      // Proj: real Rotowire-sourced value when the admin has uploaded one for
-      // this stat/date (confirmed distinct from L10 for 3PM/3PA/OREB -- never
-      // overwrite those with an L10 passthrough). Falls back to the L10
-      // average only when no override exists, which today is PITP's
-      // intentional, documented case (Rotowire and standard WNBA stats sites
-      // don't project PITP) -- not a general default.
-      const override = projectionOverrides[obj.stat]?.[nameKey];
-      const proj = override != null ? round1(override.value) : l10;
-
-      const perPlayerTarget = obj.dailyTeamTarget / 5;
-      objectiveValues[obj.stat] = {
-        stat: obj.stat,
-        label: obj.label || obj.stat,
-        dailyTeamTarget: obj.dailyTeamTarget,
-        perPlayerTarget: round1(perPlayerTarget),
-        proj,
-        projSource: override != null ? "rotowire" : "l10-fallback",
-        ytd,
-        l10,
-        gamesPlayedL10: l10Lines.length,
-        colorProj: colorTier(proj, perPlayerTarget),
-        colorYtd: colorTier(ytd, perPlayerTarget),
-        colorL10: colorTier(l10, perPlayerTarget),
+        const perPlayerTarget = obj.dailyTeamTarget / 5;
+        objectiveValues[obj.stat] = {
+          stat: obj.stat,
+          label: obj.label || obj.stat,
+          dailyTeamTarget: obj.dailyTeamTarget,
+          perPlayerTarget: round1(perPlayerTarget),
+          proj,
+          projSource,
+          ytd,
+          l10,
+          gamesPlayedL10: l10Lines.length,
+          colorProj: colorTier(proj, perPlayerTarget),
+          colorYtd: colorTier(ytd, perPlayerTarget),
+          colorL10: colorTier(l10, perPlayerTarget),
+        };
+      }
+      const injury = injuryByPlayerId.get(p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        team: p.team,
+        opp: opponentByTeam.get(p.teamId) || "",
+        injuryStatus: injury?.status || null,
+        injuryNote: injury?.note || null,
+        objectives: objectiveValues,
       };
-    }
+    });
 
-    const injury = injuryByPlayerId.get(pid);
-    return {
-      id: pid,
-      name: playerName,
-      team: player.team?.abbreviation || "",
-      opp: opponentByTeam.get(player.team?.id) || "",
-      injuryStatus: injury?.status || null,
-      injuryNote: injury?.description || injury?.comment || injury?.return_date || null,
-      objectives: objectiveValues,
-    };
-  });
-
-  // Auto-computed weighting (replaces manual entry): derived from how many
-  // players are projected to clear >=100% of their per-player target for
-  // each objective. Rarer feat -> higher weight, relative to the other
-  // objective on a 2-objective day.
   const weightedObjectives = computeAutoWeights(objectives, playerBase);
   for (const p of playerBase) {
     for (const wo of weightedObjectives) {
@@ -1209,41 +1306,45 @@ async function buildDashboard(env, { date, mode } = {}) {
     }
   }
 
-  // Weighted Ovr Rank: rank players within each objective by Proj (desc,
-  // standard competition ranking), then combine ranks using that day's
-  // auto-computed objective weights. Lower combined score = better = Ovr Rank 1.
+  // Weighted Ovr Rank: rank within each objective by Proj (desc), combine
+  // ranks by the day's auto-computed weights. Lower combined score = better.
   const rankMaps = weightedObjectives.map((obj) =>
     rankDescending(playerBase.map((p) => ({ id: p.id, value: p.objectives[obj.stat].proj })))
   );
-
   const combinedScores = playerBase.map((p) => {
     const score = weightedObjectives.reduce((sum, obj, i) => sum + rankMaps[i].get(p.id) * obj.weight, 0);
-    return { id: p.id, value: -score }; // negate: rankDescending expects "higher = better"
+    return { id: p.id, value: -score };
   });
   const ovrRankMap = rankDescending(combinedScores);
-
   const players = playerBase.map((p) => ({ ...p, ovrRank: ovrRankMap.get(p.id) }));
   players.sort((a, b) => a.ovrRank - b.ovrRank);
 
-  const baseNote =
-    "Live BALLDONTLIE data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected. PITP (when an objective) is derived from player_game_advanced_stats.stats.misc.points_paint. Proj uses admin-uploaded Rotowire projections where available; it falls back to the L10 average only where no projection was uploaded (PITP's documented, intentional case). Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight.";
+  const teamAdvanced = computeTeamAdvancedMetrics(snapshot.teamIds, snapshot.roster, snapshot.stats, snapshot.recentGames, last10Set);
 
-  const notes = [baseNote];
+  const notes = [
+    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; L10 reaches back into last season when fewer than 10 games have been played this season. PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight.`,
+  ];
   for (const obj of weightedObjectives) {
     const overrides = projectionOverrides[obj.stat] || {};
     const overrideCount = Object.keys(overrides).length;
     if (overrideCount > 0) {
       const matched = playerBase.filter((p) => p.objectives[obj.stat]?.projSource === "rotowire").length;
-      notes.push(
-        `${obj.stat}: ${overrideCount} uploaded Rotowire projection(s), ${matched} matched a player on today's roster.`
-      );
+      notes.push(`${obj.stat}: ${overrideCount} uploaded Rotowire projection(s), ${matched} matched a player on this slate.`);
+    } else if (obj.stat !== "PITP") {
+      notes.push(`${obj.stat}: no Rotowire projections uploaded yet for this date -- Proj shows TBD.`);
     }
   }
-  if (droppedCount > 0) {
-    notes.push(`NOTE: ${droppedCount} players were dropped this run to stay under the Cloudflare Free-plan subrequest limit.`);
+  if (snapshot.advancedError) {
+    notes.push(`NOTE: advanced stats (PITP) could not be fetched for this league (${snapshot.advancedError.slice(0, 80)}); PITP shows "--".`);
   }
-  if (recentResult.truncated || ytdResult.truncated) {
+  if (building) {
+    notes.push(`LOADING: ${loadedPlayers} of ${snapshot.totalPlayers} players loaded so far -- large slates finish over a couple of refreshes.`);
+  }
+  if (snapshot.truncatedRecent || snapshot.truncatedYtd) {
     notes.push("NOTE: game-window pagination hit its safety cap; some players' YTD/L10 windows may be based on an incomplete range.");
+  }
+  if (snapshot.truncatedYtdStats) {
+    notes.push("NOTE: YTD for some players is based on the earliest games of the season only (stat pagination cap); L10 is always complete.");
   }
 
   return {
@@ -1252,14 +1353,65 @@ async function buildDashboard(env, { date, mode } = {}) {
     note: notes.join(" "),
     players,
     teamAdvanced,
-    _subrequests_used: subrequests,
-    _generated_at: new Date().toISOString(),
+    _subrequests_used: snapshot.subrequestsUsed,
+    _generated_at: new Date(snapshot.finishedAt || snapshot.startedAt).toISOString(),
   };
 }
 
-async function refreshAndStore(env) {
-  const dashboard = await buildDashboard(env, { date: todayStr(), mode: "Classic" });
-  await env.FASTBREAK_KV.put("fastbreak:latest", JSON.stringify(dashboard));
+// Serve-or-advance: returns the best available payload for (league, date,
+// mode), spending up to `budget` BALLDONTLIE calls to start/continue the
+// day's build when the published snapshot is missing or stale.
+async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUESTS } = {}) {
+  const cfg = leagueConfig(SUPPORTED_LEAGUES.includes(league) ? league : DEFAULT_LEAGUE);
+  const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
+  const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
+  const schedule = await loadObjectivesSchedule(env);
+
+  const published = await loadJSON(env, dayKey(cfg, targetDate));
+  const publishedOk = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, targetDate);
+  if (publishedOk && snapshotIsFresh(published, targetDate)) {
+    return renderDayPayload(cfg, published, { mode: targetMode, schedule });
+  }
+
+  let state = await loadJSON(env, dayBuildKey(cfg, targetDate));
+  const buildUsable = state && state.status === "building" && state.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, targetDate);
+  let used = 0;
+  if (!buildUsable) {
+    state = await startDayBuild(cfg, env, { date: targetDate, schedule });
+    used += state.subrequestsUsed;
+    if (state.pendingChunks.length === 0) {
+      state.status = "done";
+      state.finishedAt = Date.now();
+    }
+  }
+  if (state.status === "building") {
+    used += await advanceDayBuild(cfg, env, state, Math.max(0, budget - used));
+  }
+
+  if (state.status === "done") {
+    await saveJSON(env, dayKey(cfg, targetDate), state);
+    await env.FASTBREAK_KV.delete(dayBuildKey(cfg, targetDate));
+    return renderDayPayload(cfg, state, { mode: targetMode, schedule });
+  }
+
+  await saveJSON(env, dayBuildKey(cfg, targetDate), state);
+  // While a refresh is in flight, keep serving the last complete snapshot
+  // (with a "refreshing" note) rather than a half-loaded slate -- even when
+  // it predates a PITP objective change (PITP shows "--" until the rebuild
+  // lands, which beats showing a third of the slate).
+  if (published && published.status === "done") {
+    const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule });
+    payload.refreshing = true;
+    payload.note += " Refreshing in the background.";
+    return payload;
+  }
+  return renderDayPayload(cfg, state, { mode: targetMode, schedule });
+}
+
+async function refreshAndStore(env, league) {
+  const cfg = leagueConfig(league);
+  const dashboard = await buildDashboard(env, { league, date: todayStr(), mode: "Classic" });
+  if (!dashboard.building) await saveJSON(env, cfg.keys.latest, dashboard);
   return dashboard;
 }
 
@@ -1270,9 +1422,35 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body, null, 2), { status, headers: corsHeaders });
+}
+
 function checkAdminToken(request, env) {
   const token = request.headers.get("X-Admin-Token") || "";
   return Boolean(env.FASTBREAK_ADMIN_TOKEN) && token === env.FASTBREAK_ADMIN_TOKEN;
+}
+
+function unauthorized() {
+  return json({ error: "Invalid or missing admin password." }, 401);
+}
+
+function leagueParam(url) {
+  const raw = (url.searchParams.get("league") || DEFAULT_LEAGUE).toUpperCase();
+  return SUPPORTED_LEAGUES.includes(raw) ? raw : DEFAULT_LEAGUE;
+}
+
+function runInfo(league) {
+  const cfg = leagueConfig(league);
+  return {
+    league,
+    runLabel: cfg.run.label,
+    runStart: cfg.run.start,
+    runEnd: cfg.run.end,
+    runLength: dayNumberForDate(league, cfg.run.end),
+    seasonActive: cfg.seasonActive,
+    todayET: todayStr(),
+  };
 }
 
 export default {
@@ -1283,243 +1461,228 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Live build for a given date/mode (defaults to today/Classic). Every hit
-    // here calls BALLDONTLIE live -- this is also what the cron handler uses,
-    // and what the frontend's Run day-toggle calls directly for any day in
-    // the Aug 19-30 window.
+    // Live view for a given league/date/mode (defaults to WNBA/today/Classic).
+    // Serves the cached day snapshot when fresh; otherwise spends this
+    // request's BALLDONTLIE budget starting/continuing the build.
     if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/api/fastbreak") {
       try {
+        const league = leagueParam(url);
         const date = url.searchParams.get("date") || todayStr();
         const mode = url.searchParams.get("mode") || "Classic";
-        const dashboard = await buildDashboard(env, { date, mode });
-        if (date === todayStr() && mode === "Classic") {
-          await env.FASTBREAK_KV.put("fastbreak:latest", JSON.stringify(dashboard));
+        const dashboard = await buildDashboard(env, { league, date, mode });
+        if (date === todayStr() && mode === "Classic" && !dashboard.building) {
+          await saveJSON(env, leagueConfig(league).keys.latest, dashboard);
         }
-        return new Response(JSON.stringify(dashboard, null, 2), { headers: corsHeaders });
+        return json(dashboard);
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+        return json({ error: err.message }, 500);
       }
     }
 
-    // Run schedule metadata (start/end/day numbers) -- lets the frontend build
-    // its day toggle without hardcoding the run window.
+    // Run metadata for one league (or all) -- the frontend builds its day
+    // toggle from this instead of hardcoding the windows.
     if (url.pathname === "/api/fastbreak/run" && request.method === "GET") {
-      return new Response(
-        JSON.stringify({ runStart: RUN_START, runEnd: RUN_END, runLength: dayNumberForDate(RUN_END) }),
-        { headers: corsHeaders }
-      );
+      if (url.searchParams.get("league") === "ALL") {
+        return json(Object.fromEntries(SUPPORTED_LEAGUES.map((l) => [l, runInfo(l)])));
+      }
+      return json(runInfo(leagueParam(url)));
     }
 
-    // Admin objectives schedule: viewable by anyone (it's a locked *view*, not
-    // a secret), editable only with the admin password. Real edits happen
-    // through this upload/input endpoint, never by hand-editing page content.
+    // Objectives schedule: viewable by anyone (a locked *view*), editable
+    // only with the admin password. Whole schedule (all leagues) is returned.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
       const schedule = await loadObjectivesSchedule(env);
-      return new Response(JSON.stringify({ league: SUPPORTED_LEAGUE, schedule }), { headers: corsHeaders });
+      return json({ leagues: SUPPORTED_LEAGUES, modes: SUPPORTED_MODES, schedule });
     }
 
     if (url.pathname === "/api/fastbreak/objectives/day" && request.method === "POST") {
-      if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
-          status: 401,
-          headers: corsHeaders,
-        });
-      }
+      if (!checkAdminToken(request, env)) return unauthorized();
       try {
         const body = await request.json();
         const schedule = await upsertObjectivesDay(env, {
-          league: body.league || SUPPORTED_LEAGUE,
+          league: (body.league || DEFAULT_LEAGUE).toUpperCase(),
           date: body.date,
           mode: body.mode || "Classic",
           objectives: body.objectives,
           badgeSetName: body.badgeSetName,
         });
-        return new Response(JSON.stringify({ ok: true, schedule }), { headers: corsHeaders });
+        return json({ ok: true, schedule });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: corsHeaders });
+        return json({ error: err.message }, 400);
       }
     }
 
-    // Bulk-load real, manually-sourced (Rotowire) Proj values for one stat on
-    // one date. Admin-password gated, same as the objectives/day write above.
-    // Never used for PITP -- there's no Rotowire (or standard WNBA stats
-    // site) projection for it, so PITP intentionally has no override entries
-    // and always falls back to the L10 average in buildDashboard.
+    // Bulk-load Rotowire Proj values for one stat on one league/date. Shared
+    // by Classic and Pro for that league.
     if (url.pathname === "/api/fastbreak/objectives/day/projections" && request.method === "POST") {
-      if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
-          status: 401,
-          headers: corsHeaders,
-        });
-      }
+      if (!checkAdminToken(request, env)) return unauthorized();
       try {
         const body = await request.json();
         const schedule = await upsertProjections(env, {
-          league: body.league || SUPPORTED_LEAGUE,
+          league: (body.league || DEFAULT_LEAGUE).toUpperCase(),
           date: body.date,
           stat: body.stat,
           projections: body.projections,
         });
-        return new Response(JSON.stringify({ ok: true, schedule }), { headers: corsHeaders });
+        return json({ ok: true, schedule });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: corsHeaders });
+        return json({ error: err.message }, 400);
       }
     }
 
-    // Full Data tab: serves the cached leaguewide L10/YTD snapshot (built
-    // incrementally by advanceFullDataBuild, see above). This is a plain KV
-    // read -- it never calls BALLDONTLIE directly, so it's cheap regardless
-    // of traffic.
+    // Admin: force a day's snapshot to rebuild on the next load (e.g. after
+    // changing a day's objectives from non-PITP to PITP, or a roster move).
+    if (url.pathname === "/api/fastbreak/day/invalidate" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json();
+        const cfg = leagueConfig((body.league || DEFAULT_LEAGUE).toUpperCase());
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || "")) throw new Error("date must be YYYY-MM-DD");
+        await env.FASTBREAK_KV.delete(dayKey(cfg, body.date));
+        await env.FASTBREAK_KV.delete(dayBuildKey(cfg, body.date));
+        return json({ ok: true, league: cfg.key, date: body.date });
+      } catch (err) {
+        return json({ error: err.message }, 400);
+      }
+    }
+
+    // Full Data tab: cached leaguewide L10/YTD snapshot (plain KV read).
     if (url.pathname === "/api/fastbreak/fulldata" && request.method === "GET") {
-      const cached = await env.FASTBREAK_KV.get(FULLDATA_KV_KEY);
+      const cfg = leagueConfig(leagueParam(url));
+      const cached = await env.FASTBREAK_KV.get(cfg.keys.fulldata);
       if (!cached) {
-        return new Response(
-          JSON.stringify({ error: "Full Data hasn't finished its first build yet -- check back shortly." }),
-          { status: 503, headers: corsHeaders }
-        );
+        return json({ error: `${cfg.key} Full Data hasn't finished its first build yet -- check back shortly.` }, 503);
       }
       return new Response(cached, { headers: corsHeaders });
     }
 
-    // Manual trigger + progress check for the Full Data build -- admin-gated
-    // so public traffic can't burn subrequests forcing rebuilds. Useful for
-    // kicking off (or speeding up) a build without waiting on cron ticks.
     if (url.pathname === "/api/fastbreak/fulldata/build" && request.method === "POST") {
-      if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
-          status: 401,
-          headers: corsHeaders,
-        });
-      }
+      if (!checkAdminToken(request, env)) return unauthorized();
       try {
-        const result = await advanceFullDataBuild(env, MAX_SUBREQUESTS - 4);
-        return new Response(JSON.stringify({ ok: true, ...result }), { headers: corsHeaders });
+        const league = leagueParam(url);
+        const result = await advanceFullDataBuild(env, league, MAX_SUBREQUESTS - 4);
+        return json({ ok: true, league, ...result });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+        return json({ error: err.message }, 500);
       }
     }
 
     if (url.pathname === "/api/fastbreak/fulldata/status" && request.method === "GET") {
-      const state = await loadFullDataBuildState(env);
-      const cachedRaw = await env.FASTBREAK_KV.get(FULLDATA_KV_KEY);
-      const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
-      return new Response(
-        JSON.stringify({
-          buildStatus: state?.status || "not started",
-          pendingChunks: state?.pendingChunks?.length ?? null,
-          totalPlayersCached: cached?.players?.length ?? 0,
-          lastGeneratedAt: cached?.generated_at ?? null,
-        }),
-        { headers: corsHeaders }
-      );
+      const cfg = leagueConfig(leagueParam(url));
+      const state = await loadJSON(env, cfg.keys.fulldataBuild);
+      const cached = await loadJSON(env, cfg.keys.fulldata);
+      return json({
+        league: cfg.key,
+        buildStatus: state?.status || "not started",
+        pendingChunks: state?.pendingChunks?.length ?? null,
+        totalPlayersCached: cached?.players?.length ?? 0,
+        lastGeneratedAt: cached?.generated_at ?? null,
+      });
     }
 
     // -- NBA Historic (simulated season) -----------------------------------
-    // Entirely separate code path from everything above: reads/writes only
-    // the "fastbreak:historic:*" KV keys (see historic.js), never touches
-    // BALLDONTLIE, and is not called by the cron scheduled() handler below --
-    // advancing a day is an explicit admin action, not automatic, until
-    // there's a real launch date to put on a schedule.
+    // Separate code path: reads/writes only "fastbreak:historic:*" keys and
+    // never touches BALLDONTLIE. Advancing a day is an explicit admin action.
 
-    // Public read: today's (or a specified day's) Historic dashboard, same
-    // response shape as the WNBA payload above so the existing frontend
-    // table can render it without new parsing logic.
     if (url.pathname === "/api/fastbreak/historic" && request.method === "GET") {
       try {
         const dayParam = url.searchParams.get("day");
         const day = dayParam ? Number(dayParam) : undefined;
-        const dashboard = await buildHistoricDashboard(env, { day });
-        return new Response(JSON.stringify(dashboard, null, 2), { headers: corsHeaders });
+        return json(await buildHistoricDashboard(env, { day }));
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+        return json({ error: err.message }, 500);
       }
     }
 
-    // Admin: load players/schedule/objectives (the build_players.js/
-    // build_schedule.js/build_objectives.js output from the prototype
-    // pipeline). Overwrite-in-place on the historic:* keys -- safe to call
-    // repeatedly while iterating on the roster before launch.
-    if (url.pathname === "/api/fastbreak/historic/seed" && request.method === "POST") {
-      if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
-          status: 401,
-          headers: corsHeaders,
-        });
+    if (url.pathname === "/api/fastbreak/historic/status" && request.method === "GET") {
+      try {
+        return json(await getHistoricStatus(env));
+      } catch (err) {
+        return json({ error: err.message }, 500);
       }
+    }
+
+    if (url.pathname === "/api/fastbreak/historic/seed" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
       try {
         const body = await request.json();
-        const result = await seedHistoric(env, {
-          players: body.players,
-          schedule: body.schedule,
-          objectives: body.objectives,
-        });
-        return new Response(JSON.stringify(result), { headers: corsHeaders });
+        return json(await seedHistoric(env, { players: body.players, schedule: body.schedule, objectives: body.objectives }));
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: corsHeaders });
+        return json({ error: err.message }, 400);
       }
     }
 
-    // Admin: simulate the next day's box scores and advance the public
-    // "current day" pointer. This is the manual stand-in for what a
-    // Cloudflare Cron Trigger should do automatically once Historic has a
-    // real launch date -- see the PR description for that follow-up.
-    if (url.pathname === "/api/fastbreak/historic/advance" && request.method === "POST") {
-      if (!checkAdminToken(request, env)) {
-        return new Response(JSON.stringify({ error: "Invalid or missing admin password." }), {
-          status: 401,
-          headers: corsHeaders,
-        });
+    // Admin: set one Historic day's objectives (same 1-2 objective shape as
+    // the live leagues, keyed by day number instead of calendar date).
+    if (url.pathname === "/api/fastbreak/historic/objectives/day" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json();
+        return json(await upsertHistoricObjectivesDay(env, { day: body.day, date: body.date, objectives: body.objectives }));
+      } catch (err) {
+        return json({ error: err.message }, 400);
       }
+    }
+
+    if (url.pathname === "/api/fastbreak/historic/advance" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
       try {
         const body = await request.json().catch(() => ({}));
         const nextDay = body.day || (await getCurrentHistoricDay(env)) + (body.fromCurrent === false ? 0 : 1);
         const simResult = await simulateHistoricDay(env, nextDay);
         await setCurrentHistoricDay(env, nextDay);
-        return new Response(JSON.stringify({ ok: true, day: nextDay, ...simResult }), { headers: corsHeaders });
+        return json({ ok: true, day: nextDay, ...simResult });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+        return json({ error: err.message }, 500);
       }
     }
 
     return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 
-  async scheduled(event, env, ctx) {
-    let dashboard = null;
-    try {
-      dashboard = await refreshAndStore(env);
-    } catch (err) {
-      // Best-effort: leave the previously cached KV data in place if this run
-      // fails, rather than wiping out good data with a failed refresh.
-      console.error("fastbreak-refresh scheduled run failed:", err.message);
+  // Two cron expressions in wrangler.toml, one per league (offset so they
+  // never share an invocation's subrequest budget). Each tick refreshes
+  // today's day snapshot for its league (only while that league is in
+  // season) and spends the leftover budget on that league's Full Data build.
+  async scheduled(event, env) {
+    const league = event.cron === LEAGUE_CRONS.NBA ? "NBA" : "WNBA";
+    const today = todayStr();
+    if (!isSeasonActive(league, today)) {
+      console.log(`${league} not in season on ${today}; skipping cron refresh.`);
+      return;
     }
 
-    // Spend whatever's left of this tick's subrequest budget advancing the
-    // leaguewide Full Data build (see advanceFullDataBuild above). Reserves
-    // a small margin for this tick's own KV reads/writes on top of what the
-    // day-view build above already used.
+    let dashboard = null;
+    try {
+      dashboard = await refreshAndStore(env, league);
+    } catch (err) {
+      console.error(`fastbreak-refresh ${league} scheduled run failed:`, err.message);
+    }
+
     const usedByDashboard = dashboard?._subrequests_used || 0;
     const fullDataBudget = MAX_SUBREQUESTS - usedByDashboard - 4;
     if (fullDataBudget > 0) {
       try {
-        await advanceFullDataBuild(env, fullDataBudget);
+        await advanceFullDataBuild(env, league, fullDataBudget);
       } catch (err) {
-        console.error("full-data build tick failed (continuing):", err.message);
+        console.error(`${league} full-data build tick failed (continuing):`, err.message);
       }
     }
-
-    // NBA Historic is NOT advanced here -- see the /api/fastbreak/historic/
-    // advance route above. Wiring it into this cron tick (once there's a
-    // real launch date) is a one-line addition: await simulateHistoricDay(
-    // env, (await getCurrentHistoricDay(env)) + 1) followed by
-    // setCurrentHistoricDay -- deliberately left as a follow-up rather than
-    // done here, so Historic can't start advancing on its own before anyone
-    // has decided the season should be running.
+    // NBA Historic is NOT advanced here -- see /api/fastbreak/historic/advance.
   },
+};
+
+// Keep in sync with [triggers] crons in wrangler.toml.
+const LEAGUE_CRONS = {
+  WNBA: "*/15 * * * *",
+  NBA: "7-59/15 * * * *",
 };
 
 // Exported for local/unit testing only (not used by the Worker runtime).
 export const __testables__ = {
+  LEAGUES,
+  SUPPORTED_LEAGUES,
+  SUPPORTED_MODES,
   STAT_FIELD_MAP,
   average,
   round1,
@@ -1531,22 +1694,29 @@ export const __testables__ = {
   formatGameTime,
   pickLastNGameIdsPerTeam,
   buildDashboard,
+  renderDayPayload,
   normalizePlayerName,
   upsertProjections,
+  upsertObjectivesDay,
   projectionsForDate,
   dayNumberForDate,
   isWithinRun,
-  RUN_START,
-  RUN_END,
+  isSeasonActive,
   getGamesForDate,
   etDateStrForGame,
+  etDateStr,
+  etHour,
+  todayStr,
   addDaysStr,
+  slimGame,
   computeTeamScoring,
   computeTeamAdvancedMetrics,
   advanceFullDataBuild,
-  loadFullDataBuildState,
   FULLDATA_STAT_CODES,
   TEAM_BOX_CODES,
-  FULLDATA_KV_KEY,
-  FULLDATA_BUILD_KV_KEY,
+  OBJECTIVES_KV_KEY,
+  dayKey,
+  dayBuildKey,
+  LEAGUE_CRONS,
+  MAX_SUBREQUESTS,
 };

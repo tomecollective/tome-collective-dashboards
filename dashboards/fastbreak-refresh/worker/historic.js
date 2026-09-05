@@ -315,6 +315,59 @@ async function seedHistoric(env, { players, schedule, objectives }) {
   };
 }
 
+// Admin: set (or replace) one Historic day's objectives. Same 1-2 objective
+// shape as the live leagues' admin form, keyed by day number. Accepts either
+// {stat, dailyTeamTarget} (frontend form) or {type, dailyTeamTarget} (seed
+// file) entries and stores the seed-file shape.
+async function upsertHistoricObjectivesDay(env, { day, date, objectives }) {
+  const dayNum = Number(day);
+  if (!Number.isInteger(dayNum) || dayNum < 1) throw new Error("day must be a positive integer");
+  if (!Array.isArray(objectives) || objectives.length < 1 || objectives.length > 2) {
+    throw new Error("objectives must be an array of 1 or 2 entries");
+  }
+  const clean = objectives.map((o) => {
+    const type = o.type || o.stat;
+    if (!type || !STAT_MAP[type]) throw new Error(`unknown stat code: ${type}`);
+    if (typeof o.dailyTeamTarget !== "number" || o.dailyTeamTarget <= 0) {
+      throw new Error(`dailyTeamTarget must be a positive number for ${type}`);
+    }
+    return { type, dailyTeamTarget: o.dailyTeamTarget };
+  });
+  const all = await getJSON(env, HISTORIC_OBJECTIVES_KEY, []);
+  const existing = all.find((o) => o.day === dayNum);
+  const schedule = await getJSON(env, HISTORIC_SCHEDULE_KEY, []);
+  const scheduleDay = schedule.find((s) => s.day === dayNum);
+  const entry = {
+    day: dayNum,
+    date: date || existing?.date || scheduleDay?.date || null,
+    objectives: clean,
+  };
+  const next = all.filter((o) => o.day !== dayNum).concat([entry]).sort((a, b) => a.day - b.day);
+  await putJSON(env, HISTORIC_OBJECTIVES_KEY, next);
+  return { ok: true, day: dayNum, objectives: clean, objectivesDaysLoaded: next.length };
+}
+
+// Admin/status view: what's seeded, what's been simulated, which day is live.
+async function getHistoricStatus(env) {
+  const players = await getJSON(env, HISTORIC_PLAYERS_KEY, []);
+  const schedule = await getJSON(env, HISTORIC_SCHEDULE_KEY, []);
+  const objectives = await getJSON(env, HISTORIC_OBJECTIVES_KEY, []);
+  const boxscores = await getJSON(env, HISTORIC_BOXSCORES_KEY, []);
+  const simulatedDays = [...new Set(boxscores.map((r) => r.day))].sort((a, b) => a - b);
+  return {
+    league: "NBA",
+    mode: "Historic",
+    currentDay: await getCurrentHistoricDay(env),
+    playersLoaded: players.length,
+    activePlayers: players.filter((p) => p.active).length,
+    scheduleDays: schedule.length,
+    objectivesDays: objectives.length,
+    simulatedDays,
+    objectives: objectives.map((o) => ({ day: o.day, date: o.date || null, objectives: o.objectives })),
+    scheduleDates: schedule.map((s) => ({ day: s.day, date: s.date || null, games: (s.matchups || []).length })),
+  };
+}
+
 export {
   HISTORIC_PLAYERS_KEY,
   HISTORIC_SCHEDULE_KEY,
@@ -326,6 +379,8 @@ export {
   seedHistoric,
   getCurrentHistoricDay,
   setCurrentHistoricDay,
+  upsertHistoricObjectivesDay,
+  getHistoricStatus,
   round1,
   average,
   tierColor,

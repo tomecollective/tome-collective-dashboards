@@ -14,9 +14,12 @@ id = "REPLACE_WITH_REAL_ID"
 #   wrangler secret put BALLDONTLIE_API_KEY
 #   wrangler secret put FASTBREAK_ADMIN_TOKEN
 
-# Refresh cadence: every 15 minutes. WNBA games run ~2 hours; this keeps L10/
-# YTD and the schedule tiles reasonably current without burning through the
-# Cloudflare Free plan's daily cron-invocation budget. Tighten (or add a
-# game-day-only schedule) once usage patterns are clearer.
+# Refresh cadence: every 15 minutes per league, on two offset schedules so
+# each league gets a full invocation's subrequest budget. The Worker maps
+# event.cron back to a league (see LEAGUE_CRONS in worker/index.js -- keep
+# these two strings identical to those). A league's tick is a no-op outside
+# its seasonActive window, so the NBA schedule costs nothing until Oct 15.
+#   "*/15 * * * *"    -> WNBA  (:00 :15 :30 :45)
+#   "7-59/15 * * * *" -> NBA   (:07 :22 :37 :52)
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/15 * * * *", "7-59/15 * * * *"]
