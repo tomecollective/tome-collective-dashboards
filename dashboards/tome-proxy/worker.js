@@ -47,11 +47,8 @@ async function captureSnapshot(env) {
         `&condition=${encodeURIComponent('Near Mint')}` +
         `&orderBy=price&order=desc&limit=100&offset=${i * 100}` +
         `&include_price_history=false`;
-      let res;
-      try {
-        res = await fetch(url, { headers: { 'x-api-key': env.JUSTTCG_API_KEY } });
-      } catch (e) { break; }
-      if (!res.ok) break;
+      const res = await jtFetch(env, url);
+      if (!res || !res.ok) break;
       const json = await res.json();
       const cards = json.data || [];
       if (!cards.length) break;
@@ -110,14 +107,14 @@ const GP_ASC_SHARE = 0.5;
 const GP_UNIVERSE_FLOOR = 10;
 const GP_HARD_PRICE_FLOOR = 10;
 const GP_PER_GAME_LIMIT = 100;
-const GP_FETCH_CONCURRENCY = 10;   // once/day, off the request path — a bit more generous than the client's 8
+const GP_FETCH_CONCURRENCY = 4;    // pacing is enforced by jtFetch's limiter; this just bounds in-flight requests
 async function gpFetchCatalogPage(env, game, offset, order) {
   const slug = GP_GAME_SLUGS[game];
   const upstream = `${JUSTTCG_BASE}/cards?game=${encodeURIComponent(slug)}` +
     `&condition=${encodeURIComponent('Near Mint')}&orderBy=price&order=${order}` +
     `&limit=${GP_PER_GAME_LIMIT}&offset=${offset}`;
-  const res = await fetch(upstream, { headers: { 'x-api-key': env.JUSTTCG_API_KEY } });
-  if (!res.ok) return [];
+  const res = await jtFetch(env, upstream);
+  if (!res || !res.ok) return [];
   const json = await res.json();
   return (json.data || [])
     .map(c => {
@@ -176,29 +173,84 @@ function gpParseGraded(json) {
   }
   return Object.keys(out).length ? out : null;
 }
-// UPDATED (diagnostic logging) -- added statusCounts param and per-status tallying.
-// The upstream URL below keeps the real "/v2/cards" path exactly as already deployed --
-// the original diagnostic patch's "Find" anchor incorrectly assumed a plain "/cards" path
-// with no "/v2/" segment. Verified against the live file before applying; do not revert
-// this path.
+// ═══ RATE-LIMITED JUSTTCG FETCH (cron path only) ═════════════════════════════════
+// 2026-09-06 diagnostic run: {"404":171,"429":1190,"ok":39} on 1,400 graded lookups.
+// The Worker was firing at concurrency 10 with no pacing, so after the first ~200
+// calls JustTCG's per-minute limiter closed and 85% of the run was thrown away.
+// That -- not data availability -- was the 1.8% PSA coverage reading.
+//
+// Plan: Professional = 100 req/min, 5,000/day. Pace to 80/min so the request-path
+// proxy (same key, 6h edge cache misses) keeps headroom, and retry 429s honoring
+// Retry-After with exponential backoff + jitter, per JustTCG's own guidance.
+const JT_RATE_PER_MIN = 80;
+const JT_MAX_ATTEMPTS = 4;
+const JT_BACKOFF_BASE_MS = 1000;
+const JT_BACKOFF_CAP_MS = 30000;
+const jtLimiter = { nextSlot: 0 };   // module-level token pacing (one isolate per cron run)
+const jtSleep = ms => new Promise(r => setTimeout(r, ms));
+async function jtAcquireSlot() {
+  const interval = 60000 / JT_RATE_PER_MIN;
+  const now = Date.now();
+  const slot = Math.max(now, jtLimiter.nextSlot);
+  jtLimiter.nextSlot = slot + interval;
+  if (slot > now) await jtSleep(slot - now);
+}
+// Returns the final Response (ok or not) or null on network failure after retries.
+// statusCounts (optional) is tallied: ok / 404 / 429 (gave up) / 429_retried
+// (recovered on a later attempt) / 5xx / other_NNN / network_error.
+async function jtFetch(env, url, statusCounts) {
+  let res = null;
+  for (let attempt = 1; attempt <= JT_MAX_ATTEMPTS; attempt++) {
+    await jtAcquireSlot();
+    try {
+      res = await fetch(url, { headers: { 'x-api-key': env.JUSTTCG_API_KEY } });
+    } catch (e) {
+      res = null;
+      if (attempt === JT_MAX_ATTEMPTS) break;
+      await jtSleep(Math.min(JT_BACKOFF_CAP_MS, JT_BACKOFF_BASE_MS * 2 ** (attempt - 1)) * (0.5 + Math.random()));
+      continue;
+    }
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt === JT_MAX_ATTEMPTS) break;
+    if (res.status === 429 && statusCounts) statusCounts['429_retried'] = (statusCounts['429_retried'] || 0) + 1;
+    const retryAfter = parseFloat(res.headers.get('Retry-After'));
+    const backoff = Math.min(JT_BACKOFF_CAP_MS, JT_BACKOFF_BASE_MS * 2 ** (attempt - 1)) * (0.5 + Math.random());
+    await jtSleep(Number.isFinite(retryAfter) ? Math.max(retryAfter * 1000, backoff) : backoff);
+  }
+  if (statusCounts) {
+    const bucket = !res ? 'network_error'
+      : res.status === 404 ? '404' : res.status === 429 ? '429'
+      : res.status >= 500 ? '5xx' : res.ok ? 'ok' : `other_${res.status}`;
+    statusCounts[bucket] = (statusCounts[bucket] || 0) + 1;
+  }
+  return res;
+}
+// The upstream URL below keeps the real "/v2/cards" path exactly as deployed -- an
+// earlier diagnostic patch's "Find" anchor wrongly assumed a plain "/cards" path.
+// Do not revert this path.
 async function gpFetchGraded(env, cardId, statusCounts) {
   try {
-    const res = await fetch(
+    const res = await jtFetch(env,
       `${JUSTTCG_BASE_V2}/v2/cards?card_id=${encodeURIComponent(cardId)}&graded=only`,
-      { headers: { 'x-api-key': env.JUSTTCG_API_KEY } }
-    );
-    if (statusCounts) {
-      const bucket = res.status === 404 ? '404' : res.status === 429 ? '429'
-        : res.status >= 500 ? '5xx' : res.ok ? 'ok' : `other_${res.status}`;
-      statusCounts[bucket] = (statusCounts[bucket] || 0) + 1;
-    }
-    if (!res.ok) return null;   // includes the expected 404 "no graded data" case -- statusCounts tells you if that's actually what's happening
+      statusCounts);
+    if (!res || !res.ok) return null;   // 404 = no graded data for this card (expected for most)
     return gpParseGraded(await res.json());
   } catch (e) {
-    if (statusCounts) statusCounts.network_error = (statusCounts.network_error || 0) + 1;
-    return null;   // one card's network hiccup shouldn't fail the whole run
+    return null;   // one card's parse failure shouldn't fail the whole run
   }
 }
+// ═══ CATALOG ROTATION ═══════════════════════════════════════════════════════════
+// Enrich a third of the catalog per day instead of all 1,400 cards: ~470 graded calls
+// paced at 80/min is ~6 min of cron time and ~12% of the daily quota. Bucket by a
+// stable hash of the card ID (not list position) so a card keeps its bucket as the
+// catalog churns, and every card is refreshed every 3 days.
+const GP_ROTATION_BUCKETS = 3;
+function gpBucketOf(cardId) {
+  let h = 2166136261;                       // FNV-1a
+  for (let i = 0; i < cardId.length; i++) { h ^= cardId.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) % GP_ROTATION_BUCKETS;
+}
+const gpTodayBucket = (now = Date.now()) => Math.floor(now / 86400000) % GP_ROTATION_BUCKETS;
 async function gpMapWithConcurrency(items, limit, fn) {
   let next = 0;
   async function worker() {
@@ -209,28 +261,42 @@ async function gpMapWithConcurrency(items, limit, fn) {
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
-// UPDATED (diagnostic logging) -- added statusCounts tally, logged and stored alongside
-// the existing snapshot so the breakdown is visible via both Logs and GET /graded-prices.
+// Rotating, merging enrichment: today's bucket is re-fetched and replaces its prior
+// entries (including clearing cards that now return nothing); the other buckets are
+// carried forward from the previous snapshot; cards no longer in the catalog are
+// pruned. Per-card {p7,p8,p9} shape is unchanged for index.html.
 async function captureGradedPrices(env) {
   const ids = await gpCollectCatalogIds(env);
+  const bucket = gpTodayBucket();
+  const todayIds = ids.filter(id => gpBucketOf(id) === bucket);
+  const catalogSet = new Set(ids);
+  let prior = null;
+  try { prior = await env.SNAPSHOTS.get('graded-prices', 'json'); } catch (e) { prior = null; }
   const data = {};
-  let liveCount = 0;
-  const statusCounts = {};   // tally of what JustTCG's graded endpoint actually returned
-  await gpMapWithConcurrency(ids, GP_FETCH_CONCURRENCY, async (id) => {
+  for (const [id, g] of Object.entries((prior && prior.data) || {})) {
+    if (catalogSet.has(id) && gpBucketOf(id) !== bucket) data[id] = g;   // carry forward other buckets
+  }
+  const statusCounts = {};   // tally of what JustTCG's graded endpoint actually returned today
+  let bucketLive = 0;
+  await gpMapWithConcurrency(todayIds, GP_FETCH_CONCURRENCY, async (id) => {
     const g = await gpFetchGraded(env, id, statusCounts);
-    if (g) { data[id] = g; liveCount++; }
+    if (g) { data[id] = g; bucketLive++; }
   });
-  console.log('captureGradedPrices status breakdown:', JSON.stringify(statusCounts));   // visible in Observability -> Logs
+  const liveCount = Object.keys(data).length;
+  console.log(`captureGradedPrices bucket ${bucket}/${GP_ROTATION_BUCKETS}: ${todayIds.length} checked, ` +
+    `${bucketLive} live today, ${liveCount} live total; status breakdown: ${JSON.stringify(statusCounts)}`);
   await env.SNAPSHOTS.put('graded-prices', JSON.stringify({
     updatedAt: new Date().toISOString(),
-    cardsChecked: ids.length,
-    liveCount,
-    statusCounts,   // also readable via GET /graded-prices without digging through logs
+    cardsChecked: todayIds.length,   // today's bucket only
+    catalogSize: ids.length,
+    bucket, bucketSize: todayIds.length, bucketLive,
+    liveCount,                        // across all buckets (carried forward + today)
+    statusCounts,   // today's bucket; also readable via GET /graded-prices
     data,
-  }), { expirationTtl: 172800 });   // 2-day safety net: if the cron breaks for 2 days
-                                     // straight, /graded-prices starts returning 503
-                                     // ("not ready") instead of silently serving very
-                                     // stale data forever.
+  }), { expirationTtl: 172800 });   // key is rewritten daily, so the 2-day TTL still
+                                     // means: if the cron dies for 2 days straight,
+                                     // /graded-prices returns 503 instead of silently
+                                     // serving stale data forever.
 }
 // ═══ DAILY TOME SCORE TRACK RECORD + CRACK-PROFIT DIGEST ════════════════════════
 // Runs after captureGradedPrices (see scheduled() below) so it can read the graded-price
@@ -281,8 +347,8 @@ async function shFetchCatalogPage(env, game, offset, order) {
   const upstream = `${JUSTTCG_BASE}/cards?game=${encodeURIComponent(slug)}` +
     `&condition=${encodeURIComponent('Near Mint')}&orderBy=price&order=${order}` +
     `&limit=${GP_PER_GAME_LIMIT}&offset=${offset}`;
-  const res = await fetch(upstream, { headers: { 'x-api-key': env.JUSTTCG_API_KEY } });
-  if (!res.ok) return [];
+  const res = await jtFetch(env, upstream);
+  if (!res || !res.ok) return [];
   const json = await res.json();
   return (json.data || []).map(c => {
     const variants = (c.variants || []).filter(v => v.condition !== 'Sealed');
