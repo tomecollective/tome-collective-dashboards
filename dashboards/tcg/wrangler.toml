@@ -11,6 +11,7 @@ compatibility_date = "2026-08-08"
 [[services]]
 binding = "SELF"
 service = "tome-tcg"
+environment = "production"
 
 # Required so /api/chase-index has something to serve besides the bundled
 # seed, and so the scheduled refresh has somewhere to write its output and
@@ -27,6 +28,8 @@ id = "91fb21abc1084fe1ae7f723cec1b4e61"
 # not data freshness). Time is UTC; 13:00 UTC = 8am ET / 7am CT. Change to
 # taste -- one run a day is enough since JustTCG's priceHistoryDuration
 # window backfills any days a run gets missed.
+[observability.logs]
+enabled = true
 [triggers]
 crons = ["0 13 * * *"]
 

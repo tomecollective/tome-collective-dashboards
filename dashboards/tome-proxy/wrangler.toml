@@ -1,0 +1,30 @@
+name = "tome-proxy"
+main = "worker.js"
+compatibility_date = "2026-08-08"
+
+# JustTCG proxy + daily snapshot pipeline (price snapshots, graded-price
+# snapshot with status-code diagnostics, Tome Score track record, crack-profit
+# Discord digest). Deployed at https://tome-proxy.tomecollective.workers.dev
+#
+# This Worker was originally created and edited in the Cloudflare dashboard
+# editor. It was brought under the repo on 2026-09-06 (dashboard version
+# 1401b029). From here on, deploy with `wrangler deploy` from this directory
+# so the repo and the live Worker never drift again.
+
+# The code reads env.SNAPSHOTS -- the binding name must stay exactly SNAPSHOTS.
+[[kv_namespaces]]
+binding = "SNAPSHOTS"
+id = "adfd85aea0784373b2787e5a103b0de0"   # namespace TOME_SNAPSHOTS
+
+# Daily at 14:00 UTC (9am Central). Runs captureSnapshot ->
+# captureGradedPrices -> captureScoreHistoryAndDigest sequentially.
+[triggers]
+crons = ["0 14 * * *"]
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+# Secrets (never committed; already set on the Worker):
+#   wrangler secret put JUSTTCG_API_KEY
+#   wrangler secret put DISCORD_WEBHOOK_URL   # crack-profit digest target
