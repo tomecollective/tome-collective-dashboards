@@ -78,13 +78,17 @@ function subscriberGate(request, url, env, origin) {
 // Per-IP rate limit (Workers Rate Limiting binding; see wrangler.toml). Allows the
 // request if the binding is missing or errors, so a limiter outage never takes the
 // dashboard down -- the subscriber gate is the real access control.
-async function rateLimited(request, origin, env) {
-  if (!env.PUBLIC_RATE_LIMITER) return null;
+// The outcome is also exposed as an X-Tome-RL response header (off / ok / denied /
+// error) so the limiter can be verified from outside without reading logs.
+async function rateLimited(request, origin, env, rl) {
+  if (!env.PUBLIC_RATE_LIMITER) { rl.state = 'off'; return null; }
   try {
     const { success } = await env.PUBLIC_RATE_LIMITER.limit({ key: request.headers.get('CF-Connecting-IP') || 'unknown' });
+    rl.state = success ? 'ok' : 'denied';
     if (!success) return jsonError('Too many requests. Slow down.', 429, origin);
   } catch (e) {
-    console.error('rate limiter error (allowing request):', e.message);
+    rl.state = 'error';
+    console.error('rate limiter error (allowing request):', e && e.message);
   }
   return null;
 }
@@ -550,12 +554,20 @@ export default {
     })());
   },
   async fetch(request, env, ctx) {
+    const rl = { state: 'off' };
+    const resp = await handleRequest(request, env, ctx, rl);
+    const out = new Response(resp.body, resp);
+    out.headers.set('X-Tome-RL', rl.state);
+    return out;
+  },
+};
+async function handleRequest(request, env, ctx, rl) {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(origin) });
     const url = new URL(request.url);
     // Order: rate limit -> subscriber gate -> route. Everything below the gate is
     // Tome Vault product data (or writes to Discord), so nothing is served without a key.
-    const limited = await rateLimited(request, origin, env);
+    const limited = await rateLimited(request, origin, env, rl);
     if (limited) return limited;
     const gated = subscriberGate(request, url, env, origin);
     if (gated) return gated;
@@ -617,5 +629,4 @@ export default {
     });
     if (apiRes.ok) ctx.waitUntil(cache.put(cacheKey, response.clone()));
     return response;
-  },
-};
+}
