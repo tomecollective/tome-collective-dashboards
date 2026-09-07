@@ -7,13 +7,21 @@ Live: https://tome-proxy.tomecollective.workers.dev
 
 ## Request path (`fetch`)
 
-GET only. Allowed paths: `/cards`, `/sets`, `/v2/cards` (graded data, proxied to
-api.justtcg.com without the `/v1` prefix), `/history`, `/graded-prices`.
-Responses are edge-cached for 6h (approved by JustTCG). CORS is limited to the
-Tome origins in `ALLOWED_ORIGINS`.
+Every request is rate-limited per IP (PUBLIC_RATE_LIMITER, 60/min) and then gated
+behind the Tome Vault subscriber key: the `X-Tome-Key` header (or `?key=`) must match
+one of the comma-separated `TOME_SUBSCRIBER_KEYS` values, or the Worker answers
+`401 {locked:true}` (`503` if the secret is unset, i.e. it fails closed). The key is
+stripped before anything is forwarded to JustTCG.
 
-Known gap: no subscriber gate or per-IP rate limit on the JustTCG proxy paths
-(the same class of issue Fast Break and Chase Index closed in Sept 2026).
+GET paths: `/cards`, `/sets`, `/v2/cards` (graded data, proxied to api.justtcg.com
+without the `/v1` prefix), `/history`, `/graded-prices`. Responses are edge-cached
+for 6h (approved by JustTCG). CORS is limited to the Tome origins in `ALLOWED_ORIGINS`.
+
+POST `/report`: the dashboard's Report-an-issue modal. Gated and rate-limited, fields
+length-capped, forwarded to Discord via `DISCORD_WEBHOOK_URL`.
+
+The frontend (tomecollective/tome-intelligence, index.html) reads the key from the
+Dashboards-page link, keeps it in sessionStorage, and sends it as the header.
 
 ## Cron (`scheduled`, daily 14:00 UTC)
 

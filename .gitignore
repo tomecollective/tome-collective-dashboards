@@ -3,3 +3,4 @@ package-lock.json
 
 .wrangler/
 *.patch
+Claude outputs/

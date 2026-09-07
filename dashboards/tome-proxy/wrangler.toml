@@ -4,12 +4,11 @@ compatibility_date = "2026-08-08"
 
 # JustTCG proxy + daily snapshot pipeline (price snapshots, graded-price
 # snapshot with status-code diagnostics, Tome Score track record, crack-profit
-# Discord digest). Deployed at https://tome-proxy.tomecollective.workers.dev
+# Discord digest) behind the Tome Vault subscriber gate.
+# Deployed at https://tome-proxy.tomecollective.workers.dev
 #
-# This Worker was originally created and edited in the Cloudflare dashboard
-# editor. It was brought under the repo on 2026-09-06 (dashboard version
-# 1401b029). From here on, deploy with `wrangler deploy` from this directory
-# so the repo and the live Worker never drift again.
+# Brought under the repo on 2026-09-06 (was dashboard-editor only). Deploy with
+# `wrangler deploy` from this directory so the repo and the live Worker never drift.
 
 # The code reads env.SNAPSHOTS -- the binding name must stay exactly SNAPSHOTS.
 [[kv_namespaces]]
@@ -25,6 +24,15 @@ crons = ["0 14 * * *"]
 enabled = true
 invocation_logs = true
 
-# Secrets (never committed; already set on the Worker):
-#   wrangler secret put JUSTTCG_API_KEY
-#   wrangler secret put DISCORD_WEBHOOK_URL   # crack-profit digest target
+# Per-IP rate limit on every request (same shape as the other dashboards'
+# wrangler.toml files; namespace_id must be unique per Worker: 1001-1003 taken).
+[[ratelimits]]
+name = "PUBLIC_RATE_LIMITER"
+namespace_id = "1004"
+simple = { limit = 60, period = 60 }
+
+# Secrets (never committed):
+#   wrangler secret put JUSTTCG_API_KEY        (set)
+#   wrangler secret put DISCORD_WEBHOOK_URL    (set; digest + /report)
+#   wrangler secret put TOME_SUBSCRIBER_KEYS   (the Tome Vault key -- same value as
+#                                               tome-tcg; comma-separate old,new to rotate)

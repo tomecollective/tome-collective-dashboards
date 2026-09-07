@@ -26,15 +26,99 @@ function corsHeaders(origin) {
   const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowed,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Tome-Key',
     'Access-Control-Max-Age': '86400',
   };
 }
-const jsonError = (message, status, origin) =>
-  new Response(JSON.stringify({ error: message }), {
+const jsonError = (message, status, origin, extra) =>
+  new Response(JSON.stringify({ error: message, ...(extra || {}) }), {
     status, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
+
+// ═══ SUBSCRIBER GATE (Tome Vault) ═══════════════════════════════════════════════
+// Same pattern as Fast Break and Chase Index: every data read requires a valid
+// X-Tome-Key (or ?key=) matching one of the comma-separated TOME_SUBSCRIBER_KEYS
+// values. Unset secret = 503 (fails closed). Comparisons are constant-time and
+// every candidate is compared, so timing never reveals a partial match.
+const __enc = new TextEncoder();
+function secretEquals(presented, expected) {
+  if (typeof presented !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const a = __enc.encode(presented);
+  const b = __enc.encode(expected);
+  const sameLength = a.length === b.length;
+  const cmp = sameLength ? b : a;   // always do a.length bytes of work
+  let equal;
+  if (globalThis.crypto?.subtle?.timingSafeEqual) {
+    equal = crypto.subtle.timingSafeEqual(a, cmp);
+  } else {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ cmp[i];
+    equal = diff === 0;
+  }
+  return sameLength && equal;
+}
+function secretInList(presented, candidates) {
+  let found = false;
+  for (const c of candidates) found = secretEquals(presented, c) || found;
+  return found;
+}
+function subscriberKeys(env) {
+  return String(env.TOME_SUBSCRIBER_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+}
+// Returns null when the request may proceed, otherwise the Response to send.
+function subscriberGate(request, url, env, origin) {
+  const keys = subscriberKeys(env);
+  if (!keys.length) return jsonError('Dashboard unavailable: subscriber access is not configured.', 503, origin);
+  const presented = request.headers.get('X-Tome-Key') || url.searchParams.get('key') || '';
+  if (!secretInList(presented, keys))
+    return jsonError('Tome Vault subscribers only. Open the dashboard from the Dashboards page.', 401, origin, { locked: true });
+  return null;
+}
+// Per-IP rate limit (Workers Rate Limiting binding; see wrangler.toml). Allows the
+// request if the binding is missing or errors, so a limiter outage never takes the
+// dashboard down -- the subscriber gate is the real access control.
+async function rateLimited(request, origin, env) {
+  if (!env.PUBLIC_RATE_LIMITER) return null;
+  try {
+    const { success } = await env.PUBLIC_RATE_LIMITER.limit({ key: request.headers.get('CF-Connecting-IP') || 'unknown' });
+    if (!success) return jsonError('Too many requests. Slow down.', 429, origin);
+  } catch (e) {
+    console.error('rate limiter error (allowing request):', e.message);
+  }
+  return null;
+}
+// POST /report -- the dashboard's "Report an issue" modal. Subscriber-gated and
+// rate-limited (free text into Discord is otherwise a spam vector). Fields are
+// length-capped; the honeypot check lives client-side.
+const REPORT_MAX = { card: 200, message: 1500, page: 300 };
+async function handleReport(request, origin, env) {
+  if (!env.DISCORD_WEBHOOK_URL) return jsonError('Reporting is not configured.', 503, origin);
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonError('Invalid JSON body.', 400, origin); }
+  const clip = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+  const card = clip(body.card, REPORT_MAX.card);
+  const message = clip(body.message, REPORT_MAX.message);
+  const page = clip(body.page, REPORT_MAX.page);
+  if (!message) return jsonError('message is required.', 400, origin);
+  const content = [
+    '🚩 **TCG Arbitrage report**',
+    card ? `**Card / area:** ${card}` : null,
+    `**Issue:** ${message}`,
+    page ? `**Page:** ${page}` : null,
+  ].filter(Boolean).join('\n').slice(0, 1900);
+  try {
+    const res = await fetch(env.DISCORD_WEBHOOK_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+    });
+    if (!res.ok) return jsonError('Could not deliver the report.', 502, origin);
+  } catch (e) {
+    return jsonError('Could not deliver the report.', 502, origin);
+  }
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+}
 const dateKey = (d) => d.toISOString().slice(0, 10);
 // ── Daily snapshot: fetch the NM universe per game, store {cardId: price} maps ──
 async function captureSnapshot(env) {
@@ -468,10 +552,17 @@ export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(origin) });
+    const url = new URL(request.url);
+    // Order: rate limit -> subscriber gate -> route. Everything below the gate is
+    // Tome Vault product data (or writes to Discord), so nothing is served without a key.
+    const limited = await rateLimited(request, origin, env);
+    if (limited) return limited;
+    const gated = subscriberGate(request, url, env, origin);
+    if (gated) return gated;
+    if (request.method === 'POST' && url.pathname === '/report') return handleReport(request, origin, env);
     if (request.method !== 'GET') return jsonError('Method not allowed', 405, origin);
     if (!env.JUSTTCG_API_KEY)
       return jsonError('Server misconfigured: JUSTTCG_API_KEY secret is not set.', 500, origin);
-    const url = new URL(request.url);
     if (!ALLOWED_PATHS.some(p => url.pathname === p || url.pathname.startsWith(p + '/')))
       return jsonError(`Endpoint not permitted. Allowed: ${ALLOWED_PATHS.join(', ')}`, 403, origin);
     // History endpoint (requires the KV binding)
@@ -495,6 +586,7 @@ export default {
     }
     // ── JustTCG proxy with edge cache ──
     const upstreamBase = url.pathname.startsWith('/v2/') ? JUSTTCG_BASE_V2 : JUSTTCG_BASE;
+    url.searchParams.delete('key');   // never forward a subscriber key to JustTCG (or into the cache key)
     const upstream = `${upstreamBase}${url.pathname}${url.search}`;
     const cache = caches.default;
     const cacheKey = new Request(upstream, { method: 'GET' });
