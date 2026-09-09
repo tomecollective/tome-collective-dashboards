@@ -52,3 +52,24 @@ Secrets are set on the Worker and survive deploys.
 The scheduled handler was verified against a mocked JustTCG / KV / Discord in
 Node before the 2026-09-06 deploy (all five KV keys written, statusCounts sums
 to cardsChecked, stale listings excluded, digest posted once).
+
+## Subscriber identity (Beehiiv subscription id)
+
+Besides the shared `X-Tome-Key`, the Worker accepts `X-Tome-Sub: sub_<uuid>` (or `?sid=`), the
+reader's own Beehiiv subscription id. The Dashboards post fills it in with the
+`{{api_subscription_id}}` merge tag, which Beehiiv renders on the web view for logged-in readers.
+
+- Lookup: `GET /v2/publications/{BEEHIIV_PUBLICATION_ID}/subscriptions/{id}?expand[]=premium_tiers`,
+  cached in KV as `sub:<id>` (fresh 6h, negative 30 min, stale entries grace-served only if Beehiiv is down).
+- Access: status `active` and a tier in `TOME_ALLOWED_TIERS` (default: Tome Vault, Edge + Vault Bundle).
+- Webhooks: `POST /hooks/beehiiv/<BEEHIIV_WEBHOOK_TOKEN>` evicts the cache entry for `data.id`.
+  Subscribe it to Subscription Tier Added / Paused / Resumed / Deleted and Subscription Deleted / Paused / Resumed / Upgraded / Downgraded.
+- 401 responses carry `reason`: `unknown`, `inactive`, or `tier`; a Beehiiv outage with no cache is 503 `{retry:true}`.
+- Secrets: `BEEHIIV_API_KEY`, `BEEHIIV_PUBLICATION_ID`, `BEEHIIV_WEBHOOK_TOKEN` (`wrangler secret put`).
+
+## My Cards sync
+
+`GET /mycards` -> `{sync, cards, updatedAt}`; `PUT /mycards {cards:[ids]}` (max 500). Requires a
+subscription id; shared-key sessions get `{sync:false}` and the dashboard stays on localStorage.
+Stored at `mycards:<sub_id>`. The daily cron aggregates all lists into `mycards-agg`
+(users, distinct cards, top 25) and adds a "Most watched" line to the Discord digest.

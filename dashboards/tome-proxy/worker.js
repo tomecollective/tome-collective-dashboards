@@ -26,8 +26,8 @@ function corsHeaders(origin) {
   const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowed,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Tome-Key',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Tome-Key, X-Tome-Sub',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -66,14 +66,196 @@ function secretInList(presented, candidates) {
 function subscriberKeys(env) {
   return String(env.TOME_SUBSCRIBER_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 }
-// Returns null when the request may proceed, otherwise the Response to send.
-function subscriberGate(request, url, env, origin) {
+// ═══ SUBSCRIBER IDENTITY (Beehiiv subscription id) ══════════════════════════════
+// The Dashboards post renders {{api_subscription_id}} into each subscriber's Open
+// button (Beehiiv fills merge tags on the web view for logged-in readers), so the
+// dashboard can present X-Tome-Sub: sub_<uuid> instead of the shared key. The Worker
+// resolves that id against the Beehiiv API, caches the answer in KV (sub:<id>), and
+// grants access when the subscription is active on an allowed tier. Beehiiv webhooks
+// (POST /hooks/beehiiv/<BEEHIIV_WEBHOOK_TOKEN>) evict the cache entry the moment a
+// tier changes, so cancellations take effect immediately; the TTL is the backstop.
+// Secrets: BEEHIIV_API_KEY, BEEHIIV_PUBLICATION_ID, BEEHIIV_WEBHOOK_TOKEN.
+// Optional var TOME_ALLOWED_TIERS (comma-separated tier ids) overrides the default.
+const BEEHIIV_API = 'https://api.beehiiv.com/v2';
+const DEFAULT_ALLOWED_TIERS = [
+  'tier_66e3700d-872f-4fab-bdb5-539420e34e12',   // Tome Vault
+  'tier_df25929b-65f3-46ba-9443-d23ce4f19ae2',   // Tome Edge + Tome Vault Bundle
+];
+const SUB_CACHE_FRESH_MS = 6 * 3600 * 1000;      // re-check Beehiiv after 6h (webhooks evict sooner)
+const SUB_CACHE_NEGATIVE_MS = 30 * 60 * 1000;    // unknown / inactive ids are re-checked after 30 min
+const SUB_CACHE_KV_TTL = 7 * 86400;              // KV expiry: stale entries are grace-served only during a Beehiiv outage
+const SUB_ID_RE = /^sub_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function normalizeSubId(raw) {
+  let s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (!s.startsWith('sub_')) s = 'sub_' + s;      // tolerate a bare uuid
+  return SUB_ID_RE.test(s) ? s : null;
+}
+function allowedTiers(env) {
+  const custom = String(env.TOME_ALLOWED_TIERS || '').split(',').map(t => t.trim()).filter(Boolean);
+  return custom.length ? custom : DEFAULT_ALLOWED_TIERS;
+}
+function beehiivConfigured(env) {
+  return !!(env.BEEHIIV_API_KEY && env.BEEHIIV_PUBLICATION_ID && env.SNAPSHOTS);
+}
+// Normalises the Beehiiv subscription payload into {status, tiers:[ids], names:[]}.
+// Tolerates both the expanded premium_tiers array and the bare
+// subscription_premium_tier_names list, so an API shape change degrades to name matching.
+function summarizeSubscription(data) {
+  const d = data || {};
+  const tiers = [], names = [];
+  for (const t of (Array.isArray(d.premium_tiers) ? d.premium_tiers : [])) {
+    if (t && typeof t === 'object') {
+      if (t.id) tiers.push(String(t.id));
+      if (t.name) names.push(String(t.name));
+    } else if (typeof t === 'string') names.push(t);
+  }
+  for (const n of (Array.isArray(d.subscription_premium_tier_names) ? d.subscription_premium_tier_names : []))
+    if (!names.includes(n)) names.push(String(n));
+  return { status: String(d.status || 'unknown'), tiers, names, tier: d.subscription_tier || null };
+}
+async function fetchBeehiivSubscription(subId, env) {
+  const url = `${BEEHIIV_API}/publications/${encodeURIComponent(env.BEEHIIV_PUBLICATION_ID)}` +
+    `/subscriptions/${encodeURIComponent(subId)}?expand[]=premium_tiers`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: 'application/json' } });
+  if (res.status === 404) return { found: false };
+  if (!res.ok) throw new Error(`Beehiiv ${res.status}`);
+  const body = await res.json();
+  return { found: true, ...summarizeSubscription(body && body.data) };
+}
+function subscriptionAllowed(entry, env) {
+  if (!entry || !entry.found) return false;
+  if (String(entry.status).toLowerCase() !== 'active') return false;
+  const allowed = allowedTiers(env);
+  if ((entry.tiers || []).some(t => allowed.includes(t))) return true;
+  // Name fallback only if the API returned no ids at all (shape change), never as a second chance.
+  if (!(entry.tiers || []).length) {
+    const want = ['tome vault', 'tome edge + tome vault bundle'];
+    return (entry.names || []).some(n => want.includes(String(n).toLowerCase()));
+  }
+  return false;
+}
+// Returns {allowed, entry, source}. Never throws: a Beehiiv outage serves the last
+// cached answer (any age) and otherwise fails closed.
+async function resolveSubscriber(subId, env, ctx) {
+  const key = `sub:${subId}`;
+  const now = Date.now();
+  let cached = null;
+  try { cached = await env.SNAPSHOTS.get(key, 'json'); } catch (e) {}
+  if (cached && typeof cached.at === 'number') {
+    const age = now - cached.at;
+    const fresh = cached.found ? age < SUB_CACHE_FRESH_MS : age < SUB_CACHE_NEGATIVE_MS;
+    if (fresh) return { allowed: subscriptionAllowed(cached, env), entry: cached, source: 'cache' };
+  }
+  try {
+    const live = await fetchBeehiivSubscription(subId, env);
+    const entry = { ...live, at: now };
+    const put = env.SNAPSHOTS.put(key, JSON.stringify(entry), { expirationTtl: SUB_CACHE_KV_TTL });
+    if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
+    return { allowed: subscriptionAllowed(entry, env), entry, source: 'beehiiv' };
+  } catch (e) {
+    console.error('resolveSubscriber: Beehiiv lookup failed', e && e.message);
+    if (cached) return { allowed: subscriptionAllowed(cached, env), entry: cached, source: 'stale' };
+    return { allowed: false, entry: null, source: 'error' };
+  }
+}
+// Returns null when the request may proceed (and fills auth.{via, sub}), otherwise the Response.
+// Order of acceptance: subscription id (X-Tome-Sub / ?sid=) first, so a subscriber's
+// My Cards sync works even when the Dashboards button also carries the shared key as
+// a fallback; then the shared key (X-Tome-Key / ?key=). Retire the key later simply by
+// unsetting TOME_SUBSCRIBER_KEYS.
+async function subscriberGate(request, url, env, origin, ctx, auth) {
   const keys = subscriberKeys(env);
-  if (!keys.length) return jsonError('Dashboard unavailable: subscriber access is not configured.', 503, origin);
-  const presented = request.headers.get('X-Tome-Key') || url.searchParams.get('key') || '';
-  if (!secretInList(presented, keys))
-    return jsonError('Tome Vault subscribers only. Open the dashboard from the Dashboards page.', 401, origin, { locked: true });
-  return null;
+  const beehiiv = beehiivConfigured(env);
+  if (!keys.length && !beehiiv)
+    return jsonError('Dashboard unavailable: subscriber access is not configured.', 503, origin);
+  const presentedKey = request.headers.get('X-Tome-Key') || url.searchParams.get('key') || '';
+  const keyOk = !!presentedKey && keys.length > 0 && secretInList(presentedKey, keys);
+  const subId = normalizeSubId(request.headers.get('X-Tome-Sub') || url.searchParams.get('sid') || '');
+  let subDenied = null;
+  if (subId && beehiiv) {
+    const r = await resolveSubscriber(subId, env, ctx);
+    if (r.allowed) { auth.via = 'sub'; auth.sub = subId; return null; }
+    if (r.source === 'error') {
+      if (keyOk) { auth.via = 'key'; return null; }
+      return jsonError('Could not verify your subscription right now. Try again in a minute.', 503, origin, { retry: true });
+    }
+    const reason = !r.entry || !r.entry.found ? 'unknown'
+      : String(r.entry.status).toLowerCase() !== 'active' ? 'inactive' : 'tier';
+    subDenied = jsonError('Tome Vault subscribers only. Open the dashboard from the Dashboards page.', 401, origin, { locked: true, reason });
+  }
+  if (keyOk) { auth.via = 'key'; return null; }
+  return subDenied || jsonError('Tome Vault subscribers only. Open the dashboard from the Dashboards page.', 401, origin, { locked: true });
+}
+// POST /hooks/beehiiv/<token> -- Beehiiv webhook receiver. Evicts the cached
+// subscription entry so the next dashboard request re-checks the live tier.
+// Subscribe it to: Subscription Tier Added / Paused / Resumed / Deleted,
+// Subscription Deleted / Paused / Resumed / Upgraded / Downgraded.
+async function handleBeehiivWebhook(request, url, env, origin) {
+  const token = url.pathname.slice('/hooks/beehiiv/'.length);
+  if (!env.BEEHIIV_WEBHOOK_TOKEN || !secretEquals(token, env.BEEHIIV_WEBHOOK_TOKEN))
+    return jsonError('Not found', 404, origin);
+  let body = null;
+  try { body = await request.json(); } catch (e) { return jsonError('Invalid JSON body.', 400, origin); }
+  const d = (body && (body.data || body)) || {};
+  const subId = normalizeSubId(d.id || d.subscription_id || d.api_subscription_id || '');
+  let evicted = false;
+  if (subId && env.SNAPSHOTS) {
+    try { await env.SNAPSHOTS.delete(`sub:${subId}`); evicted = true; } catch (e) {}
+  }
+  console.log(`beehiiv webhook ${body && body.event_type || '?'}: ${subId || 'no-sub-id'} evicted=${evicted}`);
+  return new Response(JSON.stringify({ ok: true, evicted }), {
+    status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+}
+// ═══ MY CARDS SYNC ═══════════════════════════════════════════════════════════════
+// GET /mycards  -> {cards:[ids], updatedAt}  (404-free: an unknown subscriber gets an empty list)
+// PUT /mycards  <- {cards:[ids]}              (last write wins; the client merges before writing)
+// Requires a subscription id (auth.via === 'sub'); shared-key sessions get {sync:false}
+// so the frontend keeps using localStorage. Stored at mycards:<sub_id>.
+const MYCARDS_MAX = 500, MYCARDS_ID_MAX = 120;
+async function handleMyCards(request, env, origin, auth) {
+  const headers = { 'Content-Type': 'application/json', ...corsHeaders(origin) };
+  if (auth.via !== 'sub') return new Response(JSON.stringify({ sync: false, cards: null }), { status: 200, headers });
+  if (!env.SNAPSHOTS) return jsonError('Sync unavailable: storage not configured.', 503, origin);
+  const key = `mycards:${auth.sub}`;
+  if (request.method === 'GET') {
+    const stored = (await env.SNAPSHOTS.get(key, 'json')) || { cards: [], updatedAt: null };
+    return new Response(JSON.stringify({ sync: true, cards: stored.cards || [], updatedAt: stored.updatedAt || null }), { status: 200, headers });
+  }
+  if (request.method === 'PUT') {
+    let body;
+    try { body = await request.json(); } catch (e) { return jsonError('Invalid JSON body.', 400, origin); }
+    if (!body || !Array.isArray(body.cards)) return jsonError('cards must be an array.', 400, origin);
+    const cards = [...new Set(body.cards.filter(c => typeof c === 'string').map(c => c.trim()).filter(c => c && c.length <= MYCARDS_ID_MAX))];
+    if (cards.length > MYCARDS_MAX) return jsonError(`Too many cards (max ${MYCARDS_MAX}).`, 400, origin);
+    const updatedAt = new Date().toISOString();
+    await env.SNAPSHOTS.put(key, JSON.stringify({ cards, updatedAt }));
+    return new Response(JSON.stringify({ sync: true, ok: true, count: cards.length, updatedAt }), { status: 200, headers });
+  }
+  return jsonError('Method not allowed', 405, origin);
+}
+// Daily aggregate of what subscribers are watching (cron). Writes mycards-agg and
+// returns the top entries so the digest can mention them. Reads every mycards:* key;
+// fine at newsletter scale (one KV read per subscriber who uses My Cards).
+async function aggregateMyCards(env) {
+  if (!env.SNAPSHOTS) return null;
+  const counts = new Map();
+  let users = 0, cursor;
+  do {
+    const page = await env.SNAPSHOTS.list({ prefix: 'mycards:', cursor });
+    for (const k of page.keys) {
+      const v = await env.SNAPSHOTS.get(k.name, 'json');
+      if (!v || !Array.isArray(v.cards) || !v.cards.length) continue;
+      users++;
+      for (const id of v.cards) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([id, count]) => ({ id, count }));
+  const agg = { date: new Date().toISOString().slice(0, 10), users, distinct: counts.size, top };
+  await env.SNAPSHOTS.put('mycards-agg', JSON.stringify(agg));
+  return agg;
 }
 // Per-IP rate limit (Workers Rate Limiting binding; see wrangler.toml). Allows the
 // request if the binding is missing or errors, so a limiter outage never takes the
@@ -524,14 +706,22 @@ async function captureScoreHistoryAndDigest(env) {
   const toLog = scored.filter(c => c.tomeScore >= SH_LOG_THRESHOLD)
     .map(({ id, tomeScore, confidence, price }) => ({ id, tomeScore, confidence, price }));
   await env.SNAPSHOTS.put(`score-history:${today}`, JSON.stringify({ date: today, count: toLog.length, cards: toLog }));
+  let watched = null;
+  try { watched = await aggregateMyCards(env); } catch (e) { console.error('aggregateMyCards failed', e && e.message); }
   if (env.DISCORD_WEBHOOK_URL) {
     try {
       const cracked = scored.filter(c => c.crackP8 > 0).sort((a, b) => b.crackP8 - a.crackP8).slice(0, SH_DIGEST_COUNT);
       if (cracked.length) {
         const lines = cracked.map(c => `💎 **${c.name}** — $${c.price.toFixed(2)} raw · crack profit ~$${c.crackP8.toFixed(2)} (PSA 8 basis)`);
+        const nameOf = new Map(scored.map(c => [c.id, c.name]));
+        const watchLines = watched && watched.users
+          ? [`👀 **Most watched** (${watched.users} subscriber${watched.users === 1 ? '' : 's'} using My Cards): ` +
+             watched.top.slice(0, 5).map(t => `${nameOf.get(t.id) || t.id} (${t.count})`).join(' · ')]
+          : [];
         const content = [
           `🔨 **Tome Vault Crack-Profit Targets** — ${today}`,
           ...lines,
+          ...(watchLines.length ? ['', ...watchLines] : []),
           '',
           'Full breakdown (all PSA tiers, Tome Score, confidence) → https://tomecollective.github.io/tome-intelligence/',
         ].join('\n').slice(0, 1900);
@@ -554,11 +744,8 @@ export default {
     })());
   },
   async fetch(request, env, ctx) {
-    const rl = { state: 'off' };
-    const resp = await handleRequest(request, env, ctx, rl);
-    const out = new Response(resp.body, resp);
-    out.headers.set('X-Tome-RL', rl.state);
-    return out;
+    // X-Tome-RL diagnostic header retired (limiter verified from outside on Sept 7).
+    return handleRequest(request, env, ctx, { state: 'off' });
   },
 };
 async function handleRequest(request, env, ctx, rl) {
@@ -569,8 +756,13 @@ async function handleRequest(request, env, ctx, rl) {
     // Tome Vault product data (or writes to Discord), so nothing is served without a key.
     const limited = await rateLimited(request, origin, env, rl);
     if (limited) return limited;
-    const gated = subscriberGate(request, url, env, origin);
+    // Beehiiv webhook: authenticated by its own secret path token, not by a subscriber.
+    if (request.method === 'POST' && url.pathname.startsWith('/hooks/beehiiv/'))
+      return handleBeehiivWebhook(request, url, env, origin);
+    const auth = { via: null, sub: null };
+    const gated = await subscriberGate(request, url, env, origin, ctx, auth);
     if (gated) return gated;
+    if (url.pathname === '/mycards') return handleMyCards(request, env, origin, auth);
     if (request.method === 'POST' && url.pathname === '/report') return handleReport(request, origin, env);
     if (request.method !== 'GET') return jsonError('Method not allowed', 405, origin);
     if (!env.JUSTTCG_API_KEY)
@@ -599,6 +791,7 @@ async function handleRequest(request, env, ctx, rl) {
     // ── JustTCG proxy with edge cache ──
     const upstreamBase = url.pathname.startsWith('/v2/') ? JUSTTCG_BASE_V2 : JUSTTCG_BASE;
     url.searchParams.delete('key');   // never forward a subscriber key to JustTCG (or into the cache key)
+    url.searchParams.delete('sid');   // ...nor a subscription id
     const upstream = `${upstreamBase}${url.pathname}${url.search}`;
     const cache = caches.default;
     const cacheKey = new Request(upstream, { method: 'GET' });
