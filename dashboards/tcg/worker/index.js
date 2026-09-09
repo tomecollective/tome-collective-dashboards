@@ -371,11 +371,43 @@ function subscriberKeys(env) {
   return String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
 }
 
-function isSubscriber(request, url, env) {
+
+// -- Subscription-id gate (Beehiiv subscription via tome-proxy) ------------------
+// The Dashboards post fills {{api_subscription_id}} into each subscriber's Open
+// button, so the page can present X-Tome-Sub: sub_<uuid> (or ?sid=). This Worker
+// asks tome-proxy over the AUTH service binding (wrangler.toml [[services]])
+// whether that subscription is active on a tier that includes this product;
+// tome-proxy owns the Beehiiv lookup, KV cache, and webhook invalidation. The
+// call is authenticated by the shared TOME_INTERNAL_TOKEN secret. Absent
+// binding or token = the sid path is simply not checked (shared key still works).
+const AUTH_PRODUCT = "vault";
+function presentedSubId(request, url) {
+  return (request.headers.get("X-Tome-Sub") || url.searchParams.get("sid") || "").trim();
+}
+async function subscriptionCheck(request, url, env) {
+  const sid = presentedSubId(request, url);
+  if (!sid || !env.AUTH || !env.TOME_INTERNAL_TOKEN) return { checked: false, allowed: false, reason: null };
+  try {
+    const res = await env.AUTH.fetch(new Request(
+      "https://tome-proxy/auth/subscription?sid=" + encodeURIComponent(sid) + "&need=" + AUTH_PRODUCT,
+      { headers: { "X-Tome-Internal": env.TOME_INTERNAL_TOKEN } }
+    ));
+    if (res.status === 503) return { checked: true, allowed: false, reason: "retry" };
+    if (!res.ok) return { checked: true, allowed: false, reason: "unknown" };
+    const body = await res.json();
+    return { checked: true, allowed: Boolean(body && body.allowed), reason: (body && body.reason) || null };
+  } catch (e) {
+    return { checked: true, allowed: false, reason: "retry" };
+  }
+}
+
+async function isSubscriber(request, url, env) {
   if (checkAdminToken(request, env)) return true;
   const keys = subscriberKeys(env);
   const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
-  return keys.length > 0 && secretInList(presented, keys);
+  if (keys.length > 0 && secretInList(presented, keys)) return true;
+  const sub = await subscriptionCheck(request, url, env);
+  return sub.allowed;
 }
 
 function buildTeaser(payload) {
@@ -579,7 +611,7 @@ export default {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS, POST",
-      "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key",
+      "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key, X-Tome-Sub",
       "Content-Type": "application/json",
     };
 
@@ -603,7 +635,7 @@ export default {
             ...chaseIndexData,
             note: `${chaseIndexData.note} [STALE: serving bundled seed data, no KV cache yet -- POST /api/refresh or wait for the next cron run]`,
           };
-      if (isSubscriber(request, url, env)) return new Response(JSON.stringify(payload), { headers: corsHeaders });
+      if (await isSubscriber(request, url, env)) return new Response(JSON.stringify(payload), { headers: corsHeaders });
       return new Response(JSON.stringify(buildTeaser(payload)), { headers: corsHeaders });
     }
 

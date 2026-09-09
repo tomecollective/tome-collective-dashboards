@@ -22,3 +22,10 @@ id = "b492b464fa3c45fa854eae3bb90e5f88" # tome_fastbreak_kv
 name = "PUBLIC_RATE_LIMITER"
 namespace_id = "1002"
 simple = { limit = 60, period = 60 }
+
+# Subscription-id auth: asks tome-proxy (over a service binding, never a public
+# fetch) whether a Beehiiv subscription id unlocks this product. Requires the
+# shared secret:  wrangler secret put TOME_INTERNAL_TOKEN  (same value on all four Workers)
+[[services]]
+binding = "AUTH"
+service = "tome-proxy"

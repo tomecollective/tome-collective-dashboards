@@ -43,3 +43,10 @@ crons = ["0 13 * * *"]
 name = "PUBLIC_RATE_LIMITER"
 namespace_id = "1003"
 simple = { limit = 60, period = 60 }
+
+# Subscription-id auth: asks tome-proxy (over a service binding, never a public
+# fetch) whether a Beehiiv subscription id unlocks this product. Requires the
+# shared secret:  wrangler secret put TOME_INTERNAL_TOKEN  (same value on all four Workers)
+[[services]]
+binding = "AUTH"
+service = "tome-proxy"

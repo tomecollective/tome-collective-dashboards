@@ -12,7 +12,7 @@
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key",
+  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key, X-Tome-Sub",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Content-Type": "application/json",
 };
@@ -71,13 +71,46 @@ function checkAdminToken(request, env) {
 // Subscriber gate -- same contract as the refresh Worker: X-Tome-Key (or
 // ?key=) must match one of the comma-separated TOME_SUBSCRIBER_KEYS values;
 // the admin token also passes; unset secret fails closed.
-function subscriberGate(request, url, env) {
+
+// -- Subscription-id gate (Beehiiv subscription via tome-proxy) ------------------
+// The Dashboards post fills {{api_subscription_id}} into each subscriber's Open
+// button, so the page can present X-Tome-Sub: sub_<uuid> (or ?sid=). This Worker
+// asks tome-proxy over the AUTH service binding (wrangler.toml [[services]])
+// whether that subscription is active on a tier that includes this product;
+// tome-proxy owns the Beehiiv lookup, KV cache, and webhook invalidation. The
+// call is authenticated by the shared TOME_INTERNAL_TOKEN secret. Absent
+// binding or token = the sid path is simply not checked (shared key still works).
+const AUTH_PRODUCT = "edge";
+function presentedSubId(request, url) {
+  return (request.headers.get("X-Tome-Sub") || url.searchParams.get("sid") || "").trim();
+}
+async function subscriptionCheck(request, url, env) {
+  const sid = presentedSubId(request, url);
+  if (!sid || !env.AUTH || !env.TOME_INTERNAL_TOKEN) return { checked: false, allowed: false, reason: null };
+  try {
+    const res = await env.AUTH.fetch(new Request(
+      "https://tome-proxy/auth/subscription?sid=" + encodeURIComponent(sid) + "&need=" + AUTH_PRODUCT,
+      { headers: { "X-Tome-Internal": env.TOME_INTERNAL_TOKEN } }
+    ));
+    if (res.status === 503) return { checked: true, allowed: false, reason: "retry" };
+    if (!res.ok) return { checked: true, allowed: false, reason: "unknown" };
+    const body = await res.json();
+    return { checked: true, allowed: Boolean(body && body.allowed), reason: (body && body.reason) || null };
+  } catch (e) {
+    return { checked: true, allowed: false, reason: "retry" };
+  }
+}
+
+async function subscriberGate(request, url, env) {
   if (checkAdminToken(request, env)) return null;
+  const sub = await subscriptionCheck(request, url, env);
+  if (sub.allowed) return null;
   const keys = String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
-  if (!keys.length) return json({ error: "Subscriber access is not configured on this service (TOME_SUBSCRIBER_KEYS secret is unset)." }, 503);
+  if (!keys.length && !sub.checked) return json({ error: "Subscriber access is not configured on this service (TOME_SUBSCRIBER_KEYS secret is unset)." }, 503);
   const presented = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
-  if (!secretInList(presented, keys)) return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from your subscriber post.", locked: true }, 401);
-  return null;
+  if (keys.length && secretInList(presented, keys)) return null;
+  if (sub.checked && sub.reason === "retry") return json({ error: "Could not verify your subscription right now. Try again in a minute.", retry: true }, 503);
+  return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from the Dashboards page.", locked: true, reason: sub.checked ? sub.reason : undefined }, 401);
 }
 
 async function rateLimited(request, env) {
@@ -126,7 +159,7 @@ export default {
     if (limited) return limited;
 
     if (url.pathname === "/" || url.pathname === "/dashboard" || url.pathname === "/api/fastbreak") {
-      const gate = subscriberGate(request, url, env);
+      const gate = await subscriberGate(request, url, env);
       if (gate) return gate;
       let league;
       try {
@@ -156,7 +189,7 @@ export default {
     // Objectives schedule -- same KV object the refresh Worker owns, keyed
     // by league then date. GET is public; POST requires the admin password.
     if (url.pathname === "/api/fastbreak/objectives" && request.method === "GET") {
-      const gate = subscriberGate(request, url, env);
+      const gate = await subscriberGate(request, url, env);
       if (gate) return gate;
       const schedule = await loadSchedule(env);
       return json({ leagues: SUPPORTED_LEAGUES, modes: SUPPORTED_MODES, schedule });

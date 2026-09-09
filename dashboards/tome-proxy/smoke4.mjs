@@ -22,6 +22,7 @@ globalThis.caches = { default: { async match() { return undefined; }, async put(
 
 const mod = await import('./worker.js');
 const kv = new Map();
+let limiterAllow = true;
 const KV = {
   async get(k, type) { const v = kv.get(k); if (v == null) return null; return type === 'json' ? JSON.parse(v) : v; },
   async put(k, v) { kv.set(k, v); },
@@ -33,6 +34,7 @@ const env = {
   TOME_SUBSCRIBER_KEYS: 'shared-key',
   BEEHIIV_API_KEY: 'bh', BEEHIIV_PUBLICATION_ID: 'pub_1', BEEHIIV_WEBHOOK_TOKEN: 'hooktoken',
   SNAPSHOTS: KV,
+  PUBLIC_RATE_LIMITER: { async limit() { return { success: limiterAllow }; } },
 };
 const ctx = { waitUntil(p) { this.p = p; } };
 const BASE = 'https://tome-proxy.test';
@@ -138,4 +140,29 @@ await ctx.p;
 kv.delete(`sub:${SID}`); beehiivMode = 'down';
 r = await call('/cards?game=pokemon', { headers: { 'X-Tome-Sub': SID, 'X-Tome-Key': 'shared-key' } });
 assert(r.status === 200, 'Beehiiv down + valid key -> key rescues (200)');
+beehiivMode = 'vault';
+// /auth/subscription internal service
+env.TOME_INTERNAL_TOKEN = 'internal-secret';
+beehiivMode = 'vault'; kv.delete(`sub:${SID}`);
+r = await call(`/auth/subscription?sid=${SID}&need=edge`);
+assert(r.status === 404, '/auth/subscription without internal token -> 404');
+r = await call(`/auth/subscription?sid=${SID}&need=vault`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+j = await r.json();
+assert(r.status === 200 && j.allowed === true && j.product === 'vault', 'internal: Vault sub, need=vault -> allowed');
+r = await call(`/auth/subscription?sid=${SID}&need=edge`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+j = await r.json();
+assert(r.status === 200 && j.allowed === false && j.reason === 'tier', 'internal: Vault sub, need=edge -> denied reason=tier');
+await ctx.p; kv.delete(`sub:${SID}`); beehiivMode = 'edge';
+r = await call(`/auth/subscription?sid=${SID}&need=edge`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+j = await r.json();
+assert(j.allowed === true, 'internal: Edge sub, need=edge -> allowed');
+r = await call(`/auth/subscription?sid=garbage&need=edge`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+j = await r.json();
+assert(r.status === 200 && j.allowed === false && j.reason === 'unknown', 'internal: malformed sid -> allowed:false unknown');
+r = await call(`/auth/subscription?sid=${SID}&need=gold`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+assert(r.status === 400, 'internal: bad need -> 400');
+limiterAllow = false;
+r = await call(`/auth/subscription?sid=${SID}&need=edge`, { headers: { 'X-Tome-Internal': 'internal-secret' } });
+assert(r.status === 200, 'internal route bypasses the per-IP limiter');
+limiterAllow = true;
 beehiivMode = 'vault';

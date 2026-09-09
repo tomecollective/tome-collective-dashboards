@@ -73,3 +73,13 @@ reader's own Beehiiv subscription id. The Dashboards post fills it in with the
 subscription id; shared-key sessions get `{sync:false}` and the dashboard stays on localStorage.
 Stored at `mycards:<sub_id>`. The daily cron aggregates all lists into `mycards-agg`
 (users, distinct cards, top 25) and adds a "Most watched" line to the Discord digest.
+
+## Internal identity service (other Tome Workers)
+
+`GET /auth/subscription?sid=sub_...&need=edge|vault` with header `X-Tome-Internal: <TOME_INTERNAL_TOKEN>`
+returns `{allowed, reason, sub, product, status, tiers, source}`. tome-tcg, tome-fastbreak, and
+tome-fastbreak-refresh call it over an `AUTH` service binding (see their wrangler.toml) so they
+share one Beehiiv lookup, cache, and webhook invalidation. Handled before the per-IP limiter
+(service-binding calls carry no client IP). Unset or wrong token = 404. Edge products need
+Tome Edge or the Bundle; Vault products need Tome Vault or the Bundle. The same
+`TOME_INTERNAL_TOKEN` value must be set on all four Workers.

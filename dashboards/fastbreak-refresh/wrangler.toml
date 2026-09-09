@@ -34,3 +34,10 @@ simple = { limit = 60, period = 60 }
 #   "7-59/15 * * * *" -> NBA   (:07 :22 :37 :52)
 [triggers]
 crons = ["*/30 * * * *", "7-59/15 * * * *"]
+
+# Subscription-id auth: asks tome-proxy (over a service binding, never a public
+# fetch) whether a Beehiiv subscription id unlocks this product. Requires the
+# shared secret:  wrangler secret put TOME_INTERNAL_TOKEN  (same value on all four Workers)
+[[services]]
+binding = "AUTH"
+service = "tome-proxy"

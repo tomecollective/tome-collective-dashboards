@@ -77,10 +77,20 @@ function subscriberKeys(env) {
 // Secrets: BEEHIIV_API_KEY, BEEHIIV_PUBLICATION_ID, BEEHIIV_WEBHOOK_TOKEN.
 // Optional var TOME_ALLOWED_TIERS (comma-separated tier ids) overrides the default.
 const BEEHIIV_API = 'https://api.beehiiv.com/v2';
-const DEFAULT_ALLOWED_TIERS = [
-  'tier_66e3700d-872f-4fab-bdb5-539420e34e12',   // Tome Vault
-  'tier_df25929b-65f3-46ba-9443-d23ce4f19ae2',   // Tome Edge + Tome Vault Bundle
-];
+const TIER_VAULT  = 'tier_66e3700d-872f-4fab-bdb5-539420e34e12';   // Tome Vault
+const TIER_EDGE   = 'tier_c63b9d3e-154e-433c-8e05-a7e70c07e283';   // Tome Edge
+const TIER_BUNDLE = 'tier_df25929b-65f3-46ba-9443-d23ce4f19ae2';   // Tome Edge + Tome Vault Bundle
+// Which tiers unlock which product. tome-proxy itself is a Vault product; the
+// other Workers ask /auth/subscription with need=edge or need=vault.
+const PRODUCT_TIERS = {
+  vault: [TIER_VAULT, TIER_BUNDLE],
+  edge:  [TIER_EDGE, TIER_BUNDLE],
+};
+const PRODUCT_TIER_NAMES = {
+  vault: ['tome vault', 'tome edge + tome vault bundle'],
+  edge:  ['tome edge', 'tome edge + tome vault bundle'],
+};
+const DEFAULT_ALLOWED_TIERS = PRODUCT_TIERS.vault;
 const SUB_CACHE_FRESH_MS = 6 * 3600 * 1000;      // re-check Beehiiv after 6h (webhooks evict sooner)
 const SUB_CACHE_NEGATIVE_MS = 30 * 60 * 1000;    // unknown / inactive ids are re-checked after 30 min
 const SUB_CACHE_KV_TTL = 7 * 86400;              // KV expiry: stale entries are grace-served only during a Beehiiv outage
@@ -123,17 +133,46 @@ async function fetchBeehiivSubscription(subId, env) {
   const body = await res.json();
   return { found: true, ...summarizeSubscription(body && body.data) };
 }
-function subscriptionAllowed(entry, env) {
+// product: 'vault' (default, tome-proxy's own gate) or 'edge' (asked by the Fast Break Workers).
+function subscriptionAllowed(entry, env, product = 'vault') {
   if (!entry || !entry.found) return false;
   if (String(entry.status).toLowerCase() !== 'active') return false;
-  const allowed = allowedTiers(env);
+  const allowed = product === 'vault' ? allowedTiers(env) : (PRODUCT_TIERS[product] || []);
   if ((entry.tiers || []).some(t => allowed.includes(t))) return true;
   // Name fallback only if the API returned no ids at all (shape change), never as a second chance.
   if (!(entry.tiers || []).length) {
-    const want = ['tome vault', 'tome edge + tome vault bundle'];
+    const want = PRODUCT_TIER_NAMES[product] || PRODUCT_TIER_NAMES.vault;
     return (entry.names || []).some(n => want.includes(String(n).toLowerCase()));
   }
   return false;
+}
+function denialReason(r) {
+  return !r.entry || !r.entry.found ? 'unknown'
+    : String(r.entry.status).toLowerCase() !== 'active' ? 'inactive' : 'tier';
+}
+// GET /auth/subscription?sid=sub_...&need=edge|vault -- internal identity service
+// for the other Tome Workers (tome-tcg, tome-fastbreak, tome-fastbreak-refresh),
+// reached over a service binding and authenticated by the shared
+// TOME_INTERNAL_TOKEN secret (X-Tome-Internal). Runs BEFORE the per-IP rate
+// limiter because service-binding calls carry no client IP. Unset token = 404.
+async function handleAuthSubscription(request, url, env, ctx, origin) {
+  const presented = request.headers.get('X-Tome-Internal') || '';
+  if (!env.TOME_INTERNAL_TOKEN || !secretEquals(presented, env.TOME_INTERNAL_TOKEN))
+    return jsonError('Not found', 404, origin);
+  const headers = { 'Content-Type': 'application/json', ...corsHeaders(origin) };
+  const product = (url.searchParams.get('need') || 'vault').toLowerCase();
+  if (!PRODUCT_TIERS[product]) return jsonError('need must be edge or vault', 400, origin);
+  if (!beehiivConfigured(env)) return jsonError('Subscription lookup is not configured.', 503, origin, { retry: true });
+  const subId = normalizeSubId(url.searchParams.get('sid') || '');
+  if (!subId) return new Response(JSON.stringify({ allowed: false, reason: 'unknown', sub: null }), { status: 200, headers });
+  const r = await resolveSubscriber(subId, env, ctx);
+  if (r.source === 'error' && !r.entry)
+    return jsonError('Could not verify the subscription right now.', 503, origin, { retry: true });
+  const allowed = subscriptionAllowed(r.entry, env, product);
+  return new Response(JSON.stringify({
+    allowed, reason: allowed ? null : denialReason(r), sub: subId, product,
+    status: r.entry && r.entry.status || null, tiers: r.entry && r.entry.tiers || [], source: r.source,
+  }), { status: 200, headers });
 }
 // Returns {allowed, entry, source}. Never throws: a Beehiiv outage serves the last
 // cached answer (any age) and otherwise fails closed.
@@ -180,8 +219,7 @@ async function subscriberGate(request, url, env, origin, ctx, auth) {
       if (keyOk) { auth.via = 'key'; return null; }
       return jsonError('Could not verify your subscription right now. Try again in a minute.', 503, origin, { retry: true });
     }
-    const reason = !r.entry || !r.entry.found ? 'unknown'
-      : String(r.entry.status).toLowerCase() !== 'active' ? 'inactive' : 'tier';
+    const reason = denialReason(r);
     subDenied = jsonError('Tome Vault subscribers only. Open the dashboard from the Dashboards page.', 401, origin, { locked: true, reason });
   }
   if (keyOk) { auth.via = 'key'; return null; }
@@ -752,6 +790,9 @@ async function handleRequest(request, env, ctx, rl) {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(origin) });
     const url = new URL(request.url);
+    // Internal identity service for the other Tome Workers (service binding + shared token).
+    if (request.method === 'GET' && url.pathname === '/auth/subscription')
+      return handleAuthSubscription(request, url, env, ctx, origin);
     // Order: rate limit -> subscriber gate -> route. Everything below the gate is
     // Tome Vault product data (or writes to Discord), so nothing is served without a key.
     const limited = await rateLimited(request, origin, env, rl);

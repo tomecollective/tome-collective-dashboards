@@ -198,13 +198,40 @@ const SUB_KEY = (() => {
     key = params.get("key");
     if (key) {
       try { sessionStorage.setItem("tome_key", key); } catch (e) {}
-      params.delete("key");
-      history.replaceState(null, "", `${location.pathname}${params.toString() ? "?" + params.toString() : ""}${location.hash}`);
     } else {
       try { key = sessionStorage.getItem("tome_key"); } catch (e) {}
     }
   } catch (e) {}
   return key || "";
+})();
+// Subscription id: the Dashboards page fills {{api_subscription_id}} into the
+// Open button (?sid=sub_...). It is personal and revocable, so it is kept in
+// localStorage so this device keeps working without going back through the
+// Dashboards page. Sent as X-Tome-Sub; the Worker asks tome-proxy whether the
+// subscription is active on a tier that includes this dashboard. Never sent to analytics.
+const SUB_ID = (() => {
+  let sid = null;
+  try {
+    const params = new URLSearchParams(location.search);
+    sid = (params.get("sid") || "").trim();
+    if (sid && /^(sub_)?[0-9a-f-]{36}$/i.test(sid)) {
+      if (!/^sub_/i.test(sid)) sid = "sub_" + sid;
+      try { localStorage.setItem("tome_sid", sid); } catch (e) {}
+    } else {
+      sid = null;
+      try { sid = localStorage.getItem("tome_sid"); } catch (e) {}
+    }
+  } catch (e) {}
+  return sid || "";
+})();
+(() => {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.has("key") || params.has("sid")) {
+      params.delete("key"); params.delete("sid");
+      history.replaceState(null, "", `${location.pathname}${params.toString() ? "?" + params.toString() : ""}${location.hash}`);
+    }
+  } catch (e) {}
 })();
 // Replace YOUR_SUBDOMAIN once the worker is deployed and you have the real URL.
 
@@ -648,15 +675,18 @@ function renderTeaser(data) {
   renderChart();
   const banner = document.getElementById("teaser-banner");
   banner.style.display = "block";
-  document.getElementById("teaser-detail").textContent = SUB_KEY
-    ? " The access key on this link is no longer valid -- open the index again from the latest subscriber post."
+  document.getElementById("teaser-detail").textContent = (SUB_KEY || SUB_ID)
+    ? " Your access on this link is no longer valid -- log in on read.tomecollective.com and open the index again from the Dashboards page."
     : ` ${data.lockedNote || ""}`;
   document.getElementById("pool-section").style.display = "none";
   document.getElementById("export-csv-btn").style.display = "none";
 }
 
 async function loadIndex() {
-const res = await fetch(WORKER_URL, { headers: SUB_KEY ? { "X-Tome-Key": SUB_KEY } : {} });
+const authHeaders = {};
+if (SUB_KEY) authHeaders["X-Tome-Key"] = SUB_KEY;
+if (SUB_ID) authHeaders["X-Tome-Sub"] = SUB_ID;
+const res = await fetch(WORKER_URL, { headers: authHeaders });
 const data = await res.json();
 
 if (data.teaser) {
@@ -849,8 +879,9 @@ document.getElementById("history-section").innerHTML = '<p class="history-empty"
   !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session identify reset get_distinct_id get_session_id set_config startSessionRecording stopSessionRecording opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
   posthog.init(KEY, { api_host: HOST, person_profiles: 'identified_only', autocapture: true, capture_pageview: true, capture_pageleave: true });
   // Segment every event by dashboard and plan. The access key itself is never sent.
-  var hasKey = (typeof SUB_KEY !== 'undefined') && !!SUB_KEY;
-  posthog.register({ dashboard: 'chase-index', tier: hasKey ? 'vault' : 'none', access: hasKey ? 'member' : 'locked' });
+  var hasKey = ((typeof SUB_KEY !== 'undefined') && !!SUB_KEY) || ((typeof SUB_ID !== 'undefined') && !!SUB_ID);
+  var authVia = (typeof SUB_ID !== 'undefined' && SUB_ID) ? 'subscription' : (hasKey ? 'key' : 'none');
+  posthog.register({ dashboard: 'chase-index', tier: hasKey ? 'vault' : 'none', access: hasKey ? 'member' : 'locked', auth_via: authVia });
 })();
 </script>
 </body>
