@@ -251,15 +251,35 @@ async function handleBeehiivWebhook(request, url, env, origin) {
 // PUT /mycards  <- {cards:[ids]}              (last write wins; the client merges before writing)
 // Requires a subscription id (auth.via === 'sub'); shared-key sessions get {sync:false}
 // so the frontend keeps using localStorage. Stored at mycards:<sub_id>.
+// `seen` is the "since your last visit" baseline: for each starred card, what the
+// subscriber last saw ({price, score, signal, live, at}). The dashboard diffs the
+// current table against it on load and then writes the new baseline. Only kept for
+// ids that are in `cards`; numeric/short-string fields only; capped like `cards`.
 const MYCARDS_MAX = 500, MYCARDS_ID_MAX = 120;
+function sanitizeSeen(seen, cards) {
+  if (!seen || typeof seen !== 'object' || Array.isArray(seen)) return {};
+  const keep = new Set(cards);
+  const out = {};
+  for (const [id, v] of Object.entries(seen)) {
+    if (!keep.has(id) || !v || typeof v !== 'object') continue;
+    const e = {};
+    if (Number.isFinite(v.price)) e.price = Math.round(v.price * 100) / 100;
+    if (Number.isFinite(v.score)) e.score = Math.round(v.score * 10) / 10;
+    if (typeof v.signal === 'string' && v.signal.length <= 20) e.signal = v.signal;
+    if (typeof v.live === 'boolean') e.live = v.live;
+    if (typeof v.at === 'string' && v.at.length <= 30) e.at = v.at;
+    out[id] = e;
+  }
+  return out;
+}
 async function handleMyCards(request, env, origin, auth) {
   const headers = { 'Content-Type': 'application/json', ...corsHeaders(origin) };
   if (auth.via !== 'sub') return new Response(JSON.stringify({ sync: false, cards: null }), { status: 200, headers });
   if (!env.SNAPSHOTS) return jsonError('Sync unavailable: storage not configured.', 503, origin);
   const key = `mycards:${auth.sub}`;
   if (request.method === 'GET') {
-    const stored = (await env.SNAPSHOTS.get(key, 'json')) || { cards: [], updatedAt: null };
-    return new Response(JSON.stringify({ sync: true, cards: stored.cards || [], updatedAt: stored.updatedAt || null }), { status: 200, headers });
+    const stored = (await env.SNAPSHOTS.get(key, 'json')) || { cards: [], updatedAt: null, seen: {} };
+    return new Response(JSON.stringify({ sync: true, cards: stored.cards || [], seen: stored.seen || {}, updatedAt: stored.updatedAt || null }), { status: 200, headers });
   }
   if (request.method === 'PUT') {
     let body;
@@ -267,9 +287,12 @@ async function handleMyCards(request, env, origin, auth) {
     if (!body || !Array.isArray(body.cards)) return jsonError('cards must be an array.', 400, origin);
     const cards = [...new Set(body.cards.filter(c => typeof c === 'string').map(c => c.trim()).filter(c => c && c.length <= MYCARDS_ID_MAX))];
     if (cards.length > MYCARDS_MAX) return jsonError(`Too many cards (max ${MYCARDS_MAX}).`, 400, origin);
+    // A PUT without `seen` keeps the stored baseline (a star/unstar should not erase it).
+    const prior = body.seen === undefined ? ((await env.SNAPSHOTS.get(key, 'json')) || {}).seen : body.seen;
+    const seen = sanitizeSeen(prior, cards);
     const updatedAt = new Date().toISOString();
-    await env.SNAPSHOTS.put(key, JSON.stringify({ cards, updatedAt }));
-    return new Response(JSON.stringify({ sync: true, ok: true, count: cards.length, updatedAt }), { status: 200, headers });
+    await env.SNAPSHOTS.put(key, JSON.stringify({ cards, seen, updatedAt }));
+    return new Response(JSON.stringify({ sync: true, ok: true, count: cards.length, seenCount: Object.keys(seen).length, updatedAt }), { status: 200, headers });
   }
   return jsonError('Method not allowed', 405, origin);
 }

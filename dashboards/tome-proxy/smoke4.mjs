@@ -166,3 +166,13 @@ r = await call(`/auth/subscription?sid=${SID}&need=edge`, { headers: { 'X-Tome-I
 assert(r.status === 200, 'internal route bypasses the per-IP limiter');
 limiterAllow = true;
 beehiivMode = 'vault';
+// seen baseline
+kv.delete(`sub:${SID}`); beehiivMode = 'vault';
+r = await call('/mycards', { method: 'PUT', headers: { 'X-Tome-Sub': SID }, body: JSON.stringify({ cards: ['a1', 'b2'], seen: { a1: { price: 12.345, score: 61.23, signal: 'Watch', live: true, at: '2026-09-09' }, zz: { price: 1 }, b2: { price: 'x', junk: 1 } } }) });
+j = await r.json();
+assert(r.status === 200 && j.seenCount === 2, 'PUT with seen: kept only ids in cards, sanitized');
+r = await call('/mycards', { headers: { 'X-Tome-Sub': SID } }); j = await r.json();
+assert(j.seen.a1.price === 12.35 && j.seen.a1.score === 61.2 && j.seen.a1.signal === 'Watch' && j.seen.a1.live === true && !('junk' in j.seen.b2) && !('price' in j.seen.b2), 'GET returns rounded, whitelisted seen fields');
+r = await call('/mycards', { method: 'PUT', headers: { 'X-Tome-Sub': SID }, body: JSON.stringify({ cards: ['a1'] }) });
+r = await call('/mycards', { headers: { 'X-Tome-Sub': SID } }); j = await r.json();
+assert(j.seen.a1 && !j.seen.b2, 'PUT without seen keeps the baseline, drops unstarred ids');
