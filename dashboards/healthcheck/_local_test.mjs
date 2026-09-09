@@ -17,7 +17,7 @@ const kv = { get: async (k, t) => { const v = kvStore.get(k); return v == null ?
 const svc = (handler) => ({ fetch: async (url, init) => handler(new URL(url), init?.headers || {}) });
 const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
 
-function makeEnv({ fresh = true, tcgPublished = true, fbLatestAgeMin = 5 } = {}) {
+function makeEnv({ fresh = true, tcgPublished = true, fbLatestAgeMin = 5, proxyProblems = [] } = {}) {
   return {
     HEALTHCHECK_KV: kv,
     DISCORD_WEBHOOK_URL: "https://discord.test/hook",
@@ -30,6 +30,7 @@ function makeEnv({ fresh = true, tcgPublished = true, fbLatestAgeMin = 5 } = {})
       return h["X-Tome-Key"] === "sub" ? ok({ sets: [{ set_name: "x" }] }) : ok({ teaser: true, sets: [] });
     }),
     TOPSHOT_SERVICE: svc(() => ok({ moments: [] })),
+    PROXY_SERVICE: svc((u) => (u.pathname === "/health" ? ok({ ok: proxyProblems.length === 0, problems: proxyProblems }) : new Response("{}", { status: 404 }))),
     FASTBREAK_REFRESH_SERVICE: svc(() => ok({ leagues: {
       WNBA: { seasonActive: true, cronIntervalMinutes: 30, lastCronTickAgeMs: fresh ? 10 * 60000 : 5 * 3600000, latestAgeMs: fbLatestAgeMin * 60000, lastCronError: null, fulldataAgeMs: 3600000 },
       NBA: { seasonActive: false, cronIntervalMinutes: 15, lastCronTickAgeMs: 10 * 60000, latestAgeMs: null },
@@ -53,6 +54,15 @@ assert.ok(body.results.filter((r) => !r.healthy).map((r) => r.name).includes("fa
 res = await worker.fetch(new Request("https://hc/"), { ...makeEnv(), TOME_SUBSCRIBER_KEY: "wrong" }, {});
 body = await res.json();
 assert.equal(body.results.find((r) => r.name === "tcg").healthy, false, "teaser is not a healthy payload");
+
+// tome-proxy relays its own problem list; a bad shape is a failure too.
+res = await worker.fetch(new Request("https://hc/"), makeEnv({ proxyProblems: ["graded snapshot is 41 h old"] }), {});
+body = await res.json();
+assert.equal(body.freshness.find((r) => r.name === "tome-proxy").healthy, false, "tome-proxy problem relayed");
+assert.match(body.freshness.find((r) => r.name === "tome-proxy").reason, /41 h old/);
+res = await worker.fetch(new Request("https://hc/"), { ...makeEnv(), PROXY_SERVICE: svc(() => ok({ hello: 1 })) }, {});
+body = await res.json();
+assert.equal(body.freshness.find((r) => r.name === "tome-proxy").healthy, false, "bad /health shape is unhealthy");
 
 // Stopped cron + unpublished tcg run: freshness alert, no rollback attempt.
 posts.length = 0;

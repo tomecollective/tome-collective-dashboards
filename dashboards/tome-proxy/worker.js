@@ -770,16 +770,95 @@ async function captureScoreHistoryAndDigest(env) {
     } catch (e) { /* best-effort -- never let a Discord hiccup block the KV log above */ }
   }
 }
+// ═══ CRON STATUS + HEALTH ═══════════════════════════════════════════════════════
+// The daily pipeline records where it got to (cron:last) so a step that throws is
+// visible instead of silently leaving yesterday's snapshot in place. GET /health
+// (ungated; read by tome-healthcheck over a service binding) reports that record
+// plus the graded snapshot's age and status counts and the latest score-history
+// date. Metadata only: no prices, no keys, no subscriber data.
+async function runDailyPipeline(env) {
+  const startedAt = new Date().toISOString();
+  const t0 = Date.now();
+  const status = { startedAt, finishedAt: null, durationMs: null, ok: false, step: null, error: null, steps: [] };
+  const record = async () => { if (env.SNAPSHOTS) { try { await env.SNAPSHOTS.put('cron:last', JSON.stringify(status)); } catch (e) {} } };
+  const steps = [
+    ['captureSnapshot', () => captureSnapshot(env)],
+    ['captureGradedPrices', () => captureGradedPrices(env)],
+    ['captureScoreHistoryAndDigest', () => captureScoreHistoryAndDigest(env)],   // reads what the step above wrote
+  ];
+  for (const [name, fn] of steps) {
+    status.step = name;
+    const s0 = Date.now();
+    try {
+      await fn();
+      status.steps.push({ name, ok: true, ms: Date.now() - s0 });
+    } catch (e) {
+      status.steps.push({ name, ok: false, ms: Date.now() - s0 });
+      status.error = `${name}: ${(e && e.message) || String(e)}`.slice(0, 500);
+      console.error('daily pipeline failed at', name, e);
+      status.finishedAt = new Date().toISOString(); status.durationMs = Date.now() - t0;
+      await record();
+      return;
+    }
+  }
+  status.ok = true; status.step = null;
+  status.finishedAt = new Date().toISOString(); status.durationMs = Date.now() - t0;
+  await record();
+}
+const HEALTH_GRADED_STALE_MS = 30 * 3600 * 1000;   // cron is daily at 14:00 UTC; 30h = one missed run + slack
+async function handleHealth(env, origin) {
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(origin) };
+  const now = Date.now();
+  if (!env.SNAPSHOTS)
+    return new Response(JSON.stringify({ ok: false, problems: ['SNAPSHOTS KV binding missing'] }), { status: 200, headers });
+  const [cron, graded, agg] = await Promise.all([
+    env.SNAPSHOTS.get('cron:last', 'json').catch(() => null),
+    env.SNAPSHOTS.get('graded-prices', 'json').catch(() => null),
+    env.SNAPSHOTS.get('mycards-agg', 'json').catch(() => null),
+  ]);
+  // Latest score-history day: today or yesterday (UTC) is healthy; older means the digest step is not running.
+  let scoreHistory = null;
+  for (let back = 0; back < 4 && !scoreHistory; back++) {
+    const d = new Date(now - back * 86400000).toISOString().slice(0, 10);
+    const sh = await env.SNAPSHOTS.get(`score-history:${d}`, 'json').catch(() => null);
+    if (sh) scoreHistory = { date: d, count: sh.count ?? (sh.cards || []).length, ageDays: back };
+  }
+  const problems = [];
+  if (!cron) problems.push('daily pipeline has never recorded a run (cron:last missing)');
+  else {
+    if (!cron.ok) problems.push(`last run failed at ${cron.step}: ${cron.error}`);
+    const age = cron.finishedAt ? now - Date.parse(cron.finishedAt) : null;
+    if (age != null && age > HEALTH_GRADED_STALE_MS) problems.push(`last run finished ${Math.round(age / 3600000)} h ago`);
+  }
+  let gradedMeta = null;
+  if (!graded) problems.push('no graded-prices snapshot in KV');
+  else {
+    const age = graded.updatedAt ? now - Date.parse(graded.updatedAt) : null;
+    gradedMeta = {
+      updatedAt: graded.updatedAt || null, ageMs: age, bucket: graded.bucket ?? null, cardsChecked: graded.cardsChecked ?? null,
+      bucketLive: graded.bucketLive ?? null, liveCount: graded.liveCount ?? null, catalogSize: graded.catalogSize ?? null,
+      statusCounts: graded.statusCounts || null,
+    };
+    if (age == null || age > HEALTH_GRADED_STALE_MS) problems.push(`graded snapshot is ${age == null ? 'undated' : Math.round(age / 3600000) + ' h old'}`);
+    const sc = graded.statusCounts || {};
+    if ((sc['429'] || 0) > (sc.ok || 0)) problems.push(`JustTCG rate-limited the graded run (${sc['429']} x 429 vs ${sc.ok || 0} ok)`);
+    if (graded.cardsChecked > 0 && (graded.bucketLive || 0) === 0) problems.push(`graded run checked ${graded.cardsChecked} cards and found no live PSA data`);
+  }
+  if (!scoreHistory) problems.push('no score-history entry in the last 4 days');
+  else if (scoreHistory.ageDays > 1) problems.push(`latest score-history is ${scoreHistory.ageDays} days old`);
+  return new Response(JSON.stringify({
+    ok: problems.length === 0, checkedAt: new Date(now).toISOString(), problems,
+    cron: cron || null, graded: gradedMeta, scoreHistory,
+    myCards: agg ? { date: agg.date, users: agg.users, distinct: agg.distinct } : null,
+    beehiiv: { configured: beehiivConfigured(env), internalAuth: !!env.TOME_INTERNAL_TOKEN },
+  }), { status: 200, headers });
+}
 export default {
   // Cron entry point — Cloudflare invokes this on the schedule you set.
   // UPDATED: now runs sequentially, not fire-and-forget in parallel, because
   // captureScoreHistoryAndDigest reads what captureGradedPrices just wrote.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil((async () => {
-      await captureSnapshot(env);
-      await captureGradedPrices(env);
-      await captureScoreHistoryAndDigest(env);   // new -- reads the graded-prices snapshot above
-    })());
+    ctx.waitUntil(runDailyPipeline(env));
   },
   async fetch(request, env, ctx) {
     // X-Tome-RL diagnostic header retired (limiter verified from outside on Sept 7).
@@ -793,6 +872,9 @@ async function handleRequest(request, env, ctx, rl) {
     // Internal identity service for the other Tome Workers (service binding + shared token).
     if (request.method === 'GET' && url.pathname === '/auth/subscription')
       return handleAuthSubscription(request, url, env, ctx, origin);
+    // Ungated pipeline health (metadata only); also before the limiter so tome-healthcheck's
+    // service-binding calls (no client IP) never share one bucket with the public.
+    if (request.method === 'GET' && url.pathname === '/health') return handleHealth(env, origin);
     // Order: rate limit -> subscriber gate -> route. Everything below the gate is
     // Tome Vault product data (or writes to Discord), so nothing is served without a key.
     const limited = await rateLimited(request, origin, env, rl);

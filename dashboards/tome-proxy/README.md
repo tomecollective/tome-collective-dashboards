@@ -83,3 +83,10 @@ share one Beehiiv lookup, cache, and webhook invalidation. Handled before the pe
 (service-binding calls carry no client IP). Unset or wrong token = 404. Edge products need
 Tome Edge or the Bundle; Vault products need Tome Vault or the Bundle. The same
 `TOME_INTERNAL_TOKEN` value must be set on all four Workers.
+
+## Health
+
+`GET /health` (ungated, metadata only, before the limiter): `{ok, problems[], cron, graded, scoreHistory, myCards, beehiiv}`.
+`cron` is the `cron:last` record the daily pipeline writes (started/finished, per-step ok + ms, failing step and error).
+`graded` is the snapshot minus its data (updatedAt, age, bucket, cardsChecked, bucketLive, liveCount, statusCounts).
+tome-healthcheck reads this over its `PROXY_SERVICE` binding and relays `problems` to Discord.

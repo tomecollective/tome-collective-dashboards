@@ -128,6 +128,19 @@ const FRESHNESS = [
       return problems;
     },
   },
+  {
+    // tome-proxy (TCG Arbitrage): daily 14:00 UTC pipeline -- raw snapshot, graded
+    // PSA prices (a third of the catalog per day), score history + Discord digest.
+    // /health is ungated, metadata only, and does its own reasoning: it returns the
+    // problem list, so the check just relays it (and adds a shape guard).
+    name: "tome-proxy",
+    binding: "PROXY_SERVICE", // -> tome-proxy
+    path: "/health",
+    check: (h) => {
+      if (!h || !Array.isArray(h.problems)) return ["/health returned an unexpected shape"];
+      return h.problems.slice();
+    },
+  },
 ];
 
 // -- Worker error-rate check (alert only) --------------------------------------
@@ -136,7 +149,7 @@ const FRESHNESS = [
 // Pages), so this Worker queries the GraphQL Analytics API instead: errors
 // and invocations per script over the last hour. Needs the existing
 // CLOUDFLARE_API_TOKEN to also carry "Account Analytics: Read".
-const ERROR_RATE_SCRIPTS = ["tome-fastbreak", "tome-fastbreak-refresh", "tome-tcg", "tome-topshot", "tome-healthcheck"];
+const ERROR_RATE_SCRIPTS = ["tome-fastbreak", "tome-fastbreak-refresh", "tome-tcg", "tome-topshot", "tome-proxy", "tome-healthcheck"];
 const ERROR_RATE_THRESHOLD = 0.05; // 5% of invocations in the last hour
 const ERROR_MIN_COUNT = 3; // ...and at least this many errors (a single blip isn't worth a ping)
 

@@ -57,6 +57,10 @@ Besides HTTP/shape, every run reads the pipelines' own status:
   under two cron intervals + 5 min, in or out of season), and in season: last cron error,
   latest snapshot age (same window), Full Data age (< 30 h).
 - `tome-tcg` `/api/refresh-status` -- last run must have `published: true` and be < 36 h old.
+- `tome-proxy` `/health` (binding `PROXY_SERVICE`, added 2026-09-09) -- the daily 14:00 UTC pipeline must have
+  recorded a successful run (`cron:last`), the graded-price snapshot must be < 30 h old with more
+  `ok` than `429` responses from JustTCG and at least one live PSA price, and a score-history entry
+  must exist for today or yesterday. The route computes the problem list itself; this Worker relays it.
 - **Worker error rates** via the GraphQL Analytics API (Cloudflare's Notifications catalogue
   has no Workers error-rate alert type on this account): for `tome-fastbreak`,
   `tome-fastbreak-refresh`, `tome-tcg`, `tome-topshot`, `tome-healthcheck`, alert when the
