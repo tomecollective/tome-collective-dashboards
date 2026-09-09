@@ -580,15 +580,19 @@ async function captureGradedPrices(env) {
   const catalogSet = new Set(ids);
   let prior = null;
   try { prior = await env.SNAPSHOTS.get('graded-prices', 'json'); } catch (e) { prior = null; }
+  const today = new Date().toISOString().slice(0, 10);
   const data = {};
   for (const [id, g] of Object.entries((prior && prior.data) || {})) {
-    if (catalogSet.has(id) && gpBucketOf(id) !== bucket) data[id] = g;   // carry forward other buckets
+    if (catalogSet.has(id) && gpBucketOf(id) !== bucket) data[id] = g;   // carry forward other buckets (keeps their `at`)
   }
+  // Per-bucket check dates, so the frontend can say when ANY card (live or not) was last
+  // looked up: bucketDates[gpBucketOf(id)]. Carried forward from the prior snapshot.
+  const bucketDates = { ...((prior && prior.bucketDates) || {}), [bucket]: today };
   const statusCounts = {};   // tally of what JustTCG's graded endpoint actually returned today
   let bucketLive = 0;
   await gpMapWithConcurrency(todayIds, GP_FETCH_CONCURRENCY, async (id) => {
     const g = await gpFetchGraded(env, id, statusCounts);
-    if (g) { data[id] = g; bucketLive++; }
+    if (g) { data[id] = { ...g, at: today }; bucketLive++; }   // `at` = the day this card's PSA prices were fetched
   });
   const liveCount = Object.keys(data).length;
   console.log(`captureGradedPrices bucket ${bucket}/${GP_ROTATION_BUCKETS}: ${todayIds.length} checked, ` +
@@ -598,6 +602,7 @@ async function captureGradedPrices(env) {
     cardsChecked: todayIds.length,   // today's bucket only
     catalogSize: ids.length,
     bucket, bucketSize: todayIds.length, bucketLive,
+    rotationBuckets: GP_ROTATION_BUCKETS, bucketDates,   // frontend derives per-card "checked on" from these
     liveCount,                        // across all buckets (carried forward + today)
     statusCounts,   // today's bucket; also readable via GET /graded-prices
     data,
