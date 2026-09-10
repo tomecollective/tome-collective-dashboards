@@ -1,1390 +1,564 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Tome Vault: TCG Arbitrage — Tome Collective</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tome Edge · NBA Top Shot Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{
-  --green:#d4a72c;--green-dark:#a3801e;--gold:#FFB515; /* --green is now the Vault brand gold (matches Chase Index #d4a72c) */
-  --bg:#f5f6f2;--surface:#fff;--surface2:#f0f1ec;--surface3:#e4e5e0;
-  --border:rgba(0,0,0,0.08);--border-md:rgba(0,0,0,0.13);--border-str:rgba(0,0,0,0.18);
-  --text:#18190f;--text-2:#484a40;--text-3:#787a6e;
-  --up:#059669;--dn:#dc2626;
-  --sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
-  --r:8px;--r-lg:14px;
-  --crack-bg:#fef3c7;--crack-fg:#92400e;--crack-bd:#fbbf24;
-  --grade-bg:#d1fae5;--grade-fg:#064e3b;--grade-bd:#6ee7b7;
-  --hold-bg:#ede9fe;--hold-fg:#4c1d95;--hold-bd:#c4b5fd;
-  --accum-bg:#dbeafe;--accum-fg:#1e3a8a;--accum-bd:#93c5fd;
-  --skip-bg:#f1f5f9;--skip-fg:#64748b;--skip-bd:#cbd5e1;
-  --ts-e-bg:#d1fae5;--ts-e-fg:#064e3b;--ts-s-bg:#dbeafe;--ts-s-fg:#1e3a8a;
-  --ts-w-bg:#fef9c3;--ts-w-fg:#713f12;--ts-x-bg:#f1f5f9;--ts-x-fg:#64748b;
-}
-@media(prefers-color-scheme:dark){:root{
-  --bg:#0f1009;--surface:#181910;--surface2:#1e201a;--surface3:#262820;
-  --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);--border-str:rgba(255,255,255,0.18);
-  --text:#eaecdf;--text-2:#a8aa9c;--text-3:#6a6c60;
-  --crack-bg:#422006;--crack-fg:#fcd34d;--crack-bd:#92400e;
-  --grade-bg:#052e16;--grade-fg:#6ee7b7;--grade-bd:#064e3b;
-  --hold-bg:#1e1040;--hold-fg:#c4b5fd;--hold-bd:#4c1d95;
-  --accum-bg:#0f1f40;--accum-fg:#93c5fd;--accum-bd:#1e3a8a;
-  --skip-bg:#1e2029;--skip-fg:#94a3b8;--skip-bd:#334155;
-  --ts-e-bg:#052e16;--ts-e-fg:#6ee7b7;--ts-s-bg:#0f1f40;--ts-s-fg:#93c5fd;
-  --ts-w-bg:#2d1a00;--ts-w-fg:#fcd34d;--ts-x-bg:#1e2029;--ts-x-fg:#94a3b8;
-}}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;}
+  :root {
+    --forest: #0D7959;
+    --gold: #FFB515;
+    --cream: #FEFFEF;
+    --bg: #0a0a0a;
+    --panel: #141614;
+    --panel-border: #262a26;
+    --text: #FEFFEF;
+    --text-dim: #9a9a92;
+    --text-dimmer: #6b6b64;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'EB Garamond', Georgia, serif;
+    background: var(--bg);
+    color: var(--text);
+  }
 
-/* Header */
-.hdr{background:var(--green);height:50px;display:flex;align-items:center;padding:0 1.5rem;gap:12px;position:sticky;top:0;z-index:300;}
-.hdr-logo{display:flex;align-items:center;gap:7px;text-decoration:none;}
-.hdr-dot{width:7px;height:7px;border-radius:50%;background:#1a1a1a;}
-.hdr-name{font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-0.2px;}
-.hdr-div{width:1px;height:18px;background:rgba(26,26,26,0.2);}
-.hdr-product{font-size:13px;font-weight:500;color:rgba(26,26,26,0.75);}
-.hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
-.hdr-pill{font-size:11px;background:rgba(26,26,26,0.85);color:#d4a72c;font-weight:600;padding:3px 10px;border-radius:20px;}
+  /* Top bar */
+  .topbar {
+    background: var(--forest);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+  .topbar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+  .topbar-brand { font-weight: 700; color: #fff; }
+  .topbar-sep { color: rgba(255,255,255,0.4); }
+  .topbar-page { color: rgba(255,255,255,0.85); }
+  .tier-badge-pill {
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 5px 14px;
+    border-radius: 999px;
+  }
 
-/* Layout */
-.wrap{max-width:1320px;margin:0 auto;padding:1.25rem 1.25rem 4rem;}
-.pg-hd{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:1rem;}
-.pg-eye{font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
-.pg-title{font-size:24px;font-weight:700;letter-spacing:-0.5px;}
-.pg-sub{font-size:13px;color:var(--text-3);margin-top:3px;max-width:640px;line-height:1.5;}
-.pg-meta{font-size:11px;color:var(--text-3);text-align:right;}
-.pg-meta strong{color:var(--text-2);display:block;font-size:13px;}
+  /* Header block */
+  .header-block { padding: 28px 24px 20px; }
+  .eyebrow {
+    color: var(--forest);
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  h1 { margin: 0 0 8px; font-size: 32px; font-weight: 700; color: #fff; }
+  .subtitle { color: var(--text-dim); font-size: 17px; margin-bottom: 6px; }
+  .powered-by { color: var(--text-dimmer); font-size: 14px; }
 
-/* Quick-sort chips */
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;}
-.chip{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 18px;border-radius:10px;border:1px solid var(--border-str);background:var(--surface);color:var(--text-2);cursor:pointer;transition:all 0.12s;display:flex;align-items:center;gap:7px;}
-.chip:hover{border-color:var(--green);color:var(--green);transform:translateY(-1px);}
-.chip.active{background:var(--green);color:#1a1a1a;border-color:var(--green);box-shadow:0 2px 8px rgba(212,167,44,0.25);}
-.chip .chip-icon{font-size:15px;}
-.chip .chip-count{font-size:10px;font-weight:700;background:rgba(0,0,0,0.08);padding:2px 7px;border-radius:10px;font-family:var(--mono);}
-.chip.active .chip-count{background:rgba(255,255,255,0.2);}
+  /* Pill tab nav */
+  .tab-row { display: flex; gap: 10px; padding: 0 24px 12px; flex-wrap: wrap; }
+  .tab-pill {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .tab-pill.active { background: var(--forest); color: #fff; border-color: var(--forest); }
 
-/* Filter bar */
-.fbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:0.75rem;padding:0.7rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);}
-.fgroup{display:flex;align-items:center;gap:6px;}
-.flbl{font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;}
-.seg{display:flex;gap:3px;}
-.sb{font-family:var(--sans);font-size:12px;font-weight:500;padding:5px 11px;border-radius:16px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;white-space:nowrap;}
-.sb:hover{border-color:var(--green);color:var(--green);}
-.sb.active{background:var(--green);color:#1a1a1a;border-color:var(--green);}
-.fdiv{width:1px;height:22px;background:var(--border-md);}
-.prange{display:flex;align-items:center;gap:4px;}
-.pr-dollar{font-size:12px;color:var(--text-3);}
-.pr-sep{font-size:11px;color:var(--text-3);}
-.pr-input{width:64px;padding:5px 7px;border:0.5px solid var(--border-str);border-radius:var(--r);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
-/* Wider than the base .pr-input — its placeholder ("Min $25") is doing double duty as both
-   a hint and the de facto floor: there's no live data below $25 today, so leaving it blank
-   is how someone accepts that default, and only needs to type over it to raise the bar. */
-.pr-input-min{width:80px;}
-.pr-input:focus{border-color:var(--green);background:var(--surface);}
-/* Chrome/Safari number-input spinners take up space and rarely help with a 3-4 digit price
-   filter — hiding them keeps the two fields visually matched to the other filter controls. */
-.pr-input::-webkit-outer-spin-button,.pr-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
-.pr-input[type=number]{-moz-appearance:textfield;}
-.sw{position:relative;min-width:150px;flex:1;max-width:220px;}
-.sw svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3);pointer-events:none;}
-.sw input{width:100%;padding:6px 10px 6px 29px;border:0.5px solid var(--border-str);border-radius:var(--r);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
-.sw input:focus{border-color:var(--green);background:var(--surface);}
-select{padding:6px 9px;border:0.5px solid var(--border-str);border-radius:var(--r);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;height:31px;outline:none;cursor:pointer;}
-select:focus{border-color:var(--green);}
-.clear-btn{font-family:var(--sans);font-size:11px;font-weight:500;color:var(--text-3);background:none;border:0.5px solid var(--border-md);border-radius:var(--r);padding:5px 10px;cursor:pointer;margin-left:auto;}
-.clear-btn:hover{border-color:var(--dn);color:var(--dn);}
-.fcount{font-size:11px;color:var(--text-3);padding:4px 9px;background:var(--surface3);border-radius:16px;white-space:nowrap;}
+  .status-line { padding: 0 24px 10px; color: var(--gold); font-size: 14px; min-height: 18px; }
 
-/* Profit controls bar */
-.pbar{display:flex;align-items:center;gap:10px;margin-bottom:0.875rem;padding:0.55rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);flex-wrap:wrap;}
-.plbl{font-size:11px;font-weight:500;color:var(--text-2);}
-.fee-btn{font-family:var(--sans);font-size:11px;font-weight:500;padding:4px 10px;border-radius:6px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;}
-.fee-btn:hover{border-color:var(--green);color:var(--green);}
-.fee-btn.active{background:var(--green);color:#1a1a1a;border-color:var(--green);}
-input[type=range]{accent-color:var(--green);cursor:pointer;}
-.pnote{font-size:10px;color:var(--text-3);margin-left:auto;}
+  /* Controls row */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-top: 1px solid var(--panel-border);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .control-group { display: flex; align-items: center; gap: 8px; }
+  .control-label { color: var(--text-dimmer); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  select, input[type="text"], input[type="number"] {
+    font-family: inherit;
+    font-size: 15px;
+    padding: 7px 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .tier-checks { display: flex; gap: 10px; flex-wrap: wrap; }
+  .tier-checks label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 15px; color: var(--text-dim); cursor: pointer;
+  }
+  .sort-toggle { display: flex; border: 1px solid var(--forest); border-radius: 6px; overflow: hidden; }
+  .sort-toggle button {
+    font-family: inherit; font-size: 15px; padding: 7px 14px;
+    border: none; background: var(--bg); color: var(--forest); cursor: pointer;
+  }
+  .sort-toggle button.active { background: var(--forest); color: #fff; font-weight: 600; }
+  .dl-btn {
+    font-family: inherit; font-weight: 700; font-size: 15px;
+    background: var(--forest); color: #fff; border: none;
+    padding: 9px 18px; border-radius: 6px; cursor: pointer; margin-left: auto;
+  }
 
-/* Stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-bottom:1rem;}
-.stat{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:0.6rem 0.8rem;}
-.stat-lbl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:3px;}
-.stat-val{font-size:19px;font-weight:700;line-height:1;}
-.stat-sub{font-size:10px;color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Legend */
+  .legend-row {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 24px; font-size: 13px; color: var(--text-dim);
+  }
+  .legend-swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .coverage-note {
+    margin: 0 24px 16px; padding: 10px 14px;
+    background: rgba(255,181,21,0.08); border: 1px solid rgba(255,181,21,0.3);
+    border-radius: 6px; font-size: 13px; color: var(--text-dim); line-height: 1.5;
+  }
 
-/* Pagination */
-.pagebar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:0.75rem;padding:0.6rem 0.9rem;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);}
-.pg-size{display:flex;align-items:center;gap:6px;}
-.pg-nav{display:flex;align-items:center;gap:8px;}
-.pg-btn{font-family:var(--sans);font-size:12px;font-weight:600;width:28px;height:26px;border-radius:6px;border:0.5px solid var(--border-str);background:transparent;color:var(--text-2);cursor:pointer;transition:all 0.1s;}
-.pg-btn:hover:not(:disabled){border-color:var(--green);color:var(--green);}
-.pg-btn:disabled{opacity:0.35;cursor:default;}
-.pg-info{font-size:11px;color:var(--text-3);white-space:nowrap;min-width:150px;text-align:center;}
+  main { padding: 0 24px 60px; max-width: 1300px; margin: 0 auto; }
 
-/* Table */
-/* scroll-margin-top leaves room for the sticky green .hdr bar (50px) when something calls
-   scrollIntoView() on this element (e.g. the pagination Next/Prev buttons) — otherwise the
-   browser scrolls the table flush to the very top of the viewport, and the frozen table
-   header (itself sticky at top:0 *within* this box) ends up rendered right behind the green
-   bar, invisible, since the green bar sits on top at a higher z-index. */
-.tbl-outer{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden;scroll-margin-top:60px;}
-/* overflow-x:auto alone silently makes overflow-y compute to auto too (CSS overflow spec),
-   which breaks position:sticky on the header (its "nearest scroll container" becomes a box
-   that never actually scrolls). Declaring both axes explicitly with a real max-height turns
-   this into a genuine scroll pane, so the sticky header works and — as a bonus — degrades
-   gracefully: with pagination keeping row counts low, most pages never need to scroll at all. */
-.tbl-scroll{overflow:auto;max-height:calc(100vh - 260px);}
-table{width:100%;border-collapse:collapse;font-size:12px;}
-/* min-width scoped to the main data table only — a bare `table` selector here would also
-   force this floor onto the small fee-tier table rendered inside the card detail drawer,
-   blowing its layout out to 1180px+ inside a ~380px-wide panel and pushing its value column
-   off the visible edge. */
-.tbl-scroll table{min-width:1180px;}
-thead tr{background:var(--surface2);border-bottom:0.5px solid var(--border-str);}
-/* top:0 — thead is the first row in the table, so its natural (unscrolled) offset from the
-   scroll pane's own top is already 0. Any positive offset here (e.g. to dodge the green .hdr
-   bar above) forces the sticky constraint to activate immediately at rest, permanently
-   shoving the header down over row 1 even with no scrolling at all. top:0 keeps it flush
-   until the box is actually scrolled internally, which is when it should start "sticking". */
-th{padding:9px 10px;font-size:10px;font-weight:600;color:var(--text-3);text-align:left;white-space:nowrap;cursor:pointer;user-select:none;letter-spacing:0.5px;text-transform:uppercase;position:sticky;top:0;z-index:2;background:var(--surface2);box-shadow:0 1px 0 var(--border-str);}
-th:hover,th.sorted{color:var(--text);}
-th .arr{margin-left:3px;opacity:0.3;font-size:9px;}
-th.sorted .arr{opacity:1;color:var(--green);}
-th.ns{cursor:default;}
-tbody tr{border-bottom:0.5px solid var(--border);transition:background 0.08s;}
-tbody tr:last-child{border-bottom:none;}
-tbody tr:hover{background:var(--surface2);}
-td{padding:9px 10px;vertical-align:middle;}
-.rk{font-size:11px;font-weight:700;color:var(--text-3);text-align:center;}
-.cc{display:flex;align-items:center;gap:9px;min-width:150px;}
-.ci{width:32px;height:44px;border-radius:3px;border:0.5px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;object-fit:cover;}
-.ci-wrap{position:relative;flex-shrink:0;display:block;line-height:0;cursor:pointer;}
-#hoverPreview{display:none;position:fixed;width:180px;height:auto;border-radius:8px;border:1px solid var(--border-str);box-shadow:0 8px 28px rgba(0,0,0,0.35);z-index:9999;background:var(--surface);pointer-events:none;}
-@media(hover:none){#hoverPreview{display:none !important;}}
+  .lock-panel {
+    background: var(--panel);
+    border: 2px solid var(--gold);
+    border-radius: 10px;
+    padding: 26px;
+    text-align: center;
+    margin: 20px 0;
+  }
+  .lock-panel h2 { margin-top: 0; color: #fff; }
+  .lock-panel p { font-size: 17px; color: var(--text-dim); }
+  .lock-panel a.unlock-btn {
+    display: inline-block; margin-top: 8px;
+    background: var(--forest); color: #fff; text-decoration: none;
+    font-weight: 700; padding: 10px 22px; border-radius: 6px;
+  }
 
-/* Column info tooltips */
-.info-ic{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;width:13px;height:13px;border-radius:50%;background:var(--surface3);color:var(--text-3);font-size:9px;line-height:1;text-align:center;cursor:help;font-weight:700;vertical-align:middle;text-transform:none;letter-spacing:0;}
-.info-ic:hover{background:var(--green);color:#1a1a1a;}
-#infoTip{display:none;position:fixed;width:240px;font-size:11px;line-height:1.5;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-2);padding:9px 11px;border-radius:8px;border:1px solid var(--border-str);box-shadow:0 8px 28px rgba(0,0,0,0.35);z-index:9999;background:var(--surface);pointer-events:none;}
-@media(hover:none){#infoTip{display:none !important;}}
-.cn{font-weight:500;font-size:12px;line-height:1.3;}
-.cs{font-size:10px;color:var(--text-3);}
-.cnum{font-family:var(--mono);font-size:9px;color:var(--text-3);}
-.gt{display:inline-block;font-size:10px;font-weight:500;padding:2px 6px;border-radius:3px;}
-.gp{background:#fff3e0;color:#8b4000;}.gl{background:#e8f0fe;color:#1a3680;}.go{background:#fce7f3;color:#831843;}
-@media(prefers-color-scheme:dark){.gp{background:#3d2000;color:#ffb566;}.gl{background:#0d1f40;color:#7ab8f5;}.go{background:#3b0020;color:#f9a8d4;}}
-.era-tag{display:inline-block;font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:var(--surface3);color:var(--text-3);text-transform:uppercase;letter-spacing:0.3px;}
-.sig{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid;white-space:nowrap;}
-.s-crack{background:var(--crack-bg);color:var(--crack-fg);border-color:var(--crack-bd);}
-.s-grade{background:var(--grade-bg);color:var(--grade-fg);border-color:var(--grade-bd);}
-.s-hold{background:var(--hold-bg);color:var(--hold-fg);border-color:var(--hold-bd);}
-.s-accum{background:var(--accum-bg);color:var(--accum-fg);border-color:var(--accum-bd);}
-.s-skip{background:var(--skip-bg);color:var(--skip-fg);border-color:var(--skip-bd);}
-.ts-pill{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;width:38px;height:23px;border-radius:5px;font-family:var(--mono);}
-.ts-e{background:var(--ts-e-bg);color:var(--ts-e-fg);}
-.ts-s{background:var(--ts-s-bg);color:var(--ts-s-fg);}
-.ts-w{background:var(--ts-w-bg);color:var(--ts-w-fg);}
-.ts-x{background:var(--ts-x-bg);color:var(--ts-x-fg);}
-.pc{display:flex;flex-direction:column;gap:1px;}
-.pa{font-family:var(--mono);font-size:12px;font-weight:600;}
-.pl{font-size:9px;color:var(--text-3);}
-.pos{color:var(--up);}.neg{color:var(--dn);}
-.mono{font-family:var(--mono);font-size:11px;}
-.up{color:var(--up);}.dn{color:var(--dn);}.fl{color:var(--text-3);}
-.tcg-link{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;color:var(--green);text-decoration:none;padding:3px 7px;border-radius:4px;border:0.5px solid var(--green);transition:all 0.1s;white-space:nowrap;}
-.tcg-link:hover{background:var(--green);color:#1a1a1a;}
-
-.star-btn{background:none;border:none;font-size:15px;cursor:pointer;color:var(--text-3);padding:2px 4px;line-height:1;transition:color 0.1s,transform 0.1s;}
-.star-btn:hover{color:var(--gold);transform:scale(1.2);}
-.star-btn.starred{color:var(--gold);}
-.row-click{cursor:pointer;}
-
-/* Footer */
-.footer{text-align:center;font-size:11px;color:var(--text-3);padding:2rem 0 1rem;border-top:0.5px solid var(--border);margin-top:1.5rem;}
-.footer a{color:var(--green);text-decoration:none;}
-.disclaimer{font-size:10px;color:var(--text-3);max-width:660px;margin:0.5rem auto 0;line-height:1.6;}
-
-/* Mobile */
-@media(max-width:700px){
-  .wrap{padding:0.85rem 0.75rem 3rem;}
-  .hdr{padding:0 1rem;}
-  .pg-title{font-size:20px;}
-  .pg-hd{align-items:flex-start;}
-  .pg-meta{text-align:left;}
-  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
-  .chips::-webkit-scrollbar{height:0;}
-  .chip{flex-shrink:0;}
-  .fbar{padding:0.6rem;}
-  .fgroup{flex-wrap:wrap;}
-  .sw{max-width:none;min-width:120px;}
-  .clear-btn{margin-left:0;}
-  .pbar{gap:8px;}
-  .pnote{display:none;}
-  .stats{grid-template-columns:repeat(2,1fr);}
-  #drawer{width:100vw;}
-  .tbl-scroll{max-height:60vh;}
-  .pagebar{justify-content:center;}
-  .pg-size{width:100%;justify-content:center;}
-}
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  thead th {
+    text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-dim); padding: 10px 12px; border-bottom: 1px solid var(--panel-border);
+    cursor: pointer; user-select: none;
+  }
+  thead th.active-sort { color: var(--forest); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); font-size: 16px; vertical-align: middle; }
+  tbody tr:hover { background: #16181600; }
+  .moment-thumb {
+    width: 44px; height: 44px; border-radius: 6px; object-fit: cover;
+    background: var(--panel-border); flex-shrink: 0;
+  }
+  .player-cell { display: flex; align-items: center; gap: 10px; }
+  .player-name { color: #fff; }
+  .team-name { color: var(--text-dimmer); font-size: 14px; }
+  .rookie-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    background: var(--gold); color: #1a1a1a; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  .league-tag { color: var(--text-dimmer); font-size: 13px; }
+  .tier-pill {
+    display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase;
+    padding: 2px 10px; border-radius: 999px; color: #fff;
+  }
+  .tier-Common { background: #6b6b64; }
+  .tier-Fandom { background: #7a5cc9; }
+  .tier-Rare { background: #2f6fd6; }
+  .tier-Legendary { background: #c9862f; }
+  .tier-Ultimate { background: #c92f2f; }
+  .tier-Founders { background: #000; border: 1px solid #444; }
+  .price { font-weight: 700; color: #fff; }
+  .discount-positive { color: var(--forest); font-weight: 700; }
+  .tome-score { font-weight: 700; color: var(--text); }
+  .tome-score-good { color: var(--gold); }
+  .tome-score-bad { color: #c92f2f; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); font-size: 18px; }
+  .history-toggle {
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    background: transparent; color: var(--forest); border: 1px solid var(--forest);
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .history-row td { background: #0f110f; padding: 12px 12px; }
+  .chart-stats { color: var(--text); font-size: 15px; margin-bottom: 10px; }
+  .chart-wrap { height: 240px; position: relative; }
+  .confidence-High { color: var(--forest); }
+  .confidence-Some { color: var(--gold); }
+  .confidence-Thin { color: #c9862f; }
+  .history-note { color: var(--text-dimmer); font-size: 13px; font-style: italic; }
+  footer { text-align: center; padding: 24px; font-size: 14px; color: var(--text-dimmer); }
 </style>
 </head>
 <body>
 
-<header class="hdr">
-  <a class="hdr-logo" href="https://tomecollective.com" target="_blank">
-    <div class="hdr-dot"></div><span class="hdr-name">Tome Collective</span>
-  </a>
-  <div class="hdr-div"></div>
-  <span class="hdr-product">Tome Vault: TCG Arbitrage</span>
-  <div class="hdr-right"><span class="hdr-pill">VAULT</span></div>
-</header>
-
-<div class="wrap">
-
-  <div class="pg-hd">
-    <div>
-      <div class="pg-eye">Tome Collective · TCG · Market Intelligence</div>
-      <div class="pg-title">Tome Vault: TCG Arbitrage</div>
-      <div class="pg-sub">Cross-game TCG pricing intelligence across Pokémon, Lorcana, and One Piece, with grading and crack-profit analysis.</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Powered by Tome Analytics</div>
-      <div style="margin-top:6px;font-size:11px;color:var(--text-3);background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--gold);border-radius:6px;padding:6px 10px;max-width:640px;">
-      <strong style="color:var(--text-2)">Beta note:</strong> raw prices and 30-day momentum are live from JustTCG. PSA 7/8/9 prices are real JustTCG market data where available (a "~" prefix means JustTCG had no listing for that card and grade, so it falls back to an era-calibrated estimate instead). PSA 10 and population remain model estimates until further graded-data integration — treat grade signals as directional. Tome Score ranks near-term opportunity, not verified long-term appreciation — true hold/appreciation scoring needs population, rarity, and multi-year trend data we don't have yet, and is a planned future enhancement.
-    </div>
-    </div>
-    <div class="pg-meta"><strong id="dateLabel"></strong>Live pricing · <span style="color:var(--gold);font-weight:600">BETA</span></div>
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="topbar-dot"></span>
+    <span class="topbar-brand">Tome Collective</span>
+    <span class="topbar-sep">|</span>
+    <span class="topbar-page">Tome Edge: NBA Top Shot</span>
   </div>
+  <span class="tier-badge-pill" id="statusBadge">Edge</span>
+</div>
 
-  <!-- Quick-sort chips -->
-  <div class="chips" id="chips">
-    <button class="chip active" data-preset="holds"><span class="chip-icon">🏆</span>Top Scores<span class="chip-count" id="cHolds">—</span></button>
-    <button class="chip" data-preset="cracks"><span class="chip-icon">🔨</span>Best Cracks<span class="chip-count" id="cCracks">—</span></button>
-    <button class="chip" data-preset="grades"><span class="chip-icon">🎯</span>Best Grades<span class="chip-count" id="cGrades">—</span></button>
-    <button class="chip" data-preset="movers"><span class="chip-icon">📈</span>Biggest Movers<span class="chip-count" id="cMovers">—</span></button>
-    <button class="chip" id="watchChip"><span class="chip-icon">⭐</span>My Cards<span class="chip-count" id="cWatch">0</span></button>
+<div class="header-block">
+  <div class="eyebrow">TOME COLLECTIVE &middot; NBA &middot; WNBA &middot; TOP SHOT</div>
+  <h1>Tome Edge: NBA Top Shot</h1>
+  <div class="subtitle">Live low ask, last sale, and discount to market, indexed directly from the Flow blockchain.</div>
+  <div class="powered-by">Powered by Tome Analytics</div>
+</div>
+
+<div class="tab-row">
+  <button class="tab-pill active" id="leagueAll">All</button>
+  <button class="tab-pill" id="leagueNBA">NBA</button>
+  <button class="tab-pill" id="leagueWNBA">WNBA</button>
+</div>
+
+<div class="status-line" id="statusLine"></div>
+
+<div class="controls">
+  <div class="control-group">
+    <span class="control-label">Season</span>
+    <select id="seasonFilter"><option value="">All</option></select>
   </div>
-
-  <!-- Filters -->
-  <div class="fbar">
-    <div class="fgroup"><span class="flbl">Game</span>
-      <div class="seg" id="gameSeg">
-        <button class="sb active" data-v="">All</button>
-        <button class="sb" data-v="Pokemon">Pokémon</button>
-        <button class="sb" data-v="Lorcana">Lorcana</button>
-        <button class="sb" data-v="One Piece">One Piece</button>
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <div class="fgroup"><span class="flbl">Era</span>
-      <div class="seg" id="eraSeg">
-        <button class="sb active" data-v="">All</button>
-        <button class="sb" data-v="vintage">Vintage</button>
-        <button class="sb" data-v="modern">Modern</button>
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <div class="fgroup"><span class="flbl">Price</span>
-      <div class="prange">
-        <input type="number" id="minPriceInput" class="pr-input pr-input-min" placeholder="Min $25" min="0" step="1" inputmode="numeric">
-        <span class="pr-sep">–</span>
-        <span class="pr-dollar">$</span><input type="number" id="maxPriceInput" class="pr-input" placeholder="Max" min="0" step="1" inputmode="numeric">
-      </div>
-    </div>
-    <div class="fdiv"></div>
-    <select id="setFilter"><option value="">All Sets</option></select>
-    <select id="sigFilter">
-      <option value="">All Signals</option>
-      <option value="Crack & Flip">Crack &amp; Flip</option>
-      <option value="Grade Raw">Grade Raw</option>
-      <option value="Strong Score">Strong Score</option>
-      <option value="Watch">Watch</option>
-      <option value="Skip">Skip</option>
-    </select>
-    <div class="sw">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="search" placeholder="Card, set, or number…"/>
-    </div>
-    <span class="fcount" id="fcount">—</span>
-    <button class="clear-btn" id="clearBtn">Clear</button>
-  </div>
-
-  <!-- Profit controls -->
-  <div class="pbar">
-    <span class="plbl">PSA fee:<span class="info-ic" data-tip="Auto matches each card to the cheapest real PSA tier its value qualifies for (PSA requires the submission tier to cover the card's declared value) — a $50 card and a $5,000 card pay different real fees. The manual buttons instead force one fixed fee across every card." onclick="event.stopPropagation()">ⓘ</span></span>
-    <div class="seg" id="feeBtns">
-      <button class="fee-btn active" data-fee="auto">Auto</button>
-      <button class="fee-btn" data-fee="80">Regular $80</button>
-      <button class="fee-btn" data-fee="150">Express $150</button>
-      <button class="fee-btn" data-fee="350">Super Express $350</button>
-      <button class="fee-btn" data-fee="600">Walk-Through $600</button>
-    </div>
-    <span style="width:1px;height:18px;background:var(--border-md);"></span>
-    <span class="plbl">Net sale rate:</span>
-    <input type="range" id="saleSlider" min="60" max="90" value="80" step="5" style="width:100px;">
-    <span class="plbl mono" id="saleLbl" style="min-width:32px;">80%</span>
-    <span style="width:1px;height:18px;background:var(--border-md);"></span>
-    <span class="plbl">Crack vs:</span>
-    <div class="seg" id="crackSeg">
-      <button class="fee-btn" data-v="9">PSA 9</button>
-      <button class="fee-btn active" data-v="8">PSA 8</button>
-      <button class="fee-btn" data-v="7">PSA 7</button>
-    </div>
-    <span class="pnote">eBay ~85% · TCGPlayer ~87% · Buylist ~65% · Cracked cards are valued at full NM raw price, net of your sale rate</span>
-  </div>
-
-  <!-- Stats -->
-  <div class="stats">
-    <div class="stat"><div class="stat-lbl">Showing</div><div class="stat-val" id="sTot">—</div><div class="stat-sub">after filters</div></div>
-    <div class="stat"><div class="stat-lbl">Crack targets</div><div class="stat-val" id="sCrack" style="color:var(--crack-fg)">—</div><div class="stat-sub">net positive</div></div>
-    <div class="stat"><div class="stat-lbl">Grade targets</div><div class="stat-val" id="sGrade" style="color:var(--grade-fg)">—</div><div class="stat-sub">typical ROI ≥ 35%</div></div>
-    <div class="stat"><div class="stat-lbl">Top Scores</div><div class="stat-val" id="sHold" style="color:var(--hold-fg)">—</div><div class="stat-sub">Tome Score 75+</div></div>
-    <div class="stat"><div class="stat-lbl">Best crack</div><div class="stat-val" id="sBC" style="color:var(--crack-fg)">—</div><div class="stat-sub" id="sBCN"></div></div>
-    <div class="stat"><div class="stat-lbl">Best max ROI</div><div class="stat-val" id="sBG" style="color:var(--grade-fg)">—</div><div class="stat-sub" id="sBGN"></div></div>
-  </div>
-
-  <!-- Table -->
-  <div class="tbl-outer"><div class="tbl-scroll">
-    <table>
-      <thead><tr>
-        <th class="ns" style="width:30px">#</th>
-        <th class="ns" style="width:30px">⭐</th>
-        <th data-col="name" style="width:175px">Card<span class="arr">↕</span></th>
-        <th data-col="set" style="width:130px">Set<span class="arr">↕</span></th>
-        <th data-col="num" style="width:70px">Card #<span class="arr">↕</span></th>
-        <th data-col="game" style="width:74px">Game<span class="arr">↕</span></th>
-        <th data-col="era" style="width:66px">Era<span class="arr">↕</span></th>
-        <th data-col="tomeScore" class="sorted" style="width:76px">Tome Score<span class="info-ic" data-tip="Tome Score (0–100) ranks how attractive a card looks for near-term action — not long-term price appreciation. It weighs three things: realistic (PSA 9-typical) grading upside, 30-day price momentum, and entry price — higher scores mean stronger short-term candidates. Long-term hold/appreciation scoring isn't supported yet (it needs population, rarity, and multi-year trend data we don't have) — that's a planned future enhancement. The exact weighting is proprietary and keeps evolving as our data improves." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↓</span></th>
-        <th data-col="signal" style="width:112px">Signal<span class="info-ic" data-tip="Crack & Flip: cracking a slab and reselling raw beats buying raw and grading it. Grade Raw: PSA 9-typical grading ROI clears a 35% minimum. Strong Score / Watch: doesn't clear a grading signal outright, but scores 75+ / 55+ on Tome Score. Skip: none of the above." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="raw" style="width:64px">Raw NM<span class="arr">↕</span></th>
-        <th data-col="p7" style="width:58px">PSA 7<span class="info-ic" data-tip="Real PSA 7 market price from JustTCG when available. A '~' prefix means JustTCG has no PSA 7 listing for this card yet, so this falls back to an era-calibrated estimate — one anchored near raw price rather than derived from observed PSA 7 sales, since we don't have any to calibrate against." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="p8" style="width:64px">PSA 8<span class="info-ic" data-tip="Real PSA 8 market price from JustTCG when available. A '~' prefix means JustTCG has no PSA 8 listing for this card yet, so this falls back to an era-calibrated estimate instead." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="p9" style="width:64px">PSA 9<span class="info-ic" data-tip="Real PSA 9 market price from JustTCG when available. A '~' prefix means JustTCG has no PSA 9 listing for this card yet, so this falls back to an era-calibrated estimate instead." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="p10" style="width:62px">PSA 10 est.<span class="arr">↕</span></th>
-        <th data-col="dispCrack" style="width:96px">Crack Profit<span class="info-ic" data-tip="Profit from buying the PSA slab at its market price, cracking it out of the holder, and reselling the card at full NM raw pricing, net of your selected net sale rate. Basis follows the Crack vs. toggle above." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="gradeProfit" style="width:120px">Grade Profit<span class="info-ic" data-tip="Range of profit outcomes from buying this card raw now and sending it to PSA, depending on what grade it actually comes back as: PSA 8 (floor) to PSA 10 (ceiling). Sale proceeds at your net sale rate, minus the raw cost and the selected PSA grading fee. A raw card doesn't always come back a 10 — see the card detail panel for the typical (PSA 9) outcome specifically." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="gradeROI" style="width:96px">Max Grade ROI<span class="info-ic" data-tip="Best-case ROI if the raw card comes back a perfect PSA 10 — a ceiling, not an expectation. Most raw cards don't grade a 10. Check the Grade Profit range and the card detail panel for the more realistic PSA 8/9 outcomes." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th data-col="mom" style="width:66px">30d Chg<span class="arr">↕</span></th>
-        <th data-col="chgCount30d" style="width:70px">Volume<span class="info-ic" data-tip="Number of recorded price-change events on this card in the last 30 days, from JustTCG — a rough proxy for trading activity, not a literal sales count. Low or zero volume often means thin liquidity, and 30d Chg may be unreliable or missing for these cards." onclick="event.stopPropagation()">ⓘ</span><span class="arr">↕</span></th>
-        <th class="ns" style="width:72px">7d Trend</th>
-        <th class="ns" style="width:80px">TCGPlayer</th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div></div>
-
-  <!-- Pagination -->
-  <div class="pagebar" id="pagebar">
-    <div class="pg-size">
-      <span class="plbl">Rows per page:</span>
-      <div class="seg" id="pageSizeSeg">
-        <button class="sb" data-v="10">10</button>
-        <button class="sb active" data-v="25">25</button>
-        <button class="sb" data-v="50">50</button>
-        <button class="sb" data-v="100">100</button>
-        <button class="sb" data-v="all">All</button>
-      </div>
-    </div>
-    <div class="pg-nav">
-      <button class="pg-btn" id="pgFirst" title="First page">«</button>
-      <button class="pg-btn" id="pgPrev" title="Previous page">‹</button>
-      <span class="pg-info" id="pgInfo">Page 1 of 1</span>
-      <button class="pg-btn" id="pgNext" title="Next page">›</button>
-      <button class="pg-btn" id="pgLast" title="Last page">»</button>
+  <div class="control-group">
+    <span class="control-label">Tier</span>
+    <div class="tier-checks" id="tierChecks">
+      <label><input type="checkbox" value="Common" checked> Common</label>
+      <label><input type="checkbox" value="Fandom" checked> Fandom</label>
+      <label><input type="checkbox" value="Rare" checked> Rare</label>
+      <label><input type="checkbox" value="Legendary" checked> Legendary</label>
+      <label><input type="checkbox" value="Ultimate" checked> Ultimate</label>
     </div>
   </div>
-
-  <!-- Detail drawer -->
-  <div id="drawerOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:400;"></div>
-  <div id="drawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);background:var(--surface);border-left:0.5px solid var(--border-str);z-index:401;overflow-y:auto;padding:1.25rem;box-shadow:-8px 0 30px rgba(0,0,0,0.15);"></div>
-  <img id="hoverPreview" alt=""/>
-  <div id="infoTip"></div>
-
-  <div class="footer">
-    <div>© Tome Collective · <a href="https://tomecollective.com" target="_blank">tomecollective.com</a> · Pricing data provided by <a href="https://justtcg.com" target="_blank" rel="noopener">JustTCG</a></div>
-    <div class="disclaimer">Informational only — not investment or financial advice. PSA 7/8/9 prices are real JustTCG market data where available, falling back to an era-calibrated estimate (marked "~") when JustTCG has no listing for that card and grade; PSA 10 remains a model estimate for every card. Grade Profit shows a range across possible outcomes (PSA 8 floor to PSA 10 ceiling); Max Grade ROI is the PSA 10 best case, not an expectation — actual grading outcomes vary by card condition and centering, and most raw cards do not come back a 10. Cracking slabs is irreversible. Crack Profit assumes the cracked card resells at full NM raw pricing, net of your selected net sale rate — actual resale value can vary with real condition and centering. Cards under $10 are excluded. Era classifications (Vintage / Modern) follow our published <a href="era-methodology.html" style="color:var(--green)">era methodology</a> — Modern is XY forward, Vintage is anything before XY. TCGPlayer links are affiliate links — Tome Collective may earn a commission at no additional cost to you. Verify all prices before acting.</div>
+  <div class="control-group">
+    <span class="control-label">Price</span>
+    <input type="number" id="minPriceFilter" placeholder="Min" min="0" step="0.5" style="width:70px;">
+    <span style="color:var(--text-dimmer);">&ndash;</span>
+    <input type="number" id="maxPriceFilter" placeholder="Max" min="0" step="0.5" style="width:70px;">
+    <label style="color:var(--text-dim); font-size:14px; display:flex; align-items:center; gap:5px;">
+      <input type="checkbox" id="hideSubDollar"> Hide sub-$1
+    </label>
+  </div>
+  <div class="control-group">
+    <input type="text" id="setSearch" placeholder="Search set...">
+  </div>
+  <div class="control-group">
+    <input type="text" id="playerSearch" placeholder="Search player...">
+  </div>
+  <div class="sort-toggle">
+    <button id="sortLowAsk" class="active">By Ask</button>
+    <button id="sortDiscount">Best Deals</button>
+    <button id="sortTomeScore">Tome Score</button>
   </div>
 </div>
 
-<script>
-// ═══ CONFIG ════════════════════════════════════════════════════════════════════
-let SALE_RATE = 0.80;
+<div class="legend-row">
+  <span class="legend-swatch"><span class="swatch tier-Common"></span>Common</span>
+  <span class="legend-swatch"><span class="swatch tier-Fandom"></span>Fandom</span>
+  <span class="legend-swatch"><span class="swatch tier-Rare"></span>Rare</span>
+  <span class="legend-swatch"><span class="swatch tier-Legendary"></span>Legendary</span>
+  <span class="legend-swatch"><span class="swatch tier-Ultimate"></span>Ultimate</span>
+  <span style="color:var(--gold);">&#9679;</span> Rookie Year
+</div>
 
-// PSA's real single-card grading tiers (sourced from psacard.com, Aug 2026 — PSA revises
-// pricing periodically, so re-verify these if they start looking stale). Each tier has a
-// fee AND a max declared-value cap: PSA requires the submission tier to match the card's
-// value for insurance purposes, so a $5,000 card genuinely cannot go in at the cheapest
-// tier. The old flat "Value $25" tier this replaced is PSA's single-card Value service,
-// which is paused as of this writing — the only sub-$80 path today is a 50-card-minimum
-// bulk submission, not realistic for grading one card at a time, so it's excluded here.
-const FEE_TIERS = [
-  { name: 'Regular',       fee: 80,    cap: 1500 },
-  { name: 'Express',       fee: 150,   cap: 2500 },
-  { name: 'Super Express', fee: 350,   cap: 5000 },
-  { name: 'Walk-Through',  fee: 600,   cap: 10000 },
-  { name: 'Premium 1',     fee: 1000,  cap: 25000 },
-  { name: 'Premium 2',     fee: 2000,  cap: 50000 },
-  { name: 'Premium 3',     fee: 3000,  cap: 100000 },
-  { name: 'Premium 5',     fee: 5000,  cap: 250000 },
-  { name: 'Premium 10',    fee: 10000, cap: Infinity },
-];
-// Cheapest tier whose declared-value cap covers `v` — falls through to the top tier for
-// anything above even Premium 5's cap. Declared value should reflect what you'd actually
-// insure the submission for; see feeForCard below for which of a card's prices that means.
-function feeForValue(v) {
-  return FEE_TIERS.find(t => v <= t.cap) || FEE_TIERS[FEE_TIERS.length - 1];
-}
-// The value PSA needs declared is the submission's insured worth — practically, that's
-// what the card could be worth once graded, not its raw price today, since that's the
-// exposure you're covering. Using the PSA 10 ceiling is the conservative (safe) choice:
-// under-declaring risks a denied claim, over-declaring just costs a bit more.
-function feeForCard(c) {
-  return feeForValue(c.p10 ?? c.raw);
-}
+<div class="coverage-note">
+  Covers the full Common / Fandom / Rare / Legendary catalog, every season including the current one.
+  Flagship Ultimate-tier drops (Kingmaker, Supernova, and similar) run on newer infrastructure we don't
+  have access to yet and aren't included - these are low-volume, high-price 1-of-1 style items, not
+  regular trading activity.
+</div>
 
-let PSA_FEE_MODE = 'auto';   // 'auto' = feeForCard() per row; otherwise a fixed fee number
-                              // applied to every row via the manual override buttons.
-let CRACK_BASIS = '8';   // '9' | '8' | '7' — which PSA slab the Crack Profit column benchmarks
-// Cracking a slab returns a raw card, and once it's out of the holder it sells on the raw
-// market like any other raw card — buyers of raw singles aren't grading it. So a cracked
-// card is valued at full NM raw price, not some fraction of it. (A prior version applied a
-// PSA-9→92.5%/PSA-8→77.5% "condition haircut" here, treating a cracked slab as worth less
-// than NM; that's not how the raw market actually prices these.) Net sale rate is what
-// actually eats into the return on the way out.
-// "Grade Raw" signal threshold, in %, measured against PSA 9 ("typical") ROI — not PSA 10.
-// Gating on the PSA 10 ceiling made every card in the catalog qualify (min observed ROI was
-// +307%), so Hold/Accumulate were mathematically unreachable. 35 sits almost exactly at the
-// catalog's own PSA-9-basis median (measured 34.9% across 1,400 live cards), so roughly half
-// of cards that clear breakeven actually earn the "Grade Raw" call — the rest fall through to
-// be scored as Tome Score candidates instead.
-const GRADE_ROI_THRESHOLD = 35;
-const HARD_PRICE_FLOOR = 10;   // cards below this are excluded at the data layer (matches the $10+ display floor)
-
-const TCG = 'https://www.tcgplayer.com/search/all/product';
-const tcgHref = (n,g) => `${TCG}?q=${encodeURIComponent(n)}&utm_source=tomecollective&utm_medium=affiliate&utm_campaign=${g.toLowerCase().replace(/\s+/g,'')}`;
-// TCGPlayer's own product-image CDN, addressed by tcgplayerId — same photos shown on TCGPlayer.com.
-const tcgImg = (id, w) => `https://tcgplayer-cdn.tcgplayer.com/product/${id}_${w}w.jpg`;
-
-// ═══ LIVE DATA — JustTCG via Cloudflare Worker proxy ═══════════════════════════
-const WORKER_URL = 'https://tome-proxy.tomecollective.workers.dev';
-const PER_GAME_LIMIT = 100;   // top cards per game by price (1 API call each; edge-cached 6h)
-
-// Era classification — mirrors the Pokemon Chase Index convention: Modern = XY forward,
-// Vintage = anything before XY. Boundary is XY Base Set's release date (2014-02-05), sourced
-// from JustTCG's /sets endpoint (release_date per set) rather than a hand-maintained keyword
-// list, so new sets classify correctly without code changes as they're added upstream.
-// Lorcana & One Piece launched well after XY, so every set in those games is "modern" — there's
-// no pre-XY era for them, same as the Chase Index treats non-Pokemon games.
-const XY_START = Date.parse('2014-02-05');
-let POKEMON_SET_ERA = new Map();          // set id -> 'vintage' | 'modern'
-let pokemonSetEraPromise = null;
-
-function ensurePokemonSetEras() {
-  if (!pokemonSetEraPromise) {
-    pokemonSetEraPromise = (async () => {
-      try {
-        const res = await fetch(`${WORKER_URL}/sets?game=${encodeURIComponent(GAME_SLUGS['Pokemon'])}`);
-        if (res.ok) {
-          const json = await res.json();
-          (json.data || []).forEach(s => {
-            const t = s.release_date ? Date.parse(s.release_date) : NaN;
-            // Unknown release dates (mostly misc./promo products) default to 'modern' —
-            // the larger, more generic bucket, so an unclassified set never overstates Vintage.
-            POKEMON_SET_ERA.set(s.id, (!isNaN(t) && t < XY_START) ? 'vintage' : 'modern');
-          });
-        }
-      } catch (e) { /* era map stays empty — classifyEra falls back to modern below */ }
-    })();
-  }
-  return pokemonSetEraPromise;
-}
-
-function classifyEra(game, setId) {
-  if (game !== 'Pokemon') return 'modern';
-  return POKEMON_SET_ERA.get(setId) || 'modern';
-}
-
-// ── Graded-value estimation (BETA) ──────────────────────────────────────────────
-// PSA 7/8/9 are now backed by real per-card JustTCG graded prices (see
-// applyGradedPriceSnapshot below) whenever JustTCG has a graded listing for that
-// card. These era-calibrated multipliers are the FALLBACK for p7/p8/p9, used when
-// live data is missing for a specific card — and the ONLY source for p10, which isn't
-// fetched live (out of scope for now; every card's PSA 10 stays a model estimate).
-//
-// p7 specifically: unlike p8/p9 (calibrated against observable PSA10/raw relationships),
-// there's no real p7 data this model was built from — it's anchored just above raw price
-// (vintage 1.10x, modern 0.95x) rather than extrapolated further down the p9->p8 ratio,
-// which would push it below 1.0x raw. That extrapolation isn't obviously wrong — a
-// mediocre-grade slab of a common, high-population modern card can genuinely sell at or
-// below raw NM, since the slab locks in a so-so grade forever while a raw card keeps the
-// optionality of grading higher — but it's a stronger, more surprising claim to put in
-// front of readers than "PSA 7 sits close to raw," so this stays intentionally
-// conservative. Like p8/p9, this is a MODEL, not observed data — surfaced with the same
-// "~" prefix (see gCell below) so it's never presented as more certain than it is.
-const EST = {
-  vintage: { p10: 7.0, p9: 2.1, p8: 1.25, p7: 1.10 },
-  modern:  { p10: 5.5, p9: 1.7, p8: 1.05, p7: 0.95 },
-};
-function estimateGraded(raw, era) {
-  const m = EST[era] || EST.modern;
-  return {
-    p10: parseFloat((raw * m.p10).toFixed(2)),
-    p9:  parseFloat((raw * m.p9).toFixed(2)),
-    p8:  parseFloat((raw * m.p8).toFixed(2)),
-    p7:  parseFloat((raw * m.p7).toFixed(2)),
-  };
-}
-
-const GAME_EMOJI = { 'Pokemon':'🎴', 'Lorcana':'✨', 'One Piece':'⚔️' };
-
-// JustTCG game parameter slugs (from their documented valid values)
-const GAME_SLUGS = {
-  'Pokemon':   'pokemon',
-  'Lorcana':   'disney-lorcana',
-  'One Piece': 'one-piece-card-game',
-};
-
-function mapCard(apiCard, game) {
-  // Prefer the Near Mint variant; exclude Sealed products entirely
-  const variants = (apiCard.variants || []).filter(v => v.condition !== 'Sealed');
-  if (!variants.length) return null;
-  const nm = variants.find(v => v.condition === 'Near Mint') || variants[0];
-  const raw = parseFloat(nm.price);
-  if (!raw || raw < HARD_PRICE_FLOOR) return null;
-
-  const setName = apiCard.set_name || apiCard.set || '';
-  const era = classifyEra(game, apiCard.set);
-  const est = estimateGraded(raw, era);
-  const tpid = apiCard.tcgplayerId || null;
-
-  return {
-    id: apiCard.id,
-    tcgplayerId: tpid,
-    img: tpid ? tcgImg(tpid, 200) : null,
-    imgBig: tpid ? tcgImg(tpid, 400) : null,
-    game, era,
-    e: GAME_EMOJI[game] || '🃏',
-    name: apiCard.name,
-    set: setName,
-    num: apiCard.number && apiCard.number !== 'N/A' ? apiCard.number : '—',
-    raw,
-    // p7/p8/p9 all start on the era-calibrated estimate and get overwritten with real
-    // prices (and pXLive flipped true) if applyGradedPriceSnapshot finds a live JustTCG
-    // listing for this card. p10 has no live source at all — always the model estimate.
-    p7: est.p7, p8: est.p8, p9: est.p9, p10: est.p10,
-    p7Live: false, p8Live: false, p9Live: false,
-    gem: null,
-    // JustTCG returns priceChange30d as a percentage; normalize to decimal. Kept as `null`
-    // (not coerced to 0) when JustTCG has no value — the old `|| 0` fallback made "no data"
-    // indistinguishable from "confirmed flat 0% price change", which silently treated every
-    // thinly-traded card (44% of the live catalog) as if its price hadn't moved at all,
-    // dragging its Tome Score down along with genuinely flat cards. Downstream, null mom
-    // renders as "—" instead of "+0%" and scores as neutral instead of "no momentum".
-    mom: (nm.priceChange30d != null && nm.priceChange30d !== '' && !isNaN(parseFloat(nm.priceChange30d)))
-      ? parseFloat(nm.priceChange30d) / 100 : null,
-    mom7: (parseFloat(nm.priceChange7d) || 0) / 100,
-    chgCount30d: nm.priceChangesCount30d || 0,
-    printing: nm.printing || 'Normal',
-    h7: (nm.priceHistory || []).map(pt => pt.p),          // 7d daily closes
-    min90: parseFloat(nm.minPrice90d) || null,
-    max90: parseFloat(nm.maxPrice90d) || null,
-    avg90: parseFloat(nm.avgPrice90d) || null,
-  };
-}
-
-let CARDS = [];
-
-// Per-game page caps sized to each game's $10+ universe (2,900 cards total).
-// Each cap is split across two passes: a cheapest-first pass and a priciest-first pass.
-// Why: under the current crack-profit model, crack economics get *worse* as raw price
-// rises (the estimated slab value scales faster than the cracked resale value), so the
-// cards most likely to show real crack profit sit at the low end of the $10+ universe —
-// exactly the cards a price-desc-only fetch would leave out of the 2,900-card cap.
-// The desc pass is kept to preserve Grade/Hold discovery, which favors higher-priced cards.
-const PAGE_CAP = { 'Pokemon': 20, 'Lorcana': 4, 'One Piece': 5 };
-const ASC_SHARE = 0.5;   // portion of each game's cap spent on the cheapest-first pass
-const UNIVERSE_FLOOR = 10;
-
-async function fetchPage(g, offset, order) {
-  const res = await fetch(
-    `${WORKER_URL}/cards?game=${encodeURIComponent(GAME_SLUGS[g] || g)}` +
-    `&condition=${encodeURIComponent('Near Mint')}` +    // server-side: singles only, no sealed
-    `&orderBy=price&order=${order}&limit=${PER_GAME_LIMIT}&offset=${offset}` +
-    `&include_price_history=true`                         // 7d daily points for sparklines
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `${g}: HTTP ${res.status}`);
-  }
-  const json = await res.json();
-  return (json.data || []).map(c => mapCard(c, g)).filter(Boolean);
-}
-
-async function loadLiveData() {
-  await ensurePokemonSetEras();   // needed before any Pokemon card is classified below
-  const games = ['Pokemon', 'Lorcana', 'One Piece'];
-  const results = await Promise.allSettled(games.map(async g => {
-    const cap = PAGE_CAP[g] || 3;
-    const ascPages = Math.max(1, Math.round(cap * ASC_SHARE));
-    const descPages = Math.max(0, cap - ascPages);
-    const seen = new Set();
-    const out = [];
-    const add = list => { for (const c of list) if (!seen.has(c.id)) { seen.add(c.id); out.push(c); } };
-
-    // Cheapest-first: best available crack-profit candidates.
-    for (let i = 0; i < ascPages; i++) {
-      const page = await fetchPage(g, i * PER_GAME_LIMIT, 'asc');
-      add(page);
-      if (!page.length) break;                                  // API exhausted
-    }
-    // Priciest-first: best available grade/hold candidates (unchanged behavior).
-    for (let i = 0; i < descPages; i++) {
-      const page = await fetchPage(g, i * PER_GAME_LIMIT, 'desc');
-      if (!page.length) break;                                  // API exhausted
-      const cheapest = Math.min(...page.map(c => c.raw));
-      add(page);
-      if (cheapest < UNIVERSE_FLOOR) break;                     // below the $10+ universe
-    }
-    return out;
-  }));
-
-  const cards = [];
-  const errors = [];
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') cards.push(...r.value);
-    else errors.push(`${games[i]}: ${r.reason.message}`);
-  });
-  return { cards, errors };
-}
-
-// ═══ GRADED-DATA ENRICHMENT (real PSA 7/8/9 prices) ═════════════════════════════
-// A daily Cloudflare cron job (see the worker) does the actual ~1,400-card JustTCG
-// lookup once a day, off the request path, and stores the results in KV. This just
-// reads that one pre-computed snapshot — a single request, not one per card. Earlier
-// this ran live on every page load (a bounded-concurrency per-card loop); that meant
-// every visitor triggered ~1,000+ real JustTCG calls apiece, since only successful
-// lookups were edge-cached — the ~75-80% of cards with no graded data (a 404) were
-// hitting JustTCG fresh on every single visit. Moved server-side to fix that.
-// Mutates each card in place with whatever real PSA 7/8/9 prices the snapshot has;
-// cards missing from the snapshot (not yet checked, or genuinely no data) just keep
-// their era-calibrated estimate. Returns the snapshot's metadata (or null if there
-// isn't one yet — e.g. the very first day before the cron has ever run) so the
-// caller can show an honest status line either way.
-async function applyGradedPriceSnapshot(cards) {
-  try {
-    const res = await fetch(`${WORKER_URL}/graded-prices`);
-    if (!res.ok) return null;   // 503 = no snapshot yet; page just stays estimate-only
-    const snap = await res.json();
-    const byId = cards.reduce((m, c) => (m[c.id] = c, m), {});
-    let appliedCount = 0;
-    for (const [id, g] of Object.entries(snap.data || {})) {
-      const c = byId[id];
-      if (!c) continue;   // snapshot may reference a card no longer in today's catalog
-      appliedCount++;
-      if (g.p7 != null) { c.p7 = g.p7; c.p7Live = true; }
-      if (g.p8 != null) { c.p8 = g.p8; c.p8Live = true; }
-      if (g.p9 != null) { c.p9 = g.p9; c.p9Live = true; }
-    }
-    return { updatedAt: snap.updatedAt, cardsChecked: snap.cardsChecked, liveCount: appliedCount };
-  } catch (e) {
-    return null;   // network hiccup — estimate-only, same as a missing snapshot
-  }
-}
-
-// ═══ SCORING ═══════════════════════════════════════════════════════════════════
-// Piecewise-linear interpolation between anchor points (clamped at the ends), used
-// in place of hard tiers. Hard tiers meant any two cards landing in the same bucket
-// were mathematically identical no matter how different their real numbers were —
-// e.g. every vintage card scored the exact same "value" factor, and cards at +21%
-// vs. +127% momentum scored the exact same "momentum" factor. Interpolating between
-// the same anchor points keeps the original design's intent but lets nearby inputs
-// produce nearby (not identical) scores.
-function lerp(x, pts) {
-  if (x <= pts[0][0]) return pts[0][1];
-  const last = pts[pts.length - 1];
-  if (x >= last[0]) return last[1];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-    if (x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
-  }
-  return last[1];
-}
-// Value factor: dollar upside from grading (PSA10 est. x sale rate − raw − fee) —
-// NOT the raw/PSA10 ratio the v3 formula used. That ratio is a flat per-era constant
-// in the current estimation model (every vintage card is exactly 7.0x, every modern
-// card exactly 5.5x — see EST above), so it carried zero real information about any
-// individual card despite being 40% of the score's weight. Dollar upside scales with
-// raw price, so it actually varies card-to-card.
-// Log-spaced above $0 — real grading upside spans over two orders of magnitude in this
-// catalog (roughly $50 for a cheap modern card to $60k+ for the rarest vintage slabs), and
-// a linear scale either compresses the common range to nothing or clips the whole high end
-// to an identical ceiling. Logging the input keeps differentiation at both ends.
-const tsValue = gp => gp <= 0
-  ? lerp(gp, [[-500,2],[0,15]])
-  : lerp(Math.log1p(gp), [[Math.log1p(0),15],[Math.log1p(50),40],[Math.log1p(200),63],[Math.log1p(1200),83],[Math.log1p(5000),93],[Math.log1p(15000),100]]);
-const tsMom   = m  => lerp(m,  [[-0.30,5],[-0.15,20],[-0.05,40],[0.05,60],[0.10,80],[0.20,100]]);
-const tsEnt   = p  => lerp(p,  [[0,100],[5,100],[15,80],[40,60],[100,40],[250,20],[600,5]]);
-
-function compute(r) {
-  // Cracked card sells at full NM raw price, net of the sale rate — see the CRACK_BASIS
-  // comment above for why there's no separate condition haircut here.
-  const cv = r.raw * SALE_RATE;
-  const crackP9 = parseFloat((cv - r.p9).toFixed(2));
-  const crackP8 = parseFloat((cv - r.p8).toFixed(2));
-  // p7 now always has a value (real or era-calibrated estimate — see EST above), same as
-  // p8/p9, so this needs no separate null-handling anymore.
-  const crackP7 = parseFloat((cv - r.p7).toFixed(2));
-
-  // Grade profit at three outcomes, not one: PSA 8 (floor — worst realistic grade), PSA 9
-  // (typical — the middle, most-common outcome), PSA 10 (ceiling — best case). Same raw cost,
-  // fee, and sale rate throughout; only the returned grade differs. A raw card doesn't always
-  // come back a 10 — showing only the PSA 10 number (the old, single "Grade Profit" figure)
-  // overstated every card's realistic upside. Signal-gating and the Tome Score value factor
-  // below use the PSA 9 "typical" figure, not the PSA 10 ceiling.
-  // Fee is per-card in 'auto' mode (each card pays whatever real PSA tier its declared
-  // value requires — see feeForCard above) or a single fixed override when a manual tier
-  // button is active. appliedFeeTier is kept on the row so the UI can show which tier
-  // actually applied, not just the resulting dollar figure.
-  const appliedFeeTier = PSA_FEE_MODE === 'auto' ? feeForCard(r) : null;
-  const feeUsed = appliedFeeTier ? appliedFeeTier.fee : PSA_FEE_MODE;
-  const gradeProfitFloor   = parseFloat(((r.p8  * SALE_RATE) - r.raw - feeUsed).toFixed(2));
-  const gradeProfitTypical = parseFloat(((r.p9  * SALE_RATE) - r.raw - feeUsed).toFixed(2));
-  const gradeProfit        = parseFloat(((r.p10 * SALE_RATE) - r.raw - feeUsed).toFixed(2)); // ceiling / best case (PSA 10)
-  const gradeROI     = r.raw > 0 ? parseFloat((gradeProfit / r.raw * 100).toFixed(1))        : null; // "Max Grade ROI" — PSA 10 ceiling
-  const typicalROI   = r.raw > 0 ? parseFloat((gradeProfitTypical / r.raw * 100).toFixed(1)) : null;
-  const mult = r.p10 / r.raw;
-
-  // Three-factor Tome Score (v4): PSA 10 pop scoring removed entirely (population data
-  // isn't real yet, so it only ever contributed a fixed, non-discriminating value — which
-  // silently capped every card's ceiling well under the "Hold" threshold). Its weight is
-  // redistributed proportionally across the three factors that actually vary card-to-card.
-  // v4 also swaps the "value" factor from the raw/PSA10 ratio (a flat per-era constant,
-  // see tsValue above) to dollar grading upside, and all three factors are now continuous
-  // (lerp) instead of hard tiers, so cards with different underlying numbers don't collapse
-  // onto identical scores. Velocity remains excluded until a real sales-data source (eBay
-  // API) is integrated.
-  // Rounded to one decimal, not a whole integer — with the old hard-tier formula a decimal
-  // would never show anything but ".0" (every tier value was a multiple of 5 combined with
-  // 0.4/0.4/0.2 weights, so the weighted sum was mathematically guaranteed to be a whole
-  // number). The continuous formula actually produces fractional scores now, so keeping the
-  // decimal is what lets otherwise-close cards still show as distinguishable.
-  // Momentum is scored neutral (50 — the midpoint of tsMom's 5–100 range) when JustTCG has
-  // no 30-day figure at all, rather than running r.mom (now `null`, not a fake 0) through
-  // tsMom. That keeps "unknown" from ever being scored as either a confirmed win or loss,
-  // and decouples its treatment from wherever tsMom's own curve happens to sit at x=0 —
-  // which will drift as that curve gets retuned, but "no data = neutral" shouldn't.
-  // tsValue now runs on gradeProfitTypical (PSA 9), not the PSA 10 ceiling — same reasoning
-  // as the signal fix below: the ceiling doesn't discriminate (it's positive for virtually
-  // every card), so it wasn't telling the score anything real about which cards are actually
-  // worth short-term attention.
-  const momScore = r.mom == null ? 50 : tsMom(r.mom);
-  const tomeScore = Math.round((
-    tsValue(gradeProfitTypical) * 0.40 +
-    momScore * 0.40 +
-    tsEnt(r.raw) * 0.20
-  ) * 10) / 10;
-
-  // Column display follows the selected crack basis (must precede signal logic).
-  // crackP7/P8/P9 all always have a value now (real or estimate), so dispCrack is never
-  // null on account of missing p7 data specifically anymore.
-  const dispCrack = CRACK_BASIS==='9' ? crackP9 : CRACK_BASIS==='7' ? crackP7 : crackP8;
-  const dispFrom  = CRACK_BASIS==='9' ? '9' : CRACK_BASIS==='7' ? '7' : '8';
-
-  // Signal chain (fixed). The old chain gated "Grade Raw" on gradeProfit > 0 using the PSA 10
-  // ceiling — which is positive for essentially every card in the catalog (every era estimate
-  // multiplies raw price well past breakeven, min observed ROI was +307%), so Grade Raw fired
-  // on 100% of cards and Hold/Accumulate were mathematically unreachable no matter what a
-  // card's Tome Score was. Gating now runs on the PSA 9 "typical" ROI, with a minimum-ROI
-  // floor (GRADE_ROI_THRESHOLD) so "Grade Raw" means "clears a real, chosen bar" rather than
-  // "isn't negative." Cards that don't clear it fall through to be evaluated by Tome Score
-  // instead, which is what makes the score-based tiers below reachable again.
-  let signal = 'Skip';
-  if (dispCrack > 0) signal = 'Crack & Flip';
-  else if (typicalROI != null && typicalROI >= GRADE_ROI_THRESHOLD) signal = 'Grade Raw';
-  else if (tomeScore >= 75) signal = 'Strong Score';
-  else if (tomeScore >= 55) signal = 'Watch';
-
-  return {...r, crackP7, crackP8, crackP9, dispCrack, dispFrom,
-          gradeProfitFloor, gradeProfitTypical, gradeProfit, gradeROI, typicalROI,
-          feeUsed, feeTierName: appliedFeeTier ? appliedFeeTier.name : null,
-          mult:parseFloat(mult.toFixed(1)), tomeScore, signal};
-}
-
-// ═══ STATE ═════════════════════════════════════════════════════════════════════
-let WATCHLIST = new Set(JSON.parse(localStorage.getItem('tomeWatchlist') || '[]'));
-function toggleWatch(id) {
-  WATCHLIST.has(id) ? WATCHLIST.delete(id) : WATCHLIST.add(id);
-  localStorage.setItem('tomeWatchlist', JSON.stringify([...WATCHLIST]));
-  render();
-}
-let watchOnly = false;
-
-let DATA = CARDS.map(compute);
-let gameF='', eraF='', setF='', sigF='', searchF='', minPrice=25, maxPrice=null;
-let sortCol='tomeScore', sortDir=-1, activePreset='holds';
-let pageSize = 25, currentPage = 1;   // pageSize is a number, or 'all'
-
-const PRESETS = {
-  holds:  {col:'tomeScore',   dir:-1, sig:''},
-  cracks: {col:'dispCrack',   dir:-1, sig:''},
-  grades: {col:'gradeROI',    dir:-1, sig:''},
-  movers: {col:'mom',         dir:-1, sig:''},
-};
-
-// Rebuilds the "Set" dropdown to only offer sets that actually exist within the
-// currently-active Game/Era filters, so picking "Pokémon" doesn't leave 200+ Lorcana
-// and One Piece sets cluttering the list. When no single game is selected, sets are
-// grouped under a per-game <optgroup> label so "Aquapolis" vs. "Fabled" vs. "Emperors
-// in the New World" is unambiguous at a glance instead of one flat undifferentiated list.
-function rebuildSetFilter() {
-  const sel = document.getElementById('setFilter');
-  const prevValue = setF;
-  const inScope = CARDS.filter(c => (!gameF || c.game === gameF) && (!eraF || c.era === eraF));
-
-  sel.innerHTML = '<option value="">All Sets</option>';
-
-  if (gameF) {
-    // Single game already selected — a flat list is unambiguous on its own.
-    [...new Set(inScope.map(c => c.set))].sort().forEach(s => {
-      const o = document.createElement('option'); o.value = s; o.textContent = s;
-      sel.appendChild(o);
-    });
-  } else {
-    // Multiple games in scope — group by game so identical-looking set names
-    // (or just a long undifferentiated list) don't get confusing.
-    const byGame = {};
-    inScope.forEach(c => { (byGame[c.game] ||= new Set()).add(c.set); });
-    Object.keys(byGame).sort().forEach(g => {
-      const grp = document.createElement('optgroup');
-      grp.label = `${GAME_EMOJI[g] || ''} ${g}`.trim();
-      [...byGame[g]].sort().forEach(s => {
-        const o = document.createElement('option'); o.value = s; o.textContent = s;
-        grp.appendChild(o);
-      });
-      sel.appendChild(grp);
-    });
-  }
-
-  // A set that's no longer valid under the new Game/Era scope (e.g. switching from
-  // "All Games" to "Pokémon" while a Lorcana set was selected) gets cleared rather
-  // than silently left selected-but-invisible.
-  const stillValid = [...sel.options].some(o => o.value === prevValue);
-  sel.value = stillValid ? prevValue : '';
-  setF = sel.value;
-}
-
-// ═══ FILTER / SORT ═════════════════════════════════════════════════════════════
-function getFiltered() {
-  return DATA.filter(c => {
-    if (watchOnly && !WATCHLIST.has(c.id)) return false;
-    if (c.raw < minPrice) return false;
-    if (maxPrice != null && c.raw > maxPrice) return false;
-    if (gameF && c.game !== gameF) return false;
-    if (eraF && c.era !== eraF) return false;
-    if (setF && c.set !== setF) return false;
-    if (sigF && c.signal !== sigF) return false;
-    if (searchF) {
-      const q = searchF.toLowerCase();
-      if (!c.name.toLowerCase().includes(q) && !c.set.toLowerCase().includes(q) && !c.num.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-}
-const getSorted = a => [...a].sort((x,y) => {
-  const av=x[sortCol], bv=y[sortCol];
-  return typeof av==='string' ? sortDir*av.localeCompare(bv) : sortDir*(av-bv);
-});
-
-// ═══ RENDER ════════════════════════════════════════════════════════════════════
-function sparkline(h) {
-  if (!h || h.length < 2) return '<span style="color:var(--text-3);font-size:10px">—</span>';
-  const w=64, ht=20, min=Math.min(...h), max=Math.max(...h), range=max-min || 1;
-  const pts = h.map((v,i)=>`${(i/(h.length-1)*w).toFixed(1)},${(ht-2-((v-min)/range)*(ht-4)).toFixed(1)}`).join(' ');
-  const up = h[h.length-1] >= h[0];
-  return `<svg width="${w}" height="${ht}" style="display:block"><polyline points="${pts}" fill="none" stroke="${up?'var(--up)':'var(--dn)'}" stroke-width="1.5"/></svg>`;
-}
-
-const f$ = n => (n<0?'-$':'$') + Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-const fPct = n => n==null ? '—' : (n>=0?'+':'')+(n*100).toFixed(0)+'%';
-// Grade-price cell: real JustTCG price when `live` is true, a "~"-prefixed fallback
-// estimate when not (era-calibrated multiplier — see EST). p7/p8/p9 always have one or
-// the other now; the null case is kept only as a defensive fallback, not an expected path.
-const gCell = (n, live) => n==null ? '—' : (live ? f$(n) : '~'+f$(n));
-const momCls = n => n==null ? 'fl' : n>.05?'up':n<-.05?'dn':'fl';
-const pCls = n => n>0?'pos':'neg';
-const tsCls = s => s>=75?'ts-e':s>=55?'ts-s':s>=35?'ts-w':'ts-x';
-const gameCls = g => g==='Pokemon'?'gp':g==='Lorcana'?'gl':'go';
-const SIG = {
-  'Crack & Flip':{c:'s-crack',i:'🔨'},'Grade Raw':{c:'s-grade',i:'🎯'},
-  'Strong Score':{c:'s-hold',i:'🔥'},'Watch':{c:'s-accum',i:'👀'},'Skip':{c:'s-skip',i:'—'},
-};
-
-function updateChipCounts() {
-  const base = DATA.filter(c => c.raw >= minPrice && (maxPrice == null || c.raw <= maxPrice));
-  document.getElementById('cHolds').textContent  = base.filter(c=>c.tomeScore>=75).length;
-  document.getElementById('cCracks').textContent = base.filter(c=>c.dispCrack>0).length;
-  document.getElementById('cGrades').textContent = base.filter(c=>c.signal==='Grade Raw').length;
-  document.getElementById('cMovers').textContent = base.filter(c=>c.mom!=null && Math.abs(c.mom)>=0.20).length;
-  document.getElementById('cWatch').textContent = WATCHLIST.size;
-}
-
-function updateStats(rows) {
-  document.getElementById('sTot').textContent = rows.length;
-  const cracks = rows.filter(c=>c.dispCrack>0);
-  const grades = rows.filter(c=>c.signal==='Grade Raw');
-  const holds = rows.filter(c=>c.tomeScore>=75);
-  document.getElementById('sCrack').textContent = cracks.length;
-  document.getElementById('sGrade').textContent = grades.length;
-  document.getElementById('sHold').textContent = holds.length;
-  const bc = cracks.slice().sort((a,b)=>b.dispCrack-a.dispCrack)[0];
-  const bg = rows.slice().sort((a,b)=>(b.gradeROI??-Infinity)-(a.gradeROI??-Infinity))[0];
-  document.getElementById('sBC').textContent = bc?f$(bc.dispCrack):'—';
-  document.getElementById('sBCN').textContent = bc?bc.name:'';
-  document.getElementById('sBG').textContent = (bg&&bg.gradeROI!=null)?'+'+bg.gradeROI+'%':'—';
-  document.getElementById('sBGN').textContent = bg?bg.name:'';
-  document.getElementById('fcount').textContent = rows.length + ' cards';
-}
-
-function cardThumb(c) {
-  // Real TCGPlayer product photo when we have a tcgplayerId; emoji placeholder otherwise
-  // (sealed-listing edge case, or an id TCGPlayer has no image for). Hover shows a larger
-  // preview; clicking goes straight to the card's TCGPlayer affiliate search link.
-  if (!c.img) return `<div class="ci">${c.e}</div>`;
-  return `<a class="ci-wrap" data-hover-src="${c.imgBig || c.img}" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
-    <img class="ci" src="${c.img}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ci',textContent:'${c.e}'}))">
-  </a>`;
-}
-
-function render() {
-  const allRows = getSorted(getFiltered());
-  updateStats(allRows);
-  updateChipCounts();
-
-  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(allRows.length / pageSize));
-  if (currentPage > totalPages) currentPage = totalPages;
-  if (currentPage < 1) currentPage = 1;
-
-  const tbody = document.getElementById('tbody');
-  if (!allRows.length) {
-    tbody.innerHTML = '<tr><td colspan="21" style="text-align:center;padding:2.5rem;color:var(--text-3);font-size:13px">No cards match your filters. Try lowering the minimum price or clearing filters.</td></tr>';
-    updatePagebar(0, totalPages);
-    return;
-  }
-
-  const startIdx = pageSize === 'all' ? 0 : (currentPage - 1) * pageSize;
-  const rows = pageSize === 'all' ? allRows : allRows.slice(startIdx, startIdx + pageSize);
-
-  tbody.innerHTML = rows.map((c,i) => {
-    const s = SIG[c.signal];
-    const starred = WATCHLIST.has(c.id);
-    return `<tr data-id="${c.id}" class="row-click">
-      <td class="rk">${startIdx+i+1}</td>
-      <td><button class="star-btn ${starred?'starred':''}" data-star="${c.id}" title="${starred?'Remove from':'Add to'} My Cards">${starred?'★':'☆'}</button></td>
-      <td><div class="cc">${cardThumb(c)}<div><div class="cn">${c.name}</div><div class="cs">${c.set}</div></div></div></td>
-      <td style="font-size:11px;color:var(--text-2)">${c.set}</td>
-      <td class="mono" style="color:var(--text-3)">${c.num}</td>
-      <td><span class="gt ${gameCls(c.game)}">${c.game}</span></td>
-      <td><span class="era-tag">${c.era}</span></td>
-      <td><span class="ts-pill ${tsCls(c.tomeScore)}">${c.tomeScore.toFixed(1)}</span></td>
-      <td><span class="sig ${s.c}">${s.i} ${c.signal}</span></td>
-      <td class="mono">${f$(c.raw)}</td>
-      <td class="mono">${gCell(c.p7, c.p7Live)}</td>
-      <td class="mono">${gCell(c.p8, c.p8Live)}</td>
-      <td class="mono">${gCell(c.p9, c.p9Live)}</td>
-      <td class="mono">${c.p10==null?'—':f$(c.p10)}</td>
-      <td>${c.dispCrack==null?'—':`<div class="pc"><span class="pa ${pCls(c.dispCrack)}">${f$(c.dispCrack)}</span><span class="pl">vs PSA ${c.dispFrom} slab</span></div>`}</td>
-      <td>${c.gradeProfitFloor==null?'—':`<div class="pc"><span class="pa ${pCls(c.gradeProfitTypical)}">${f$(c.gradeProfitFloor)} to ${f$(c.gradeProfit)}</span><span class="pl">PSA 8→10 · typical ${f$(c.gradeProfitTypical)}</span></div>`}</td>
-      <td class="mono ${c.gradeROI>0?'up':c.gradeROI<0?'dn':'fl'}">${c.gradeROI==null?'—':(c.gradeROI>0?'+':'')+c.gradeROI+'%'}</td>
-      <td class="mono ${momCls(c.mom)}">${fPct(c.mom)}</td>
-      <td class="mono" style="color:var(--text-3)">${c.chgCount30d}</td>
-      <td>${sparkline(c.h7)}</td>
-      <td><a class="tcg-link" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Buy Raw ↗</a></td>
-    </tr>`;
-  }).join('');
-
-  updatePagebar(allRows.length, totalPages);
-}
-
-function updatePagebar(total, totalPages) {
-  const info = document.getElementById('pgInfo');
-  info.textContent = total ? `Page ${currentPage} of ${totalPages} · ${total.toLocaleString()} cards` : 'No results';
-  const atFirst = currentPage <= 1, atLast = currentPage >= totalPages;
-  document.getElementById('pgFirst').disabled = atFirst;
-  document.getElementById('pgPrev').disabled = atFirst;
-  document.getElementById('pgNext').disabled = atLast;
-  document.getElementById('pgLast').disabled = atLast;
-}
-
-function goToPage(p) {
-  currentPage = p;
-  render();
-  document.querySelector('.tbl-outer').scrollIntoView({behavior:'smooth', block:'start'});
-}
-document.getElementById('pgFirst').addEventListener('click', () => goToPage(1));
-document.getElementById('pgPrev').addEventListener('click', () => goToPage(currentPage - 1));
-document.getElementById('pgNext').addEventListener('click', () => goToPage(currentPage + 1));
-document.getElementById('pgLast').addEventListener('click', () => goToPage(Number.MAX_SAFE_INTEGER)); // clamped inside render()
-
-document.querySelectorAll('#pageSizeSeg .sb').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#pageSizeSeg .sb').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    pageSize = b.dataset.v === 'all' ? 'all' : parseInt(b.dataset.v);
-    currentPage = 1;
-    render();
-  });
-});
-
-function markSortedHeader() {
-  document.querySelectorAll('thead th').forEach(t=>{
-    t.classList.remove('sorted');
-    const a=t.querySelector('.arr'); if(a) a.textContent='↕';
-  });
-  const th=document.querySelector(`thead th[data-col="${sortCol}"]`);
-  if(th){th.classList.add('sorted');th.querySelector('.arr').textContent=sortDir===-1?'↓':'↑';}
-}
-
-// ═══ EVENTS ════════════════════════════════════════════════════════════════════
-document.querySelectorAll('.chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active');
-    activePreset = chip.dataset.preset;
-    const p = PRESETS[activePreset];
-    sortCol = p.col; sortDir = p.dir; sigF = p.sig;
-    document.getElementById('sigFilter').value = '';
-    markSortedHeader();
-    currentPage = 1;
-    render();
-  });
-});
-
-function segHandler(segId, setter, onAfter) {
-  document.querySelectorAll(`#${segId} .sb`).forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll(`#${segId} .sb`).forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
-      setter(b.dataset.v);
-      if (onAfter) onAfter();
-      currentPage = 1;
-      render();
-    });
-  });
-}
-// Game/Era changes narrow which sets are even possible, so the Set dropdown is
-// rebuilt every time either one changes (see rebuildSetFilter above).
-segHandler('gameSeg', v=>gameF=v, rebuildSetFilter);
-segHandler('eraSeg',  v=>eraF=v, rebuildSetFilter);
-
-// Min/max price are free-text fields, not a fixed set of buttons — someone with a $100
-// budget shouldn't have to wade through 1,000+ pricier cards just because $100 wasn't one
-// of the four preset stops. Blank max = no ceiling. Blank/invalid min falls back to $25 —
-// not $0 — since that's the field's own placeholder default and today's catalog has no
-// cards below it anyway; typing a number only ever raises the floor from there.
-document.getElementById('minPriceInput').addEventListener('input', e=>{
-  const v = parseFloat(e.target.value);
-  minPrice = (e.target.value === '' || isNaN(v) || v < 0) ? 25 : v;
-  currentPage = 1;
-  render();
-});
-document.getElementById('maxPriceInput').addEventListener('input', e=>{
-  const v = parseFloat(e.target.value);
-  maxPrice = (e.target.value === '' || isNaN(v) || v < 0) ? null : v;
-  currentPage = 1;
-  render();
-});
-
-document.getElementById('setFilter').addEventListener('change', e=>{setF=e.target.value;currentPage=1;render();});
-document.getElementById('sigFilter').addEventListener('change', e=>{sigF=e.target.value;currentPage=1;render();});
-document.getElementById('search').addEventListener('input', e=>{searchF=e.target.value;currentPage=1;render();});
-
-document.getElementById('clearBtn').addEventListener('click', ()=>{
-  gameF='';eraF='';setF='';sigF='';searchF='';minPrice=25;maxPrice=null;
-  document.getElementById('search').value='';
-  document.getElementById('setFilter').value='';
-  document.getElementById('sigFilter').value='';
-  document.getElementById('minPriceInput').value='';
-  document.getElementById('maxPriceInput').value='';
-  ['gameSeg','eraSeg'].forEach(id=>document.querySelectorAll(`#${id} .sb`).forEach((b,i)=>b.classList.toggle('active',i===0)));
-  rebuildSetFilter();
-  currentPage = 1;
-  render();
-});
-
-document.querySelectorAll('#feeBtns .fee-btn').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#feeBtns .fee-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    PSA_FEE_MODE = b.dataset.fee === 'auto' ? 'auto' : parseInt(b.dataset.fee);
-    DATA = CARDS.map(compute);
-    currentPage = 1;
-    render();
-  });
-});
-document.getElementById('saleSlider').addEventListener('input', e => {
-  SALE_RATE = parseInt(e.target.value)/100;
-  document.getElementById('saleLbl').textContent = e.target.value+'%';
-  DATA = CARDS.map(compute);
-  currentPage = 1;
-  render();
-});
-
-document.querySelectorAll('thead th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    sortDir = sortCol===col ? sortDir*-1 : (['name','set','num','game','era','signal'].includes(col)?1:-1);
-    sortCol = col;
-    markSortedHeader();
-    currentPage = 1;
-    render();
-  });
-});
-
-
-// Crack basis toggle
-document.querySelectorAll('#crackSeg .fee-btn').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#crackSeg .fee-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    CRACK_BASIS = b.dataset.v;
-    DATA = CARDS.map(compute);
-    currentPage = 1;
-    render();
-  });
-});
-
-// ═══ DETAIL DRAWER ═════════════════════════════════════════════════════════════
-const HISTORY_URL = WORKER_URL + '/history';
-
-function rangeBand(c) {
-  if (c.min90==null || c.max90==null) return '';
-  const range = c.max90 - c.min90 || 1;
-  const posPct = Math.min(Math.max((c.raw - c.min90)/range*100, 0), 100);
-  const avgPct = c.avg90!=null ? Math.min(Math.max((c.avg90 - c.min90)/range*100,0),100) : null;
-  return `<div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">90-Day Range</div>
-  <div style="position:relative;height:8px;background:var(--surface3);border-radius:4px;margin:8px 0 4px;">
-    ${avgPct!=null?`<div style="position:absolute;left:${avgPct}%;top:-2px;width:1.5px;height:12px;background:var(--text-3)"></div>`:''}
-    <div style="position:absolute;left:${posPct}%;top:-3px;width:10px;height:14px;background:var(--green);border-radius:3px;transform:translateX(-50%)"></div>
+<main>
+  <div id="lockPanel" class="lock-panel" style="display:none;">
+    <h2>Full Dashboard is a Tome Edge Benefit</h2>
+    <p>You're seeing a preview. Unlock live low ask, last sale, 30-day sales, and discount-to-market on every edition with Tome Edge.</p>
+    <a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Edge</a>
   </div>
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-family:var(--mono)">
-    <span>${f$(c.min90)}</span>${c.avg90!=null?`<span>avg ${f$(c.avg90)}</span>`:''}<span>${f$(c.max90)}</span>
-  </div>`;
-}
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Player</th>
+        <th>Set</th>
+        <th>Season</th>
+        <th>Tier</th>
+        <th>Circulation</th>
+        <th data-sort="lowAsk" class="active-sort">Low Ask</th>
+        <th class="edge-only">Last Sale</th>
+        <th class="edge-only">30D Sales</th>
+        <th class="edge-only" data-sort="discount">Discount to Market</th>
+        <th class="edge-only" data-sort="tomeScore">Tome Score</th>
+        <th class="edge-only"></th>
+      </tr>
+    </thead>
+    <tbody id="editionRows"></tbody>
+  </table>
+  <div id="emptyState" class="empty-state" style="display:none;">No editions match these filters.</div>
+</main>
 
-function bigChart(points, label) {
-  if (!points || points.length < 2) return '';
-  const w=372, ht=120, pad=6;
-  const min=Math.min(...points), max=Math.max(...points), range=max-min||1;
-  const pts = points.map((v,i)=>`${(pad+i/(points.length-1)*(w-2*pad)).toFixed(1)},${(ht-pad-((v-min)/range)*(ht-2*pad)).toFixed(1)}`).join(' ');
-  const up = points[points.length-1] >= points[0];
-  return `<div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">${label}</div>
-  <svg width="${w}" height="${ht}" style="display:block;max-width:100%"><polyline points="${pts}" fill="none" stroke="${up?'var(--up)':'var(--dn)'}" stroke-width="2"/></svg>
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-family:var(--mono)"><span>${f$(min)}</span><span>${f$(max)}</span></div>`;
-}
+<footer>Powered by Tome Analytics &middot; Data indexed directly from the Flow blockchain</footer>
 
-async function openDrawer(id) {
-  const c = DATA.find(x=>x.id===id);
-  if (!c) return;
-  const d = document.getElementById('drawer');
-  const o = document.getElementById('drawerOverlay');
-  const starred = WATCHLIST.has(c.id);
-  // Standard four tiers, plus — if this card's own value pushes it into a Premium tier —
-  // that specific tier too, so a $20k chase card isn't stuck comparing against tiers it
-  // couldn't actually be submitted under.
-  const cardTier = feeForCard(c);
-  const tiersToShow = FEE_TIERS.slice(0, 4);
-  if (!tiersToShow.includes(cardTier)) tiersToShow.push(cardTier);
-  const feeRows = tiersToShow.map(t => {
-    const gp = c.p10==null?null:parseFloat(((c.p10*SALE_RATE)-c.raw-t.fee).toFixed(2));
-    const isApplied = PSA_FEE_MODE === 'auto' && t === cardTier;
-    return `<tr style="${isApplied?'background:rgba(212,175,55,0.12)':''}"><td style="padding:4px 8px;font-size:11px;color:var(--text-2)">${t.name} $${t.fee}${isApplied?' <span style="color:var(--green)">(auto)</span>':''}</td><td style="padding:4px 8px;font-family:var(--mono);font-size:11px;text-align:right" class="${gp>0?'up':'dn'}">${gp==null?'—':f$(gp)}</td></tr>`;
-  }).join('');
-  d.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-      <div>
-        <div style="font-size:17px;font-weight:700;line-height:1.25">${c.name}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">${c.set} · #${c.num} · <span class="era-tag">${c.era}</span></div>
-      </div>
-      <button id="drawerClose" style="background:none;border:none;font-size:20px;color:var(--text-3);cursor:pointer;line-height:1">×</button>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-      <div style="font-size:24px;font-weight:700;font-family:var(--mono)">${f$(c.raw)}</div>
-      <span class="mono ${momCls(c.mom)}" style="font-size:13px">${fPct(c.mom)} 30d</span>
-      <button id="drawerStar" style="margin-left:auto;background:none;border:0.5px solid var(--border-str);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;color:${starred?'var(--gold)':'var(--text-2)'}">${starred?'★ Watching':'☆ Watch'}</button>
-    </div>
-    <div id="drawerChart">${bigChart(c.h7, '7-Day Trend')}</div>
-    ${rangeBand(c)}
-    ${c.p10!=null?`
-    <div style="margin:16px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Graded (PSA 7/8/9 live where available, ~ = estimate · PSA 10 est.)</div>
-    <div style="display:flex;gap:8px;font-family:var(--mono);font-size:12px;">
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 7</div>${gCell(c.p7, c.p7Live)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 8</div>${gCell(c.p8, c.p8Live)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 9</div>${gCell(c.p9, c.p9Live)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text-3)">PSA 10</div>${f$(c.p10)}</div>
-    </div>
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Crack &amp; Flip</div>
-    <div style="display:flex;gap:8px;font-size:12px;">
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;"><div style="font-size:9px;color:var(--text-3)">via PSA 7</div><span class="mono ${pCls(c.crackP7)}">${f$(c.crackP7)}</span></div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;"><div style="font-size:9px;color:var(--text-3)">via PSA 8</div><span class="mono ${pCls(c.crackP8)}">${f$(c.crackP8)}</span></div>
-      <div style="flex:1;background:var(--surface2);border-radius:6px;padding:8px;"><div style="font-size:9px;color:var(--text-3)">via PSA 9</div><span class="mono ${pCls(c.crackP9)}">${f$(c.crackP9)}</span></div>
-    </div>
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Max Grade Profit by Fee Tier (PSA 10 ceiling)</div>
-    <table style="width:100%;table-layout:fixed;border-collapse:collapse;background:var(--surface2);border-radius:6px;overflow:hidden">${feeRows}</table>
-    <div style="margin-top:6px;font-size:10px;color:var(--text-3)">Typical outcome (PSA 9, current fee): <strong class="${pCls(c.gradeProfitTypical)}" style="font-family:var(--mono)">${f$(c.gradeProfitTypical)}</strong> · Floor (PSA 8): <strong class="${pCls(c.gradeProfitFloor)}" style="font-family:var(--mono)">${f$(c.gradeProfitFloor)}</strong></div>`:''}
-    <div style="margin:14px 0 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3)">Data</div>
-    <div style="font-size:11px;color:var(--text-2);line-height:1.8">
-      Tome Score: <strong>${c.tomeScore!=null?c.tomeScore.toFixed(1):'—'}</strong> · Signal: <strong>${c.signal??'—'}</strong><br>
-      30d price updates: ${c.chgCount30d??'—'}
-    </div>
-    <a class="tcg-link" style="margin-top:16px;justify-content:center;display:flex;padding:9px" href="${tcgHref(c.name,c.game)}" target="_blank" rel="noopener">Buy on TCGPlayer ↗</a>
-  `;
-  d.style.display='block'; o.style.display='block';
-  document.getElementById('drawerClose').onclick = closeDrawer;
-  document.getElementById('drawerStar').onclick = () => { toggleWatch(c.id); openDrawer(c.id); };
-  o.onclick = closeDrawer;
-  // Progressive: swap in true daily history once snapshots accumulate
-  try {
-    const res = await fetch(`${HISTORY_URL}?game=${encodeURIComponent(GAME_SLUGS[c.game]||c.game)}&id=${encodeURIComponent(c.id)}`);
-    if (res.ok) {
-      const hist = await res.json();
-      if (hist.prices && hist.prices.length > (c.h7?.length||0)) {
-        const el = document.getElementById('drawerChart');
-        if (el) el.innerHTML = bigChart(hist.prices.map(p=>p.price), `${hist.prices.length}-Day Trend`);
+<script>
+  const API_BASE = "https://tome-topshot.tomecollective.workers.dev";
+
+  (function persistAccess() {
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get("key");
+    const sid = params.get("sid");
+    if (key) sessionStorage.setItem("tome_key", key);
+    if (sid) sessionStorage.setItem("tome_sid", sid);
+    if (key || sid) {
+      params.delete("key");
+      params.delete("sid");
+      const cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
+      window.history.replaceState({}, "", cleanUrl);
+    }
+  })();
+
+  function accessQueryString() {
+    const key = sessionStorage.getItem("tome_key");
+    const sid = sessionStorage.getItem("tome_sid");
+    const parts = [];
+    if (key) parts.push(`key=${encodeURIComponent(key)}`);
+    if (sid) parts.push(`sid=${encodeURIComponent(sid)}`);
+    return parts.length ? "&" + parts.join("&") : "";
+  }
+
+  let allEditions = [];
+  let isLocked = true;
+  let sortMode = "lowAsk";
+  let leagueMode = "";
+
+  const seasonFilterEl = document.getElementById("seasonFilter");
+  const tierChecksEl = document.getElementById("tierChecks");
+  const playerSearchEl = document.getElementById("playerSearch");
+  const setSearchEl = document.getElementById("setSearch");
+  const minPriceEl = document.getElementById("minPriceFilter");
+  const maxPriceEl = document.getElementById("maxPriceFilter");
+  const hideSubDollarEl = document.getElementById("hideSubDollar");
+  const sortLowAskBtn = document.getElementById("sortLowAsk");
+  const sortDiscountBtn = document.getElementById("sortDiscount");
+  const sortTomeScoreBtn = document.getElementById("sortTomeScore");
+  const statusBadge = document.getElementById("statusBadge");
+  const statusLine = document.getElementById("statusLine");
+  const lockPanel = document.getElementById("lockPanel");
+  const editionRows = document.getElementById("editionRows");
+  const emptyState = document.getElementById("emptyState");
+
+  async function loadEditions() {
+    statusLine.textContent = "Refreshing in the background...";
+    try {
+      const params = new URLSearchParams();
+      params.set("sort", sortMode);
+      if (leagueMode) params.set("league", leagueMode);
+      const url = `${API_BASE}/api/topshot/editions?${params.toString()}${accessQueryString()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      isLocked = data.locked;
+      allEditions = data.editions || [];
+      statusBadge.textContent = isLocked ? "Preview" : "Edge";
+      lockPanel.style.display = isLocked ? "block" : "none";
+      document.querySelectorAll(".edge-only").forEach((el) => { el.style.display = isLocked ? "none" : ""; });
+      statusLine.textContent = "";
+      populateSeasonOptions();
+      render();
+    } catch (err) {
+      statusLine.textContent = "Error loading data";
+      console.error(err);
+    }
+  }
+
+  function populateSeasonOptions() {
+    const seasons = [...new Set(allEditions.map((e) => e.nbaSeason).filter(Boolean))].sort().reverse();
+    const current = seasonFilterEl.value;
+    seasonFilterEl.innerHTML = '<option value="">All</option>' + seasons.map((s) => `<option value="${s}">${s}</option>`).join("");
+    seasonFilterEl.value = current;
+  }
+
+  function formatPrice(p) { return p == null ? "\u2014" : `$${p.toFixed(2)}`; }
+
+  function getCheckedTiers() {
+    return Array.from(tierChecksEl.querySelectorAll("input:checked")).map((el) => el.value);
+  }
+
+  function render() {
+    const season = seasonFilterEl.value;
+    const checkedTiers = getCheckedTiers();
+    const search = playerSearchEl.value.trim().toLowerCase();
+    const setSearch = setSearchEl.value.trim().toLowerCase();
+    const minPrice = hideSubDollarEl.checked ? 1 : parseFloat(minPriceEl.value) || 0;
+    const maxPrice = parseFloat(maxPriceEl.value);
+
+    let filtered = allEditions.filter((e) => {
+      if (season && e.nbaSeason !== season) return false;
+      if (!checkedTiers.includes(e.tier)) return false;
+      if (search && !(e.playerName || "").toLowerCase().includes(search)) return false;
+      if (setSearch && !(e.setName || "").toLowerCase().includes(setSearch)) return false;
+      if (e.lowAsk != null && e.lowAsk < minPrice) return false;
+      if (!isNaN(maxPrice) && e.lowAsk != null && e.lowAsk > maxPrice) return false;
+      return true;
+    });
+
+    editionRows.innerHTML = "";
+    emptyState.style.display = filtered.length ? "none" : "block";
+
+    for (const e of filtered) {
+      const tr = document.createElement("tr");
+      const discountCell = e.discountToMarket != null
+        ? `<span class="discount-positive">${(e.discountToMarket * 100).toFixed(1)}%</span>` : "\u2014";
+      const tomeScoreCell = e.tomeScore != null
+        ? `<span class="tome-score ${e.tomeScore >= 20 ? 'tome-score-good' : e.tomeScore < 0 ? 'tome-score-bad' : ''}">${e.tomeScore}</span>`
+        : "\u2014";
+      const thumb = e.imageURL
+        ? `<img class="moment-thumb" src="${e.imageURL}" alt="${e.playerName || 'Moment'}" loading="lazy">`
+        : `<div class="moment-thumb"></div>`;
+      const sales30dCell = e.sales30d != null
+        ? `${e.sales30d}${e.sales30dCapped ? "+" : ""}` : "\u2014";
+      const hasHistory = (e.salesHistory && e.salesHistory.length > 0) || (e.lowAskHistory && e.lowAskHistory.length > 0);
+      const rowId = `hist-${e.setID}-${e.playID}`;
+      tr.innerHTML = `
+        <td>${thumb}</td>
+        <td>
+          <div class="player-cell">
+            <div>
+              <div class="player-name">${e.playerName || "Unknown Player"}${e.isRookieYear ? '<span class="rookie-badge">Rookie</span>' : ""}</div>
+              <div class="team-name">${e.team || ""} <span class="league-tag">${e.league || ""}</span></div>
+            </div>
+          </div>
+        </td>
+        <td>${e.setName || "\u2014"}</td>
+        <td>${e.nbaSeason || "\u2014"}</td>
+        <td><span class="tier-pill tier-${e.tier}">${e.tier || "?"}</span></td>
+        <td>${e.circulation != null ? e.circulation.toLocaleString() : "\u2014"}</td>
+        <td class="price">${formatPrice(e.lowAsk)}</td>
+        <td class="edge-only">${formatPrice(e.lastSale)}</td>
+        <td class="edge-only">${sales30dCell}</td>
+        <td class="edge-only">${discountCell}</td>
+        <td class="edge-only">${tomeScoreCell}</td>
+        <td class="edge-only">${hasHistory ? `<button class="history-toggle" data-target="${rowId}">Chart</button>` : ""}</td>
+      `;
+      editionRows.appendChild(tr);
+
+      if (hasHistory) {
+        const histTr = document.createElement("tr");
+        histTr.id = rowId;
+        histTr.className = "history-row edge-only";
+        histTr.style.display = "none";
+        const aspLine = e.avgSalePrice != null
+          ? `ASP (avg sale): <strong>${formatPrice(e.avgSalePrice)}</strong> &nbsp;&middot;&nbsp; Median: <strong>${formatPrice(e.marketValue)}</strong> &nbsp;&middot;&nbsp; Confidence: <strong class="confidence-${e.valueConfidence}">${e.valueConfidence || "\u2014"}</strong> <span class="history-note">(based on ${e.salesHistory ? e.salesHistory.length : 0} tracked sales)</span>`
+          : `<span class="history-note">No sales tracked yet for this edition.</span>`;
+        histTr.innerHTML = `<td></td><td colspan="10">
+          <div class="chart-stats">${aspLine}</div>
+          <div class="chart-wrap"><canvas id="canvas-${rowId}"></canvas></div>
+        </td>`;
+        editionRows.appendChild(histTr);
       }
     }
-  } catch(e) { /* history not yet available — 7d sparkline stands */ }
-}
-function closeDrawer(){ document.getElementById('drawer').style.display='none'; document.getElementById('drawerOverlay').style.display='none'; }
 
-// ═══ EVENT DELEGATION: stars + row clicks ══════════════════════════════════════
-document.getElementById('tbody').addEventListener('click', e => {
-  const star = e.target.closest('.star-btn');
-  if (star) { e.stopPropagation(); toggleWatch(star.dataset.star); return; }
-  const row = e.target.closest('tr[data-id]');
-  if (row) openDrawer(row.dataset.id);
-});
-
-document.getElementById('watchChip').addEventListener('click', () => {
-  watchOnly = !watchOnly;
-  document.getElementById('watchChip').classList.toggle('active', watchOnly);
-  currentPage = 1;
-  render();
-});
-
-// ═══ HOVER PREVIEW (fixed-position, viewport-clamped) ══════════════════════════
-// Positioned via JS rather than a pure-CSS absolute child, because the table's
-// scroll container clips vertical overflow — a CSS-only popup got cut off / hidden
-// behind the sticky header for rows near the top of the table.
-const hoverPreview = document.getElementById('hoverPreview');
-document.getElementById('tbody').addEventListener('mouseover', e => {
-  const wrap = e.target.closest('.ci-wrap');
-  if (!wrap || !wrap.dataset.hoverSrc) return;
-  hoverPreview.src = wrap.dataset.hoverSrc;
-  const r = wrap.getBoundingClientRect();
-  hoverPreview.style.display = 'block';
-  hoverPreview.style.left = (r.right + 8) + 'px';
-  hoverPreview.style.top = (r.top + r.height/2) + 'px';
-  hoverPreview.style.transform = 'translateY(-50%)';
-  requestAnimationFrame(() => {
-    const pw = hoverPreview.offsetWidth || 180, ph = hoverPreview.offsetHeight || 250;
-    let left = r.right + 8;
-    if (left + pw > window.innerWidth - 8) left = Math.max(8, r.left - pw - 8);
-    let top = r.top + r.height/2 - ph/2;
-    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
-    hoverPreview.style.left = left + 'px';
-    hoverPreview.style.top = top + 'px';
-    hoverPreview.style.transform = 'none';
-  });
-});
-document.getElementById('tbody').addEventListener('mouseout', e => {
-  const wrap = e.target.closest('.ci-wrap');
-  if (!wrap) return;
-  if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
-  hoverPreview.style.display = 'none';
-});
-
-// ═══ COLUMN INFO TOOLTIPS (fixed-position, viewport-clamped — same reasoning as the
-// hover preview above: the sticky thead sits inside a scroll pane, so a pure-CSS absolute
-// tooltip would get clipped for headers near the pane's edges) ═════════════════════════
-const infoTip = document.getElementById('infoTip');
-document.querySelectorAll('.info-ic').forEach(ic => {
-  ic.addEventListener('mouseover', () => {
-    infoTip.textContent = ic.dataset.tip;
-    const r = ic.getBoundingClientRect();
-    infoTip.style.display = 'block';
-    infoTip.style.left = (r.left) + 'px';
-    infoTip.style.top = (r.bottom + 8) + 'px';
-    requestAnimationFrame(() => {
-      const tw = infoTip.offsetWidth || 240, th = infoTip.offsetHeight || 60;
-      let left = r.left;
-      if (left + tw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - tw - 8);
-      let top = r.bottom + 8;
-      if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 8);
-      infoTip.style.left = left + 'px';
-      infoTip.style.top = top + 'px';
+    document.querySelectorAll(".history-toggle").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const row = document.getElementById(btn.dataset.target);
+        if (!row) return;
+        const nowVisible = row.style.display === "none";
+        row.style.display = nowVisible ? "table-row" : "none";
+        if (nowVisible && !row.dataset.chartRendered) {
+          const rowId = btn.dataset.target;
+          const e = allEditions.find((ed) => `hist-${ed.setID}-${ed.playID}` === rowId);
+          if (e) renderChart(rowId, e);
+          row.dataset.chartRendered = "1";
+        }
+      });
     });
-  });
-  ic.addEventListener('mouseout', () => { infoTip.style.display = 'none'; });
-});
-
-// ═══ INIT ══════════════════════════════════════════════════════════════════════
-document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-
-document.getElementById('tbody').innerHTML =
-  '<tr><td colspan="21" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-  '<div style="width:26px;height:26px;border:2.5px solid var(--border-str);border-top-color:var(--green);border-radius:50%;animation:tspin 0.7s linear infinite;margin:0 auto 0.75rem"></div>' +
-  'Loading live pricing from JustTCG…</td></tr>' +
-  '<style>@keyframes tspin{to{transform:rotate(360deg)}}</style>';
-
-(async () => {
-  try {
-    const { cards, errors } = await loadLiveData();
-    if (!cards.length) {
-      document.getElementById('tbody').innerHTML =
-        '<tr><td colspan="21" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-        'Could not load card data.' + (errors.length ? '<br><span style="font-size:11px">' + errors.join(' · ') + '</span>' : '') +
-        '<br><span style="font-size:11px">Check the worker URL and try refreshing.</span></td></tr>';
-      return;
-    }
-    CARDS = cards;
-    DATA = CARDS.map(compute);
-    rebuildSetFilter();
-    markSortedHeader();
-    render();
-    if (errors.length) {
-      console.warn('Partial load:', errors);
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:11px;color:var(--dn);padding:6px 10px;background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--dn);border-radius:6px;margin:8px 0;';
-      note.textContent = 'Partial data load — some games failed to fetch: ' + errors.join(' · ');
-      document.querySelector('.pg-hd').after(note);
-    }
-
-    // ── Real PSA 7/8/9 prices, from yesterday's daily snapshot ────────────────
-    // Estimates are already on screen (instant render above). This is one request
-    // for a pre-computed snapshot, not 1,400 live lookups — see applyGradedPriceSnapshot
-    // above for why that changed. Never blocks the initial view, never breaks it if
-    // there's no snapshot yet (page just stays estimate-only, same as before this
-    // feature existed).
-    applyGradedPriceSnapshot(CARDS).then((meta) => {
-      if (!meta) return;   // no snapshot yet (or fetch failed) — nothing to show, no note needed
-      DATA = CARDS.map(compute);
-      render();
-      const gradeNote = document.createElement('div');
-      gradeNote.style.cssText = 'font-size:11px;color:var(--text-3);padding:6px 10px;background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--green);border-radius:6px;margin:8px 0;';
-      const asOf = meta.updatedAt ? new Date(meta.updatedAt).toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : 'unknown time';
-      gradeNote.textContent = meta.liveCount > 0
-        ? `Real PSA 7/8/9 data as of ${asOf}: ${meta.liveCount} of ${meta.cardsChecked} cards checked have live pricing. The rest keep their era-calibrated estimate.`
-        : `Checked ${meta.cardsChecked} cards as of ${asOf} — no live PSA data found. Showing era-calibrated estimates for all cards.`;
-      document.querySelector('.pg-hd').after(gradeNote);
-      setTimeout(() => { gradeNote.style.opacity = '0'; gradeNote.style.transition = 'opacity 1s'; setTimeout(() => gradeNote.remove(), 1200); }, 8000);
-    }).catch((err) => {
-      console.warn('Graded-price snapshot fetch failed:', err);
-    });
-  } catch (err) {
-    document.getElementById('tbody').innerHTML =
-      '<tr><td colspan="21" style="text-align:center;padding:3rem;color:var(--text-3);font-size:13px">' +
-      'Failed to load data: ' + err.message + '</td></tr>';
   }
-})();
+
+  function renderChart(rowId, e) {
+    const canvas = document.getElementById(`canvas-${rowId}`);
+    if (!canvas) return;
+    const salePoints = (e.salesHistory || []).map((s) => ({ x: s.date, y: s.price }));
+    const askPoints = (e.lowAskHistory || []).map((h) => ({ x: h.date, y: h.lowAsk }));
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: "Low Ask",
+            data: askPoints,
+            borderColor: "#0D7959",
+            backgroundColor: "#0D7959",
+            showLine: true,
+            tension: 0,
+            pointRadius: 2,
+          },
+          {
+            label: "Sale Price",
+            data: salePoints,
+            borderColor: "#FFB515",
+            backgroundColor: "#FFB515",
+            showLine: false,
+            pointRadius: 5,
+            pointStyle: "circle",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: "time", time: { unit: "day" }, ticks: { color: "#9a9a92" }, grid: { color: "#262a26" } },
+          y: { ticks: { color: "#9a9a92" }, grid: { color: "#262a26" }, title: { display: true, text: "USD", color: "#9a9a92" } },
+        },
+        plugins: { legend: { labels: { color: "#FEFFEF" } } },
+      },
+    });
+  }
+
+  seasonFilterEl.addEventListener("change", render);
+  tierChecksEl.addEventListener("change", render);
+  playerSearchEl.addEventListener("input", render);
+  setSearchEl.addEventListener("input", render);
+  minPriceEl.addEventListener("input", render);
+  maxPriceEl.addEventListener("input", render);
+  hideSubDollarEl.addEventListener("change", render);
+
+  const sortButtons = { lowAsk: sortLowAskBtn, discount: sortDiscountBtn, tomeScore: sortTomeScoreBtn };
+  function setSort(mode) {
+    sortMode = mode;
+    for (const [key, btn] of Object.entries(sortButtons)) {
+      btn.classList.toggle("active", key === mode);
+      const th = document.querySelector(`th[data-sort="${key}"]`);
+      if (th) th.classList.toggle("active-sort", key === mode);
+    }
+    loadEditions();
+  }
+  sortLowAskBtn.addEventListener("click", () => setSort("lowAsk"));
+  sortDiscountBtn.addEventListener("click", () => setSort("discount"));
+  sortTomeScoreBtn.addEventListener("click", () => setSort("tomeScore"));
+
+  function setLeague(mode, btnId) {
+    leagueMode = mode;
+    document.querySelectorAll(".tab-row .tab-pill").forEach((b) => b.classList.remove("active"));
+    document.getElementById(btnId).classList.add("active");
+    loadEditions();
+  }
+  document.getElementById("leagueAll").addEventListener("click", () => setLeague("", "leagueAll"));
+  document.getElementById("leagueNBA").addEventListener("click", () => setLeague("NBA", "leagueNBA"));
+  document.getElementById("leagueWNBA").addEventListener("click", () => setLeague("WNBA", "leagueWNBA"));
+
+  loadEditions();
 </script>
+
+</body>
+</html>
