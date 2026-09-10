@@ -834,6 +834,82 @@ async function runDailyPipeline(env) {
   await record();
 }
 const HEALTH_GRADED_STALE_MS = 30 * 3600 * 1000;   // cron is daily at 14:00 UTC; 30h = one missed run + slack
+// ---- Tag-filtered RSS feed --------------------------------------------------------------
+// GET /feed?tags=nfl,preview&limit=30  -> RSS 2.0 of published web posts carrying EVERY
+// listed tag (case-insensitive; comma = AND). Posts hidden from the feed are skipped.
+// Cached in KV for FEED_TTL_S so the Squarespace pages never hammer Beehiiv.
+const FEED_TTL_S = 600;
+const FEED_MAX = 50;
+const SITE_URL = 'https://read.tomecollective.com';
+function xmlEsc(s) {
+  return String(s ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+}
+function feedTags(url) {
+  return (url.searchParams.get('tags') || url.searchParams.get('tag') || '')
+    .split(',').map(t => t.trim().toLowerCase()).filter(Boolean).slice(0, 5);
+}
+async function fetchBeehiivPosts(env, tags) {
+  const base = `${BEEHIIV_API}/publications/${encodeURIComponent(env.BEEHIIV_PUBLICATION_ID)}/posts`;
+  const out = [];
+  // Beehiiv pages at 100 max; two pages covers a year of daily posting for one vertical.
+  for (let page = 1; page <= 2; page++) {
+    const q = new URLSearchParams({ status: 'confirmed', limit: '100', page: String(page),
+      order_by: 'publish_date', direction: 'desc' });
+    for (const t of tags) q.append('content_tags[]', t);
+    const res = await fetch(`${base}?${q}`, {
+      headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Beehiiv posts ${res.status}`);
+    const body = await res.json();
+    const data = Array.isArray(body.data) ? body.data : [];
+    out.push(...data);
+    if (data.length < 100 || out.length >= FEED_MAX * 2) break;
+  }
+  return out;
+}
+function renderRss(posts, tags, limit) {
+  const items = posts
+    .filter(p => p.platform !== 'email' && !p.hidden_from_feed && p.web_url)
+    .filter(p => {
+      const have = (p.content_tags || []).map(t => String(t).toLowerCase());
+      return tags.every(t => have.includes(t));
+    })
+    .slice(0, limit)
+    .map(p => {
+      const date = p.publish_date ? new Date(p.publish_date * 1000).toUTCString() : '';
+      const cats = (p.content_tags || []).map(t => `<category><![CDATA[${t}]]></category>`).join('');
+      const img = p.thumbnail_url ? `<enclosure url="${xmlEsc(p.thumbnail_url)}" type="image/png" length="0"/>` : '';
+      return `<item><title><![CDATA[${p.title || ''}]]></title><link>${xmlEsc(p.web_url)}</link>` +
+        `<guid isPermaLink="true">${xmlEsc(p.web_url)}</guid><pubDate>${date}</pubDate>` +
+        `<description><![CDATA[${p.subtitle || p.meta_default_description || ''}]]></description>${cats}${img}</item>`;
+    }).join('');
+  const title = tags.length ? `Tome Collective · ${tags.join(' + ')}` : 'Tome Collective';
+  return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${xmlEsc(title)}</title>` +
+    `<link>${SITE_URL}</link><description>Published posts from Tome Collective${tags.length ? ' tagged ' + xmlEsc(tags.join(', ')) : ''}.</description>` +
+    `<lastBuildDate>${new Date().toUTCString()}</lastBuildDate>${items}</channel></rss>`;
+}
+async function handleFeed(url, env, ctx, origin) {
+  if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID)
+    return jsonError('Feed unavailable: Beehiiv is not configured.', 503, origin);
+  const tags = feedTags(url);
+  const limit = Math.min(FEED_MAX, Math.max(1, parseInt(url.searchParams.get('limit') || '30', 10) || 30));
+  const headers = { 'Content-Type': 'application/rss+xml; charset=utf-8',
+    'Cache-Control': `public, max-age=${FEED_TTL_S}`, ...corsHeaders(origin) };
+  const cacheKey = `feed:${tags.join(',')}:${limit}`;
+  if (env.SNAPSHOTS) {
+    const hit = await env.SNAPSHOTS.get(cacheKey);
+    if (hit) return new Response(hit, { headers });
+  }
+  let xml;
+  try {
+    xml = renderRss(await fetchBeehiivPosts(env, tags), tags, limit);
+  } catch (e) {
+    return jsonError(`Feed unavailable: ${e.message}`, 502, origin);
+  }
+  if (env.SNAPSHOTS) ctx.waitUntil(env.SNAPSHOTS.put(cacheKey, xml, { expirationTtl: FEED_TTL_S }));
+  return new Response(xml, { headers });
+}
+
 async function handleHealth(env, origin) {
   const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(origin) };
   const now = Date.now();
@@ -910,6 +986,10 @@ async function handleRequest(request, env, ctx, rl) {
     // Beehiiv webhook: authenticated by its own secret path token, not by a subscriber.
     if (request.method === 'POST' && url.pathname.startsWith('/hooks/beehiiv/'))
       return handleBeehiivWebhook(request, url, env, origin);
+    // Public, tag-filtered RSS of published web posts (Beehiiv's own feed is capped at the
+    // 20 newest posts, so the Squarespace category pages go empty as soon as one vertical
+    // out-publishes the others). Rate limited, never gated: it only exposes public posts.
+    if (request.method === 'GET' && url.pathname === '/feed') return handleFeed(url, env, ctx, origin);
     const auth = { via: null, sub: null };
     const gated = await subscriberGate(request, url, env, origin, ctx, auth);
     if (gated) return gated;

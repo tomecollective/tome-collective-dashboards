@@ -169,6 +169,14 @@
     display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
     background: var(--gold); color: #1a1a1a; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
   }
+  .superstar-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    background: #c92f2f; color: #fff; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  .debut-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    background: #2f6fd6; color: #fff; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+  }
   .league-tag { color: var(--text-dimmer); font-size: 13px; }
   .tier-pill {
     display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase;
@@ -419,8 +427,10 @@
       const tr = document.createElement("tr");
       const discountCell = e.discountToMarket != null
         ? `<span class="discount-positive">${(e.discountToMarket * 100).toFixed(1)}%</span>` : "\u2014";
+      const bumpTitle = e.tomeScoreBumps && e.tomeScoreBumps.length
+        ? ` title="Includes: ${e.tomeScoreBumps.join(', ')}"` : "";
       const tomeScoreCell = e.tomeScore != null
-        ? `<span class="tome-score ${e.tomeScore >= 20 ? 'tome-score-good' : e.tomeScore < 0 ? 'tome-score-bad' : ''}">${e.tomeScore}</span>`
+        ? `<span class="tome-score ${e.tomeScore >= 20 ? 'tome-score-good' : e.tomeScore < 0 ? 'tome-score-bad' : ''}"${bumpTitle}>${e.tomeScore}${e.tomeScoreBumps && e.tomeScoreBumps.length ? ' &#9733;' : ''}</span>`
         : "\u2014";
       const thumb = e.imageURL
         ? `<img class="moment-thumb" src="${e.imageURL}" alt="${e.playerName || 'Moment'}" loading="lazy">`
@@ -434,7 +444,7 @@
         <td>
           <div class="player-cell">
             <div>
-              <div class="player-name">${e.playerName || "Unknown Player"}${e.isRookieYear ? '<span class="rookie-badge">Rookie</span>' : ""}</div>
+              <div class="player-name">${e.playerName || "Unknown Player"}${e.isSuperstar ? '<span class="superstar-badge">Superstar</span>' : ""}${e.isRookieDebut ? '<span class="debut-badge">Rookie Debut</span>' : ""}${e.isRookieYear ? '<span class="rookie-badge">Rookie</span>' : ""}</div>
               <div class="team-name">${e.team || ""} <span class="league-tag">${e.league || ""}</span></div>
             </div>
           </div>
