@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fast Break board</title>
+<style>
+  html,body{margin:0;padding:0;background:#fff}
+  body{font-family:"EB Garamond",Garamond,Georgia,serif;color:#2d2d2d}
+  .wrap{width:100%;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:7px 10px;border-bottom:1px solid #e3e3e3;text-align:center;white-space:nowrap}
+  th{background:#1a1a1a;color:#feffef;font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0}
+  th .a{opacity:.35;font-size:10px;margin-left:4px}
+  th.on .a{opacity:1}
+  td.player{text-align:left;font-weight:600}
+  td.rank{color:#666}
+  .dg{background:#0d7959;color:#fff;font-weight:600}
+  .lg{background:#b7e1cd;color:#0c5a42;font-weight:600}
+  .dy{background:#ffb515;color:#4a3300;font-weight:600}
+  .ly{background:#fce8b2;color:#7a5200;font-weight:600}
+  .legend{font-size:12px;color:#555;padding:8px 10px 10px}
+  .legend span{display:inline-block;padding:1px 7px;margin-right:6px;border-radius:3px}
+  .err{padding:16px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap"><table id="t"><thead></thead><tbody></tbody></table></div>
+<div class="legend" id="legend"></div>
+<script>
+(function(){
+  function decode(h){
+    var b=h.replace(/-/g,'+').replace(/_/g,'/'); while(b.length%4)b+='=';
+    var s=atob(b); try{return JSON.parse(decodeURIComponent(escape(s)));}catch(e){return JSON.parse(s);}
+  }
+  var data;
+  try{ data=decode(location.hash.slice(1)); }catch(e){ document.body.innerHTML='<p class="err">No board data.</p>'; return; }
+  // data: {h:[...headers], r:[[...],...], t:{PTS:12.0,...}, sort:4}
+  var H=data.h||[], R=data.r||[], T=data.t||{};
+  var keys=Object.keys(T);
+  function targetFor(hdr){ var u=hdr.toUpperCase(); for(var i=0;i<keys.length;i++){ if(u.indexOf(keys[i].toUpperCase())!==-1) return T[keys[i]]; } return null; }
+  function cls(v,t){ if(t==null||isNaN(v)) return ''; var p=v/t*100; if(p>=125)return 'dg'; if(p>=100)return 'lg'; if(p>=90)return 'dy'; if(p>=75)return 'ly'; return ''; }
+  var thead=document.querySelector('#t thead'), tbody=document.querySelector('#t tbody');
+  var tr=document.createElement('tr');
+  H.forEach(function(h,i){ var th=document.createElement('th'); th.innerHTML=h+'<span class="a">&#9650;&#9660;</span>'; th.onclick=function(){sortBy(i);}; tr.appendChild(th); });
+  thead.appendChild(tr);
+  var state={col:(typeof data.sort==='number'?data.sort:0),dir:(typeof data.sort==='number'?-1:1)};
+  function render(rows){
+    tbody.innerHTML='';
+    rows.forEach(function(r){ var tr=document.createElement('tr'); r.forEach(function(c,i){ var td=document.createElement('td'); td.textContent=c; if(i===0)td.className='rank'; else if(i===1)td.className='player'; else { var t=targetFor(H[i]); var v=parseFloat(c); var k=cls(v,t); if(k)td.className=k; } tr.appendChild(td); }); tbody.appendChild(tr); });
+    var ths=thead.querySelectorAll('th'); ths.forEach(function(th,i){ th.className=(i===state.col)?'on':''; });
+  }
+  function sortBy(i){ if(state.col===i) state.dir=-state.dir; else { state.col=i; state.dir=(i<=3)?1:-1; } apply(); }
+  function apply(){
+    var rows=R.slice().sort(function(a,b){ var x=a[state.col], y=b[state.col]; var nx=parseFloat(x), ny=parseFloat(y); if(!isNaN(nx)&&!isNaN(ny)) return (nx-ny)*state.dir; return String(x).localeCompare(String(y))*state.dir; });
+    render(rows);
+  }
+  apply();
+  if(keys.length){ document.getElementById('legend').innerHTML='Per-player target: '+keys.map(function(k){return k+' '+T[k];}).join(', ')+'. <span class="dg">125%+</span><span class="lg">100%+</span><span class="dy">90%+</span><span class="ly">75%+</span>Click a header to sort.'; }
+  // report height to the parent for auto-sizing (works when the parent listens; harmless otherwise)
+  function post(){ try{ parent.postMessage({tomeTable:true,height:document.documentElement.scrollHeight},'*'); }catch(e){} }
+  post(); window.addEventListener('resize',post);
+})();
+</script>
+</body>
+</html>
