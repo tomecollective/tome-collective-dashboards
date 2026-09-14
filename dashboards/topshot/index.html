@@ -153,9 +153,18 @@
   thead th {
     text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
     color: var(--text-dim); padding: 10px 12px; border-bottom: 1px solid var(--panel-border);
-    cursor: pointer; user-select: none;
+    cursor: default; user-select: none;
   }
+  thead th[data-sort] { cursor: pointer; }
   thead th.active-sort { color: var(--forest); }
+  thead th.sort-asc::after { content: "\00a0\25B2"; font-size: 10px; }
+  thead th.sort-desc::after { content: "\00a0\25BC"; font-size: 10px; }
+  /* Columns gated to Tome Edge subscribers. Toggled by adding/removing
+     .locked-view on <body> - NOT by touching each element's inline style,
+     since table rows (and their .edge-only <td>s) are (re)built by render()
+     after this class is set, and a plain CSS rule keeps hiding them
+     correctly no matter when they were created. */
+  body.locked-view .edge-only { display: none; }
   tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); font-size: 16px; vertical-align: middle; }
   tbody tr:hover { background: #16181600; }
   .moment-thumb {
@@ -299,15 +308,15 @@
     <thead>
       <tr>
         <th></th>
-        <th>Player</th>
-        <th>Set</th>
-        <th>Season</th>
-        <th>Tier</th>
-        <th>Circulation</th>
-        <th data-sort="lowAsk" class="active-sort">Low Ask</th>
-        <th class="edge-only">Last Sale</th>
-        <th class="edge-only">30D Sales</th>
-        <th class="edge-only" data-sort="discount">Discount to Market</th>
+        <th data-sort="playerName">Player</th>
+        <th data-sort="setName">Set</th>
+        <th data-sort="nbaSeason">Season</th>
+        <th data-sort="tier">Tier</th>
+        <th data-sort="circulation">Circulation</th>
+        <th data-sort="lowAsk" class="active-sort sort-desc">Low Ask</th>
+        <th class="edge-only" data-sort="lastSale">Last Sale</th>
+        <th class="edge-only" data-sort="sales30d">30D Sales</th>
+        <th class="edge-only" data-sort="discountToMarket">Discount to Market</th>
         <th class="edge-only" data-sort="tomeScore">Tome Score</th>
         <th class="edge-only"></th>
       </tr>
@@ -349,6 +358,12 @@
   let isLocked = true;
   let sortMode = "lowAsk";
   let leagueMode = "";
+  // Column-header click-to-sort. Independent of sortMode (which drives the
+  // By Ask / Best Deals / Tome Score preset buttons and their API-side
+  // sort+filter behavior) - this re-sorts whatever's already loaded,
+  // client-side, so every column header is clickable.
+  let clientSort = { key: null, dir: 1 };
+  const TIER_ORDER = { Founders: -1, Common: 0, Fandom: 1, Rare: 2, Legendary: 3, Ultimate: 4 };
 
   const seasonFilterEl = document.getElementById("seasonFilter");
   const tierChecksEl = document.getElementById("tierChecks");
@@ -379,7 +394,7 @@
       allEditions = data.editions || [];
       statusBadge.textContent = isLocked ? "Preview" : "Edge";
       lockPanel.style.display = isLocked ? "block" : "none";
-      document.querySelectorAll(".edge-only").forEach((el) => { el.style.display = isLocked ? "none" : ""; });
+      document.body.classList.toggle("locked-view", isLocked);
       statusLine.textContent = "";
       populateSeasonOptions();
       render();
@@ -419,6 +434,23 @@
       if (!isNaN(maxPrice) && e.lowAsk != null && e.lowAsk > maxPrice) return false;
       return true;
     });
+
+    if (clientSort.key) {
+      const { key, dir } = clientSort;
+      filtered = [...filtered].sort((a, b) => {
+        let av = a[key];
+        let bv = b[key];
+        if (key === "tier") {
+          av = TIER_ORDER[av] ?? -99;
+          bv = TIER_ORDER[bv] ?? -99;
+        }
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === "string" && typeof bv === "string") return dir * av.localeCompare(bv);
+        return dir * (av - bv);
+      });
+    }
 
     editionRows.innerHTML = "";
     emptyState.style.display = filtered.length ? "none" : "block";
@@ -543,19 +575,45 @@
   maxPriceEl.addEventListener("input", render);
   hideSubDollarEl.addEventListener("change", render);
 
+  // Maps a preset button's API sort-mode value to the <th data-sort="..">
+  // it should highlight - "discount" (the API param name) corresponds to
+  // the discountToMarket field the column-click sorter uses.
   const sortButtons = { lowAsk: sortLowAskBtn, discount: sortDiscountBtn, tomeScore: sortTomeScoreBtn };
+  const sortButtonFieldKey = { lowAsk: "lowAsk", discount: "discountToMarket", tomeScore: "tomeScore" };
+  function clearColumnSortIndicators() {
+    document.querySelectorAll("thead th[data-sort]").forEach((t) => t.classList.remove("active-sort", "sort-asc", "sort-desc"));
+  }
   function setSort(mode) {
     sortMode = mode;
+    clientSort = { key: null, dir: 1 }; // a preset button always wins over a stale column click
     for (const [key, btn] of Object.entries(sortButtons)) {
       btn.classList.toggle("active", key === mode);
-      const th = document.querySelector(`th[data-sort="${key}"]`);
-      if (th) th.classList.toggle("active-sort", key === mode);
     }
+    clearColumnSortIndicators();
+    const activeTh = document.querySelector(`th[data-sort="${sortButtonFieldKey[mode]}"]`);
+    if (activeTh) activeTh.classList.add("active-sort", "sort-desc");
     loadEditions();
   }
   sortLowAskBtn.addEventListener("click", () => setSort("lowAsk"));
   sortDiscountBtn.addEventListener("click", () => setSort("discount"));
   sortTomeScoreBtn.addEventListener("click", () => setSort("tomeScore"));
+
+  document.querySelectorAll("thead th[data-sort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      if (clientSort.key === key) {
+        clientSort.dir *= -1;
+      } else {
+        clientSort = { key, dir: 1 };
+      }
+      clearColumnSortIndicators();
+      th.classList.add("active-sort", clientSort.dir === 1 ? "sort-asc" : "sort-desc");
+      // A column click takes over sorting from whichever preset button was
+      // active - visually deselect them so only one sort indicator shows.
+      Object.values(sortButtons).forEach((btn) => btn.classList.remove("active"));
+      render();
+    });
+  });
 
   function setLeague(mode, btnId) {
     leagueMode = mode;
