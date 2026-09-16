@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tome Edge · NBA Top Shot Dashboard</title><link rel="icon" type="image/svg+xml" href="favicon.svg">
+<title>Tome Edge · NBA Top Shot Index</title><link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
@@ -225,15 +225,15 @@
     <span class="topbar-dot"></span>
     <span class="topbar-brand">Tome Collective</span>
     <span class="topbar-sep">|</span>
-    <span class="topbar-page">Tome Edge: NBA Top Shot</span>
+    <span class="topbar-page">Tome Edge: NBA Top Shot Index</span>
   </div>
   <span class="tier-badge-pill" id="statusBadge">Edge</span>
 </div>
 
 <div class="header-block">
   <div class="eyebrow">TOME COLLECTIVE &middot; NBA &middot; WNBA &middot; TOP SHOT</div>
-  <h1>Tome Edge: NBA Top Shot</h1>
-  <div class="subtitle">Live low ask, last sale, and discount to market, indexed directly from the Flow blockchain.</div>
+  <h1>NBA Top Shot Index</h1>
+  <div class="subtitle">A weekly read on what's actually trading across the NBA &amp; WNBA Top Shot catalog - volume and momentum, not bargain-hunting. Feeds The Spike Report: NBA Top Shot.</div>
   <div class="powered-by">Powered by Tome Analytics</div>
 </div>
 
@@ -277,9 +277,10 @@
   </div>
   <div class="sort-toggle">
     <button id="sortLowAsk" class="active">By Ask</button>
-    <button id="sortDiscount" title="Sorts by the gap between an edition's live low ask and the median of its recent tracked sales.">Discount to Market</button>
     <button id="sortTomeScore">Tome Score</button>
+    <button id="sortDiscount" title="Sorts by the gap between an edition's live low ask and the median of its recent tracked sales.">Discount to Market</button>
   </div>
+  <span style="color:var(--text-dimmer); font-size:13px;">Tip: click the 30D Sales column header to sort by trading volume.</span>
 </div>
 
 <div class="legend-row">
@@ -299,18 +300,22 @@
 </div>
 
 <div class="coverage-note">
-  <strong>Discount to Market</strong> compares an edition's live low ask to the median of its recent
-  tracked sales (shown as ASP / Median / Confidence when you expand an edition's chart). It's historical
-  pricing context, not a valuation and not a recommendation to buy or sell - confidence is lower on
-  editions with thin sales history, so treat those figures accordingly. <strong>Tome Score</strong>
-  layers in liquidity and rarity signals on top of that same data. Both are informational tools meant to
-  help you read the market yourself, not investment advice.
+  This index tracks <strong>trading volume and momentum</strong> across the catalog - which editions are
+  actually changing hands, not which ones look "cheap." <strong>30D Sales</strong> is the headline number;
+  <strong>Discount to Market</strong> (live low ask vs. the median of recent tracked sales) and
+  <strong>Tome Score</strong> (liquidity and rarity layered on top) are secondary reference stats, useful
+  for context but not the point - and confidence on both is lower for editions with thin sales history.
+  None of this is a valuation or a recommendation to buy or sell; it's the same data that feeds our
+  weekly Spike Report: NBA Top Shot write-up. Looking for live listings? Check
+  <a href="https://livetoken.co/deals/live" style="color:var(--gold);">LiveToken</a>. Looking for full
+  catalog and on-chain history? Check
+  <a href="https://www.topshotexplorer.com" style="color:var(--gold);">Top Shot Explorer</a>.
 </div>
 
 <main>
   <div id="lockPanel" class="lock-panel" style="display:none;">
-    <h2>Full Dashboard is a Tome Edge Benefit</h2>
-    <p>You're seeing a preview. Unlock live low ask, last sale, 30-day sales, and discount-to-market on every edition with Tome Edge.</p>
+    <h2>Full Index is a Tome Edge Benefit</h2>
+    <p>You're seeing a preview. Unlock 30-day trading volume, last sale, and discount-to-market on every edition with Tome Edge.</p>
     <a class="unlock-btn" href="https://read.tomecollective.com/upgrade">Unlock with Tome Edge</a>
   </div>
   <table>
@@ -323,8 +328,8 @@
         <th data-sort="tier">Tier</th>
         <th data-sort="circulation">Circulation</th>
         <th data-sort="lowAsk" class="active-sort sort-desc">Low Ask</th>
-        <th class="edge-only" data-sort="lastSale">Last Sale</th>
         <th class="edge-only" data-sort="sales30d">30D Sales</th>
+        <th class="edge-only" data-sort="lastSale">Last Sale</th>
         <th class="edge-only" data-sort="discountToMarket">Discount to Market</th>
         <th class="edge-only" data-sort="tomeScore">Tome Score</th>
         <th class="edge-only"></th>
@@ -495,8 +500,8 @@
         <td><span class="tier-pill tier-${e.tier}">${e.tier || "?"}</span></td>
         <td>${e.circulation != null ? e.circulation.toLocaleString() : "\u2014"}</td>
         <td class="price">${formatPrice(e.lowAsk)}</td>
+        <td class="edge-only"><strong>${sales30dCell}</strong></td>
         <td class="edge-only">${formatPrice(e.lastSale)}</td>
-        <td class="edge-only">${sales30dCell}</td>
         <td class="edge-only">${discountCell}</td>
         <td class="edge-only">${tomeScoreCell}</td>
         <td class="edge-only">${hasHistory ? `<button class="history-toggle" data-target="${rowId}">Chart</button>` : ""}</td>
