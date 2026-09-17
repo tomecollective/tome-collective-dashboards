@@ -165,6 +165,15 @@
      after this class is set, and a plain CSS rule keeps hiding them
      correctly no matter when they were created. */
   body.locked-view .edge-only { display: none; }
+  /* .edge-col (unlike .edge-only) stays visible when locked - the header and
+     row still render, just with a lock placeholder in place of the real
+     value, so free users can see the shape of what Tome Edge unlocks
+     instead of the column disappearing without a trace. */
+  .locked-cell { color: var(--text-dimmer); font-size: 14px; cursor: help; }
+  th.edge-col { color: var(--text-dimmer); }
+  th.edge-col::after { content: " \1F512"; font-size: 11px; }
+  body:not(.locked-view) th.edge-col::after { content: ""; }
+  body:not(.locked-view) th.edge-col { color: var(--text-dim); }
   tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); font-size: 16px; vertical-align: middle; }
   tbody tr:hover { background: #16181600; }
   .moment-thumb {
@@ -315,7 +324,7 @@
 <main>
   <div id="lockPanel" class="lock-panel" style="display:none;">
     <h2>Full Index is a Tome Edge Benefit</h2>
-    <p>You're seeing a preview. Unlock 30-day trading volume, last sale, and discount-to-market on every edition with Tome Edge.</p>
+    <p>You're seeing a preview. The columns marked &#128274; below - 30-day trading volume, average sale price, last sale, and discount-to-market - unlock on every edition with Tome Edge.</p>
     <a class="unlock-btn" href="https://read.tomecollective.com/upgrade">Unlock with Tome Edge</a>
   </div>
   <table>
@@ -328,10 +337,11 @@
         <th data-sort="tier">Tier</th>
         <th data-sort="circulation">Circulation</th>
         <th data-sort="lowAsk" class="active-sort sort-desc">Low Ask</th>
-        <th class="edge-only" data-sort="sales30d">30D Sales</th>
-        <th class="edge-only" data-sort="lastSale">Last Sale</th>
-        <th class="edge-only" data-sort="discountToMarket">Discount to Market</th>
-        <th class="edge-only" data-sort="tomeScore">Tome Score</th>
+        <th class="edge-col" data-sort="sales30d">30D Sales</th>
+        <th class="edge-col" data-sort="avgSalePrice">Avg Sale Price</th>
+        <th class="edge-col" data-sort="lastSale">Last Sale</th>
+        <th class="edge-col" data-sort="discountToMarket">Discount to Market</th>
+        <th class="edge-col" data-sort="tomeScore">Tome Score</th>
         <th class="edge-only"></th>
       </tr>
     </thead>
@@ -427,6 +437,15 @@
 
   function formatPrice(p) { return p == null ? "\u2014" : `$${p.toFixed(2)}`; }
 
+  // Edge-gated stat cells stay visible (with their header) when locked, but
+  // show a lock placeholder instead of a real value - so a free viewer sees
+  // that the column exists and what it holds, rather than the column just
+  // vanishing. Only applies to the 5 "edge-col" stat columns, not the
+  // chart-toggle action column (which has nothing to show when locked).
+  function lockedOr(html) {
+    return isLocked ? `<span class="locked-cell" title="Unlock with Tome Edge">&#128274;</span>` : html;
+  }
+
   function getCheckedTiers() {
     return Array.from(tierChecksEl.querySelectorAll("input:checked")).map((el) => el.value);
   }
@@ -500,10 +519,11 @@
         <td><span class="tier-pill tier-${e.tier}">${e.tier || "?"}</span></td>
         <td>${e.circulation != null ? e.circulation.toLocaleString() : "\u2014"}</td>
         <td class="price">${formatPrice(e.lowAsk)}</td>
-        <td class="edge-only"><strong>${sales30dCell}</strong></td>
-        <td class="edge-only">${formatPrice(e.lastSale)}</td>
-        <td class="edge-only">${discountCell}</td>
-        <td class="edge-only">${tomeScoreCell}</td>
+        <td class="edge-col">${lockedOr(`<strong>${sales30dCell}</strong>`)}</td>
+        <td class="edge-col">${lockedOr(formatPrice(e.avgSalePrice))}</td>
+        <td class="edge-col">${lockedOr(formatPrice(e.lastSale))}</td>
+        <td class="edge-col">${lockedOr(discountCell)}</td>
+        <td class="edge-col">${lockedOr(tomeScoreCell)}</td>
         <td class="edge-only">${hasHistory ? `<button class="history-toggle" data-target="${rowId}">Chart</button>` : ""}</td>
       `;
       editionRows.appendChild(tr);
@@ -516,7 +536,7 @@
         const aspLine = e.avgSalePrice != null
           ? `ASP (avg sale): <strong>${formatPrice(e.avgSalePrice)}</strong> &nbsp;&middot;&nbsp; Median: <strong>${formatPrice(e.marketValue)}</strong> &nbsp;&middot;&nbsp; Confidence: <strong class="confidence-${e.valueConfidence}">${e.valueConfidence || "\u2014"}</strong> <span class="history-note">(based on ${e.salesHistory ? e.salesHistory.length : 0} tracked sales)</span>`
           : `<span class="history-note">No sales tracked yet for this edition.</span>`;
-        histTr.innerHTML = `<td></td><td colspan="10">
+        histTr.innerHTML = `<td></td><td colspan="12">
           <div class="chart-stats">${aspLine}</div>
           <div class="chart-wrap"><canvas id="canvas-${rowId}"></canvas></div>
         </td>`;
