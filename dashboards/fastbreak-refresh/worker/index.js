@@ -271,6 +271,13 @@ async function getGamesForDate(cfg, dateStr, env) {
 // NBA uses "Team LeBron"-style names too). Left in, they leak into every
 // player's L10/YTD window and into Full Data's team list (the "17 teams"
 // bug). Drop any game where either side isn't a real franchise.
+// Expansion teams can arrive from BALLDONTLIE with no conference set (Portland
+// Fire and Toronto Tempo in 2026); never treat a real franchise as an exhibition side.
+const REAL_TEAM_ABBRS = new Set([
+  "ATL", "CHI", "CON", "DAL", "GSV", "GS", "IND", "LAS", "LA", "LVA", "LV", "MIN",
+  "NYL", "NY", "PHO", "PHX", "POR", "SEA", "TOR", "WAS", "WSH",
+]);
+
 function isExhibitionGame(g) {
   const teams = [g.home_team, g.visitor_team].filter(Boolean);
   for (const t of teams) {
@@ -284,7 +291,7 @@ function isExhibitionGame(g) {
     if (abbr === "COOP" || abbr === "SPO" || abbr === "SPOON") return true;
     // A team object that carries a conference field but no value is a
     // made-up squad (every real WNBA/NBA team is East or West).
-    if ("conference" in t && !t.conference) return true;
+    if ("conference" in t && !t.conference && !REAL_TEAM_ABBRS.has(abbr)) return true;
   }
   return false;
 }
