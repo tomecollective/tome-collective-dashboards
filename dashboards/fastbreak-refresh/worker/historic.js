@@ -31,6 +31,7 @@ const HISTORIC_SCHEDULE_KEY = "fastbreak:historic:schedule";
 const HISTORIC_OBJECTIVES_KEY = "fastbreak:historic:objectives";
 const HISTORIC_BOXSCORES_KEY = "fastbreak:historic:boxscores";
 const HISTORIC_DAY_KEY = "fastbreak:historic:day";
+const HISTORIC_RP_KEY = "fastbreak:historic:rp";
 
 const STAT_MAP = {
   PTS: "pts", REB: "reb", OREB: "oreb", DREB: "dreb", AST: "ast",
@@ -62,6 +63,94 @@ function tierColor(value, perPlayerTarget) {
   if (pct >= 0.9) return "yellow";
   if (pct >= 0.75) return "light-yellow";
   return null;
+}
+
+// -- RP / DFS budget layer (Top Shot's actual Historic beta format) --------------
+// Everything above this point (Day #, objectives, tier colors) mirrors the live
+// leagues' threshold-objective model, which is what this module originally shipped
+// with. Top Shot's real Historic mode turned out to be a separate salary-cap/DFS
+// format instead: a 350 Roster Point budget, a per-player RP cost, and Collector
+// discounts for held Moments. That's additive, not a replacement -- objectives stay
+// exactly as they are; RP cost and the generated projection below are a new layer
+// on the same players/boxscores. (Collector discounts are personal, not public Top
+// Shot pricing, so they're intentionally NOT stored here -- see index.html, where
+// each subscriber's held tier lives in their own browser's localStorage and is
+// applied client-side against the public baseRP this module returns.)
+
+// Matches names across sources that don't always agree on accents/punctuation
+// (e.g. "Manu Ginóbili" vs "Manu Ginobili", "Jos\u00e9 Calder\u00f3n" vs "Jose Calderon").
+function normName(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.'\u2019]/g, "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// The roster-builder screen is a scrollable card list, not a table, so admin
+// uploads the raw pasted text rather than a parsed grid (same "paste raw, don't
+// clean up" idea as the live leagues' Rotowire projection uploads). Scans line by
+// line for each card's "N Roster Points[, down from M with a P% Collector
+// discount]" line, then takes the next line as the player name. Only the base RP
+// (Top Shot's public price) is kept -- a pasted line's OWN discount reflects
+// whoever copied it, which isn't meaningful shared data. Not anchored to
+// line-start since a leading bullet or "#rank" marker, and numbers run together
+// with no separator (e.g. "104 Roster Points104 RP"), are both normal in this text.
+function parseHistoricRPText(text) {
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const mDisc = line.match(/(\d+)\s+Roster Points,\s*down from\s+(\d+)\s+with a\s+(\d+)%\s+Collector discount/i);
+    const mPlain = !mDisc && line.match(/(\d+)\s+Roster Points/i);
+    if (!mDisc && !mPlain) continue;
+    const baseRP = mDisc ? parseInt(mDisc[2], 10) : parseInt(mPlain[1], 10);
+    const name = (lines[i + 1] || "").trim();
+    if (!name || Number.isNaN(baseRP)) continue;
+    out.push({ name, baseRP });
+  }
+  return out;
+}
+
+// Fast Break Points for one simulated game, full formula -- boxscores already
+// carry every stat this needs (pts/reb/ast/stl/blk/fg3m/tov), so unlike a
+// screen-scraped game log this doesn't need separate per-game data at all.
+function gameFBP(stats) {
+  const pts = stats.pts ?? 0, reb = stats.reb ?? 0, ast = stats.ast ?? 0,
+    stl = stats.stl ?? 0, blk = stats.blk ?? 0, fg3m = stats.fg3m ?? 0, tov = stats.tov ?? 0;
+  const tens = [pts, reb, ast, stl, blk].filter((v) => v >= 10).length;
+  const bonus = tens >= 3 ? 10 : tens >= 2 ? 5 : 0;
+  return pts + reb + 2 * ast + 3 * stl + 3 * blk + 0.5 * fg3m - tov + bonus;
+}
+
+// 60% recent form / 40% season baseline -- same idea as the live leagues
+// weighting L10 over full-season YTD, tune here if that ratio needs adjusting.
+const HISTORIC_PROJ_WEIGHTS = { l10: 0.6, total: 0.4 };
+function computeHistoricProjection(rowsForPlayer, throughDay) {
+  const rows = rowsForPlayer.filter((r) => r.day <= throughDay);
+  if (!rows.length) return null;
+  const fbps = rows.map((r) => gameFBP(r.stats));
+  const totalFBP = average(fbps);
+  const l10Rows = [...rows].sort((a, b) => b.day - a.day).slice(0, 10);
+  const l10FBP = average(l10Rows.map((r) => gameFBP(r.stats)));
+  const genProj = HISTORIC_PROJ_WEIGHTS.l10 * (l10FBP ?? totalFBP) + HISTORIC_PROJ_WEIGHTS.total * totalFBP;
+  return { gp: rows.length, l10FBP: round1(l10FBP), totalFBP: round1(totalFBP), genProj: round1(genProj) };
+}
+
+// Admin: replace the RP list in full, from either a raw paste (`rpText`) or an
+// already-parsed array (`rp`, e.g. if the admin form is ever upgraded to parse
+// client-side first). Public Top Shot pricing only -- never a personal discount.
+async function seedHistoricRP(env, { rpText, rp } = {}) {
+  let list = Array.isArray(rp) ? rp : null;
+  if (!list && typeof rpText === "string") list = parseHistoricRPText(rpText);
+  if (!list || !list.length) {
+    throw new Error("provide either `rp` (a parsed array) or `rpText` (the raw roster-builder paste) with at least one player");
+  }
+  await putJSON(env, HISTORIC_RP_KEY, list);
+  return { ok: true, rpPlayersLoaded: list.length };
 }
 
 // Cloudflare Workers' JS runtime has no seedable Math.random, so use the
@@ -199,6 +288,11 @@ async function buildHistoricDashboard(env, { day } = {}) {
     (await getJSON(env, HISTORIC_OBJECTIVES_KEY, [])).map((o) => [o.day, o])
   );
   const boxscores = await getJSON(env, HISTORIC_BOXSCORES_KEY, []);
+  // RP/DFS layer: public Top Shot pricing keyed by normalized name, matched
+  // onto whichever players are already active this run. Collector discounts
+  // are personal and applied client-side against this baseRP -- see index.html.
+  const rpList = await getJSON(env, HISTORIC_RP_KEY, []);
+  const rpByName = new Map(rpList.map((r) => [normName(r.name), r.baseRP]));
 
   const targetDay = day || (await getCurrentHistoricDay(env));
   const todaysObjectives = objectivesByDay.get(targetDay);
@@ -261,12 +355,17 @@ async function buildHistoricDashboard(env, { day } = {}) {
       };
     }
 
+    const proj = computeHistoricProjection(rows, targetDay);
     playerRows.push({
       id: player.player_id,
       name: player.name,
       team: player.team,
       opp: `vs ${opp}`,
       objectives: objectiveValues,
+      baseRP: rpByName.has(normName(player.name)) ? rpByName.get(normName(player.name)) : null,
+      l10FBP: proj ? proj.l10FBP : null,
+      totalFBP: proj ? proj.totalFBP : null,
+      genProj: proj ? proj.genProj : null,
     });
   }
 
@@ -354,6 +453,10 @@ async function getHistoricStatus(env) {
   const objectives = await getJSON(env, HISTORIC_OBJECTIVES_KEY, []);
   const boxscores = await getJSON(env, HISTORIC_BOXSCORES_KEY, []);
   const simulatedDays = [...new Set(boxscores.map((r) => r.day))].sort((a, b) => a - b);
+  const rpList = await getJSON(env, HISTORIC_RP_KEY, []);
+  const rpByName = new Map(rpList.map((r) => [normName(r.name), r.baseRP]));
+  const activeNames = players.filter((p) => p.active).map((p) => normName(p.name));
+  const rpMatched = activeNames.filter((n) => rpByName.has(n)).length;
   return {
     league: "NBA",
     mode: "Historic",
@@ -365,6 +468,9 @@ async function getHistoricStatus(env) {
     simulatedDays,
     objectives: objectives.map((o) => ({ day: o.day, date: o.date || null, objectives: o.objectives })),
     scheduleDates: schedule.map((s) => ({ day: s.day, date: s.date || null, games: (s.matchups || []).length })),
+    rpPlayersLoaded: rpList.length,
+    rpMatchedToActive: rpMatched,
+    rpUnmatchedActive: activeNames.length - rpMatched,
   };
 }
 
@@ -374,9 +480,11 @@ export {
   HISTORIC_OBJECTIVES_KEY,
   HISTORIC_BOXSCORES_KEY,
   HISTORIC_DAY_KEY,
+  HISTORIC_RP_KEY,
   simulateHistoricDay,
   buildHistoricDashboard,
   seedHistoric,
+  seedHistoricRP,
   getCurrentHistoricDay,
   setCurrentHistoricDay,
   upsertHistoricObjectivesDay,
@@ -384,4 +492,8 @@ export {
   round1,
   average,
   tierColor,
+  normName,
+  gameFBP,
+  computeHistoricProjection,
+  parseHistoricRPText,
 };

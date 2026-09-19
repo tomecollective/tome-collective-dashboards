@@ -30,6 +30,7 @@ import {
   simulateHistoricDay,
   buildHistoricDashboard,
   seedHistoric,
+  seedHistoricRP,
   getCurrentHistoricDay,
   setCurrentHistoricDay,
   upsertHistoricObjectivesDay,
@@ -1949,6 +1950,22 @@ export default {
       try {
         const body = await request.json();
         return json(await seedHistoric(env, { players: body.players, schedule: body.schedule, objectives: body.objectives }));
+      } catch (err) {
+        return json({ error: err.message }, 400);
+      }
+    }
+
+    // Admin: load/replace the Historic RP (Roster Points) price list -- the
+    // DFS/salary-cap layer that runs alongside Day#/objectives, not instead
+    // of it. Body is either { rpText: "<raw roster-builder paste>" } or an
+    // already-parsed { rp: [{name, baseRP}, ...] }. Same pattern as the
+    // sibling Historic admin routes: admin-token gated, additive on its own
+    // KV key only.
+    if (url.pathname === "/api/fastbreak/historic/rp" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json();
+        return json(await seedHistoricRP(env, { rpText: body.rpText, rp: body.rp }));
       } catch (err) {
         return json({ error: err.message }, 400);
       }

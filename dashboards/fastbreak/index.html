@@ -127,6 +127,22 @@ tr.row-out td { opacity: 0.45; }
 tr.row-out td:first-child { opacity: 0.7; }
 .rank-out { font-family: var(--sans); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.4px; color: #f87171; }
 
+/* -- Historic RP/DFS budget layer (additive to Day#/objectives above) --- */
+.historic-owned-filter{display:none;flex-wrap:wrap;gap:6px;margin-bottom:0.85rem;}
+.historic-owned-filter.on{display:flex;}
+.historic-owned-filter button{background:var(--surface);border:0.5px solid var(--border);color:var(--text-2);border-radius:20px;padding:5px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;}
+.historic-owned-filter button.active{background:var(--green);color:#fff;border-color:var(--green);}
+.historic-lineup-bar{display:none;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:10px 14px;margin-bottom:0.85rem;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:0.78rem;}
+.historic-lineup-bar.on{display:flex;}
+.historic-lineup-bar .hlb-budget{font-family:var(--mono);color:var(--text-2);}
+.historic-lineup-bar .hlb-budget.over{color:var(--dn);font-weight:700;}
+.historic-lineup-bar .hlb-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.hlb-chip{background:var(--surface2);border:0.5px solid var(--border-str);border-radius:20px;padding:3px 10px;font-size:0.72rem;cursor:pointer;color:var(--text);font-family:inherit;}
+.hlb-chip:hover{border-color:var(--dn);}
+.hlb-btn{background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.75rem;font-weight:600;cursor:pointer;font-family:inherit;}
+.hlb-btn.secondary{background:transparent;border:0.5px solid var(--border-str);color:var(--text-2);}
+.hist-tier-select{font-size:11px;font-family:var(--sans);border-radius:6px;border:0.5px solid var(--border-str);background:var(--surface2);color:inherit;padding:3px 4px;}
+
 .note { font-size: 0.75rem; color: var(--text-3); margin-top: 24px; border-left: 2px solid var(--green); padding-left: 12px; max-width: 720px; line-height:1.6; }
 
 /* -- Full Data tab ------------------------------------------------------- */
@@ -253,6 +269,9 @@ HISTORIC_ENABLED is flipped in the script below. -->
 <div id="schedule-tiles" class="schedule-row"></div>
 
 <div id="objective-tiles" class="objective-row"></div>
+
+<div id="historic-owned-filter" class="historic-owned-filter"></div>
+<div id="historic-lineup-bar" class="historic-lineup-bar"></div>
 
 <div class="toolbar">
 <div class="legend" id="color-legend">
@@ -524,6 +543,20 @@ Each key you include replaces that dataset in full; keys you leave out are untou
 </div>
 
 <div class="admin-form">
+<h2>Historic RP Prices (Roster Points / DFS budget)</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Paste the raw text of Top Shot's Historic roster-builder screen (select all / copy the player list --
+no need to clean it up first). Matched onto the active players above by name. Only Top Shot's public
+base price is stored here -- each collector's own Collector Discount tier is personal to their
+collection, so it's tracked locally in each subscriber's own browser on the live page, never on this
+server. This runs alongside Day#/objectives below, not instead of it.
+</p>
+<textarea id="hist-rp-text" rows="8" placeholder="104 Roster Points104 RP&#10;Larry Bird&#10;24.3PTS&#10;10.0REB&#10;6.3AST&#10;1.7STL&#10;0.8BLK&#10;54.4Avg" class="admin-textarea"></textarea>
+<button id="hist-rp-btn">Upload RP prices</button>
+<div id="hist-rp-status"></div>
+</div>
+
+<div class="admin-form">
 <h2>Advance the Historic Season</h2>
 <p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
 Simulates the next day's box scores and moves the public "current day" pointer forward.
@@ -560,6 +593,7 @@ const HISTORIC_STATUS_URL = WORKER_BASE + "/api/fastbreak/historic/status";
 const HISTORIC_SEED_URL = WORKER_BASE + "/api/fastbreak/historic/seed";
 const HISTORIC_OBJ_URL = WORKER_BASE + "/api/fastbreak/historic/objectives/day";
 const HISTORIC_ADVANCE_URL = WORKER_BASE + "/api/fastbreak/historic/advance";
+const HISTORIC_RP_URL = WORKER_BASE + "/api/fastbreak/historic/rp";
 const LEAGUE_STATUS_URL = WORKER_BASE + "/api/fastbreak/league/status";
 const LEAGUE_ENABLE_URL = WORKER_BASE + "/api/fastbreak/league/enable";
 const LEAGUE_KEYCHECK_URL = WORKER_BASE + "/api/fastbreak/league/keycheck";
@@ -680,6 +714,108 @@ let dashboard = { objectives: [], games: [], players: [], note: "", badgeSetName
 
 let sortKey = "base:ovrRank";
 let sortDir = 1;
+
+// -- Historic RP/DFS budget layer (additive to Day#/objectives) -------------
+// Top Shot's real Historic beta turned out to be a salary-cap/DFS format
+// (350 Roster Point budget, per-player RP cost, Collector Discount tiers),
+// separate from the Day#/objectives simulation above. That stays exactly as
+// it is; this is a second, independent layer over the same player rows,
+// active only once the admin has uploaded RP prices (see the admin form).
+// Collector Discount tier is personal to each subscriber's own collection --
+// there's no Top Shot API to check it against -- so it is tracked ONLY in
+// this browser's localStorage, never sent to or stored on the server. Base
+// RP price (Top Shot's own public pricing) is the only part that's shared
+// server-side data.
+const HISTORIC_TIERS = { none: 0, common: 0.05, fandom: 0.05, rare: 0.10, legendary: 0.15, ultimate: 0.20 };
+const HISTORIC_TIER_LABELS = { none: "Not owned", common: "Common", fandom: "Fandom", rare: "Rare", legendary: "Legendary", ultimate: "Ultimate" };
+const HISTORIC_CAP = 350;
+const HISTORIC_LINEUP_SIZE = 5;
+const HISTORIC_OWNERSHIP_KEY = "fbHistoricOwnership";
+const HISTORIC_LINEUP_KEY = "fbHistoricLineup";
+
+function histNorm(name) {
+  return String(name || "").toLowerCase().trim();
+}
+function loadHistoricOwnership() {
+  try { return JSON.parse(localStorage.getItem(HISTORIC_OWNERSHIP_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveHistoricOwnership(map) {
+  try { localStorage.setItem(HISTORIC_OWNERSHIP_KEY, JSON.stringify(map)); } catch (e) {}
+}
+function loadHistoricLineup() {
+  try { return new Set(JSON.parse(localStorage.getItem(HISTORIC_LINEUP_KEY)) || []); } catch (e) { return new Set(); }
+}
+function saveHistoricLineup() {
+  try { localStorage.setItem(HISTORIC_LINEUP_KEY, JSON.stringify([...historicLineup])); } catch (e) {}
+}
+let historicOwnership = loadHistoricOwnership();
+let historicLineup = loadHistoricLineup();
+let historicOwnFilter = "all";
+
+function historicRPAvailable() {
+  return currentMode === "Historic" && (dashboard.players || []).some((p) => p.baseRP != null);
+}
+
+// Attaches this browser's ownership tier + the resulting discount/effective
+// RP cost/value onto each player row. Mutates in place, called once per
+// render() while in Historic mode -- cheap (150 players) and keeps render()
+// as the single source of truth rather than caching a second copy.
+function applyHistoricOwnership(players) {
+  players.forEach((p) => {
+    const key = histNorm(p.name);
+    const tier = historicOwnership[key] in HISTORIC_TIERS ? historicOwnership[key] : "none";
+    const pct = HISTORIC_TIERS[tier];
+    p.tier = tier;
+    p.discountPct = Math.round(pct * 100);
+    p.effectiveRP = p.baseRP != null ? Math.round(p.baseRP * (1 - pct)) : null;
+    p.value = p.effectiveRP && p.genProj != null ? p.genProj / p.effectiveRP : null;
+  });
+}
+
+// 0/1 knapsack over two constraints at once (exactly 5 players, <=350 RP).
+// One full immutable DP layer per player considered, so backtracking can't
+// point at a table that's since been overwritten -- the naive single-mutable-
+// table 0/1-knapsack trick only guarantees no-reuse in the 1-dimensional
+// (budget-only) case, and silently double-picks players once a player-count
+// constraint is layered on top of it too. Verified against brute force on a
+// small synthetic case and 1-swap local search on the full player pool.
+function optimizeHistoricLineup(players, cap, size) {
+  const n = players.length;
+  if (!n) return [];
+  const mk = () => Array.from({ length: size + 1 }, () => new Float64Array(cap + 1).fill(-Infinity));
+  const layers = [mk()];
+  layers[0][0][0] = 0;
+  for (let i = 0; i < n; i++) {
+    const prevLayer = layers[i];
+    const layer = mk();
+    for (let c = 0; c <= size; c++) layer[c].set(prevLayer[c]);
+    const cost = Math.round(players[i].effectiveRP);
+    if (cost <= cap) {
+      for (let c = 0; c < size; c++) {
+        for (let b = 0; b <= cap - cost; b++) {
+          const prev = prevLayer[c][b];
+          if (prev === -Infinity) continue;
+          const val = prev + players[i].score;
+          if (val > layer[c + 1][b + cost]) layer[c + 1][b + cost] = val;
+        }
+      }
+    }
+    layers.push(layer);
+  }
+  let bestB = -1, bestV = -Infinity;
+  for (let b = 0; b <= cap; b++) if (layers[n][size][b] > bestV) { bestV = layers[n][size][b]; bestB = b; }
+  if (bestB < 0 || bestV === -Infinity) return [];
+  const picks = [];
+  let c = size, b = bestB;
+  for (let i = n; i > 0 && c > 0; i--) {
+    if (layers[i][c][b] !== layers[i - 1][c][b]) {
+      const cost = Math.round(players[i - 1].effectiveRP);
+      picks.push(players[i - 1]);
+      b -= cost; c--;
+    }
+  }
+  return picks.reverse();
+}
 
 // -- Full Data (leaguewide L10/YTD, all stats), cached per league ------------
 const EMPTY_FULLDATA = { players: [], teams: {}, teamsDetail: {}, statCodes: [], note: "", generated_at: null };
@@ -969,7 +1105,15 @@ function objectiveColumns() {
 function buildHeader() {
   const thead = document.getElementById("table-head");
   const objCols = objectiveColumns();
+  const histOn = historicRPAvailable();
   let row = `<tr><th data-key="base:name">Player</th><th data-key="base:team">Team</th><th data-key="base:opp">Opp</th><th data-key="base:ovrRank">Ovr Rank</th>`;
+  if (histOn) {
+    row += `<th class="ns">Owned</th>`;
+    row += `<th data-key="hist:effectiveRP">RP Cost</th>`;
+    row += `<th data-key="hist:genProj">Gen. Proj</th>`;
+    row += `<th data-key="hist:value">Value</th>`;
+    row += `<th class="ns" style="width:70px">Lineup</th>`;
+  }
   objCols.forEach((oc, i) => {
     const groupStart = ' class="obj-group-start"';
     row += `<th data-key="obj:${oc.index}:proj"${i === 0 ? groupStart : ""}>${oc.label} Proj</th>`;
@@ -993,6 +1137,9 @@ function sortValue(p, key) {
   if (key.startsWith("base:")) {
     return p[key.slice(5)];
   }
+  if (key.startsWith("hist:")) {
+    return p[key.slice(5)];
+  }
   const [, idxStr, field] = key.split(":");
   const obj = dashboard.objectives[Number(idxStr)];
   return obj && p.objectives[obj.stat] ? p.objectives[obj.stat][field] : null;
@@ -1008,7 +1155,13 @@ function isDtd(p) {
 // Out players always sink to the bottom whatever the sort column -- they are
 // shown for completeness, never as a lineup option.
 function getSorted() {
-  const players = [...(dashboard.players || [])];
+  let players = [...(dashboard.players || [])];
+  if (historicRPAvailable()) {
+    applyHistoricOwnership(players);
+    players.forEach((p) => { p.score = p.genProj != null ? p.genProj : null; });
+    if (historicOwnFilter === "owned") players = players.filter((p) => p.tier !== "none");
+    else if (historicOwnFilter === "unowned") players = players.filter((p) => p.tier === "none");
+  }
   players.sort((a, b) => {
     const ao = isOut(a), bo = isOut(b);
     if (ao !== bo) return ao ? 1 : -1;
@@ -1041,6 +1194,7 @@ function render() {
   const tbody = document.getElementById("players-body");
   tbody.innerHTML = "";
   const objCols = objectiveColumns();
+  const histOn = historicRPAvailable();
   const sorted = getSorted();
 
   sorted.forEach((p) => {
@@ -1054,6 +1208,18 @@ function render() {
     const rankCell = out ? `<span class="rank-out" title="Listed Out on the injury report -- not ranked">OUT</span>` : `<strong>${p.ovrRank ?? "--"}</strong>`;
     const risk = dtd ? " tier-risk" : "";
     let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td>${rankCell}</td>`;
+    if (histOn) {
+      const tierOpts = Object.keys(HISTORIC_TIERS)
+        .map((t) => `<option value="${t}"${p.tier === t ? " selected" : ""}>${HISTORIC_TIER_LABELS[t]}</option>`)
+        .join("");
+      const inLineup = historicLineup.has(histNorm(p.name));
+      const rpText = p.baseRP == null ? "--" : `${p.effectiveRP}${p.discountPct ? ` <span style="color:var(--text-3);font-size:0.68rem">(was ${p.baseRP})</span>` : ""}`;
+      html += `<td><select class="hist-tier-select" data-htier="${histNorm(p.name)}">${tierOpts}</select></td>`;
+      html += `<td>${rpText}</td>`;
+      html += `<td>${p.genProj != null ? p.genProj.toFixed(1) : "--"}</td>`;
+      html += `<td>${p.value != null ? p.value.toFixed(2) : "--"}</td>`;
+      html += `<td><button class="hlb-chip" data-hadd="${histNorm(p.name)}">${inLineup ? "✓ Added" : "+ Add"}</button></td>`;
+    }
     objCols.forEach((oc, i) => {
       const ov = p.objectives[oc.stat] || {};
       const groupStart = i === 0 ? " obj-group-start" : "";
@@ -1065,6 +1231,26 @@ function render() {
     row.innerHTML = html;
     tbody.appendChild(row);
   });
+
+  if (histOn) {
+    document.querySelectorAll("[data-htier]").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        historicOwnership[sel.dataset.htier] = sel.value;
+        saveHistoricOwnership(historicOwnership);
+        render();
+      });
+    });
+    document.querySelectorAll("[data-hadd]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.hadd;
+        if (historicLineup.has(key)) historicLineup.delete(key);
+        else historicLineup.add(key);
+        saveHistoricLineup();
+        render();
+      });
+    });
+  }
+  renderHistoricExtras(histOn);
 
   document.querySelectorAll("#table-head th").forEach((th) => {
     th.classList.remove("sorted-asc", "sorted-desc");
@@ -1079,6 +1265,78 @@ function render() {
     })
     .join(" + ");
   document.getElementById("dashboard-note").textContent = (objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
+}
+
+// Owned-status filter chips + the budget/lineup bar -- separate from the
+// main table render since they sit above/below it, but recomputed every
+// render() call so they always reflect the current ownership + lineup state.
+function renderHistoricExtras(histOn) {
+  const filterEl = document.getElementById("historic-owned-filter");
+  const barEl = document.getElementById("historic-lineup-bar");
+  if (!histOn) {
+    filterEl.classList.remove("on");
+    barEl.classList.remove("on");
+    filterEl.innerHTML = "";
+    barEl.innerHTML = "";
+    return;
+  }
+  filterEl.classList.add("on");
+  filterEl.innerHTML = ["all", "owned", "unowned"]
+    .map((f) => {
+      const label = f === "all" ? "All players" : f === "owned" ? "Owned only" : "Not owned";
+      return `<button class="${historicOwnFilter === f ? "active" : ""}" data-hfilter="${f}">${label}</button>`;
+    })
+    .join("");
+  filterEl.querySelectorAll("[data-hfilter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      historicOwnFilter = btn.dataset.hfilter;
+      render();
+    });
+  });
+
+  const allPlayers = [...(dashboard.players || [])];
+  applyHistoricOwnership(allPlayers);
+  allPlayers.forEach((p) => { p.score = p.genProj != null ? p.genProj : null; });
+  const picked = allPlayers.filter((p) => historicLineup.has(histNorm(p.name)));
+  const usedRP = picked.reduce((s, p) => s + (p.effectiveRP || 0), 0);
+  const totalProj = picked.reduce((s, p) => s + (p.genProj || 0), 0);
+  const overCap = usedRP > HISTORIC_CAP;
+  barEl.classList.add("on");
+  const chips = picked
+    .map((p) => `<span class="hlb-chip" data-hadd="${histNorm(p.name)}" title="Remove">${p.name} ✕</span>`)
+    .join("");
+  barEl.innerHTML =
+    `<strong>${picked.length}/${HISTORIC_LINEUP_SIZE} picked</strong>` +
+    `<span class="hlb-budget${overCap ? " over" : ""}">${usedRP} / ${HISTORIC_CAP} RP${overCap ? " -- over budget" : ""}</span>` +
+    (picked.length ? `<span class="hlb-budget">Projected: ${totalProj.toFixed(1)}</span>` : "") +
+    `<div class="hlb-chips">${chips}</div>` +
+    `<button class="hlb-btn" id="hist-auto-btn">Auto-build best 5</button>` +
+    (picked.length ? `<button class="hlb-btn secondary" id="hist-clear-btn">Clear</button>` : "");
+  barEl.querySelectorAll("[data-hadd]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      historicLineup.delete(chip.dataset.hadd);
+      saveHistoricLineup();
+      render();
+    });
+  });
+  const autoBtn = document.getElementById("hist-auto-btn");
+  if (autoBtn) {
+    autoBtn.addEventListener("click", () => {
+      const eligible = allPlayers.filter((p) => p.effectiveRP != null && p.score != null && !isOut(p));
+      const best = optimizeHistoricLineup(eligible, HISTORIC_CAP, HISTORIC_LINEUP_SIZE);
+      historicLineup = new Set(best.map((p) => histNorm(p.name)));
+      saveHistoricLineup();
+      render();
+    });
+  }
+  const clearBtn = document.getElementById("hist-clear-btn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      historicLineup = new Set();
+      saveHistoricLineup();
+      render();
+    });
+  }
 }
 
 // -- CSV export -----------------------------------------------------------------
@@ -1682,7 +1940,10 @@ async function loadHistoricStatus() {
       return `<tr${isCurrent ? ' style="color:var(--gold);"' : ""}><td>Day ${s.day}${isCurrent ? " (current)" : ""}</td><td>${s.date || o?.date || "--"}</td><td>${s.games}</td><td>${objText}</td><td>${simulated.has(s.day) ? "yes" : "--"}</td></tr>`;
     });
     tbody.innerHTML = rows.length ? rows.join("") : `<tr><td colspan="5">No Historic schedule seeded yet.</td></tr>`;
-    statusEl.textContent = `Current day ${data.currentDay} · ${data.activePlayers} active of ${data.playersLoaded} players · ${data.scheduleDays} schedule days · ${data.objectivesDays} objective days · ${simulated.size} day(s) simulated. ${HISTORIC_ENABLED ? "Public Historic tab is ON." : "Public Historic tab is OFF (HISTORIC_ENABLED in index.html)."}`;
+    const rpText = data.rpPlayersLoaded
+      ? ` · RP prices: ${data.rpPlayersLoaded} loaded, ${data.rpMatchedToActive}/${data.activePlayers} active players matched`
+      : " · RP prices: none uploaded yet";
+    statusEl.textContent = `Current day ${data.currentDay} · ${data.activePlayers} active of ${data.playersLoaded} players · ${data.scheduleDays} schedule days · ${data.objectivesDays} objective days · ${simulated.size} day(s) simulated${rpText}. ${HISTORIC_ENABLED ? "Public Historic tab is ON." : "Public Historic tab is OFF (HISTORIC_ENABLED in index.html)."}`;
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Failed to load Historic status: ${err.message}</td></tr>`;
     statusEl.textContent = "";
@@ -1785,6 +2046,24 @@ document.getElementById("hist-advance-btn").addEventListener("click", async () =
     loadHistoricStatus();
   } catch (err) {
     setStatus("hist-advance-status", `Failed: ${err.message}`, false);
+  }
+});
+
+document.getElementById("hist-rp-btn").addEventListener("click", async () => {
+  const rpText = document.getElementById("hist-rp-text").value;
+  if (!rpText.trim()) {
+    setStatus("hist-rp-status", "Paste the roster-builder text first.", false);
+    return;
+  }
+  setStatus("hist-rp-status", "Uploading...");
+  try {
+    const res = await fetch(HISTORIC_RP_URL, { method: "POST", headers: adminHeaders(), body: JSON.stringify({ rpText }) });
+    const data = await res.json();
+    if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus("hist-rp-status", `Loaded ${data.rpPlayersLoaded} priced players.`, true);
+    loadHistoricStatus();
+  } catch (err) {
+    setStatus("hist-rp-status", `Failed: ${err.message}`, false);
   }
 });
 
