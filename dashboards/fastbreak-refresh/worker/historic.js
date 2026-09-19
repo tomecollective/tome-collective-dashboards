@@ -99,6 +99,27 @@ function normName(s) {
 // whoever copied it, which isn't meaningful shared data. Not anchored to
 // line-start since a leading bullet or "#rank" marker, and numbers run together
 // with no separator (e.g. "104 Roster Points104 RP"), are both normal in this text.
+// The live roster-builder screen doesn't reliably put the player's name on
+// the very next line after "X Roster Points" -- sometimes a leftover number,
+// the "N RP" suffix, or a discount fragment lands there instead, depending on
+// how the page's DOM happens to serialize on copy. So instead of assuming a
+// fixed position, scan forward a few lines and skip anything that isn't
+// plausibly a name (numbers, stat lines, "Avg", button labels like
+// "Select"/"Upgrade"/"Collect", rank markers).
+function looksLikeHistoricPlayerName(line) {
+  if (!line) return false;
+  if (/^\*/.test(line)) return false;
+  if (/^#?-?\d/.test(line)) return false;
+  if (/^[\d.]+\s*(PTS|REB|AST|STL|BLK|TO|3PM|DD|TD)$/i.test(line)) return false;
+  if (/^[\d.]+\s*Avg$/i.test(line)) return false;
+  if (/^\d+\s*RP$/i.test(line)) return false;
+  if (/^[-\u2212]?\d+%$/.test(line)) return false;
+  if (/^(Select|Collect|CollectSelect|Upgrade|UpgradeSelect|Lineup full|Empty|Autofill|Clear|Filters|More|HISTORIC)$/i.test(line)) return false;
+  if (/^Pick a Moment/i.test(line)) return false;
+  if (/^Make your picks/i.test(line)) return false;
+  return /[A-Za-z]/.test(line);
+}
+
 function parseHistoricRPText(text) {
   const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const out = [];
@@ -108,8 +129,12 @@ function parseHistoricRPText(text) {
     const mPlain = !mDisc && line.match(/(\d+)\s+Roster Points/i);
     if (!mDisc && !mPlain) continue;
     const baseRP = mDisc ? parseInt(mDisc[2], 10) : parseInt(mPlain[1], 10);
-    const name = (lines[i + 1] || "").trim();
-    if (!name || Number.isNaN(baseRP)) continue;
+    if (Number.isNaN(baseRP)) continue;
+    let name = null;
+    for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+      if (looksLikeHistoricPlayerName(lines[j])) { name = lines[j]; break; }
+    }
+    if (!name) continue;
     out.push({ name, baseRP });
   }
   return out;
