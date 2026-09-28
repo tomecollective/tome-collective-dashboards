@@ -1,0 +1,34 @@
+name = "tome-lines"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# KV for logged picks, closing lines, and cached ratings
+[[kv_namespaces]]
+binding = "LINES_KV"
+id = "REPLACE_WITH_NAMESPACE_ID"   # npx wrangler kv namespace create LINES_KV
+
+# Secrets (set with: npx wrangler secret put NAME)
+#   BALLDONTLIE_API_KEY   same GOAT-tier key the Fast Break refresh worker uses
+#   TOME_ADMIN_TOKEN      reuse the Fast Break admin token, or mint a new one
+
+# Nightly market cache (06:10 UTC, after the last West Coast final) — six page fetches a day.
+[triggers]
+crons = ["10 6 * * *"]
+
+[vars]
+# Tunables. Change here, redeploy. See README for what each does.
+WNBA_HCA = "2.5"
+NBA_HCA = "2.5"
+NFL_HCA = "1.5"
+WNBA_HALF_LIFE = "10"
+NBA_HALF_LIFE = "12"
+NFL_HALF_LIFE = "4"
+WNBA_SIDE_EDGE = "2.5"
+WNBA_TOTAL_EDGE = "4"
+NBA_SIDE_EDGE = "2.5"
+NBA_TOTAL_EDGE = "4"
+NFL_SIDE_EDGE = "1.5"
+NFL_TOTAL_EDGE = "3"
+PLAYOFF_GAME_WEIGHT = "1.5"
+PLAYOFF_TOTAL_ADJ_WNBA = "-3"
+PLAYOFF_TOTAL_ADJ_NBA = "-4"
