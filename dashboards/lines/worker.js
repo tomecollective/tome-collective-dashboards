@@ -76,9 +76,13 @@ async function bdl(env, league, path, params = {}) {
 function abbr(team) { return team?.abbreviation || team?.abbr || String(team?.id); }
 // BALLDONTLIE stamps games in UTC; a night game in the US lands on the next UTC day. Use the Eastern date when a time is present.
 function gameDate(g) { const s = String(g.datetime || g.date || ""); return s.includes("T") ? etDate(s) : s.slice(0, 10); }
+// Score fields differ by league on BALLDONTLIE: NBA/NFL use home_team_score/visitor_team_score, WNBA uses home_score/away_score.
+function hScore(g) { return g.home_team_score ?? g.home_score ?? null; }
+function vScore(g) { return g.visitor_team_score ?? g.away_score ?? null; }
 function isFinal(g) {
-  const s = String(g.status || "").toLowerCase();
-  return s === "final" || s.startsWith("final") || (g.home_team_score > 0 && g.visitor_team_score > 0 && (g.period ?? 0) >= 4 && !s.includes("q") && !s.includes("half"));
+  const s = String(g.status_state || g.status || "").toLowerCase();
+  if (s === "post" || s === "final" || s.startsWith("final")) return true;
+  return hScore(g) > 0 && vScore(g) > 0 && (g.period ?? 0) >= 4 && !s.includes("q") && !s.includes("half") && !s.includes("in");
 }
 function isPostseason(g) { return !!(g.postseason || g.playoffs || /post|playoff/i.test(String(g.season_type || ""))); }
 function isExhibition(g, league) {
@@ -87,11 +91,21 @@ function isExhibition(g, league) {
   return /all-star|team usa|team wnba|team collier|team clark|team stewart|team wilson|select/.test(n);
 }
 
+// Season start (month) per league; the NBA season is named for the year it starts in.
+const SEASON_START = { wnba: "05-01", nba: "10-01", nfl: "08-25" };
+// Finals from season start through asofDate. Date-range only (no seasons[] filter: BALLDONTLIE's WNBA
+// endpoint returns nothing when both are combined). Cached in KV for 10 minutes so a burst of calls
+// doesn't trip the BALLDONTLIE rate limit.
 async function fetchSeasonGames(env, league, asofDate) {
+  const key = `games:${league}:${asofDate}`;
+  const cached = await env.LINES_KV.get(key, "json");
+  if (cached) return cached;
   const d = new Date(asofDate + "T00:00:00Z");
   const season = LEAGUE[league].season(d);
-  const games = await bdl(env, league, "games", { seasons: [season], start_date: `${season}-01-01`, end_date: asofDate });
-  return games.filter((g) => isFinal(g) && !isExhibition(g, league) && gameDate(g) <= asofDate);
+  const games = await bdl(env, league, "games", { start_date: `${season}-${SEASON_START[league]}`, end_date: asofDate });
+  const finals = games.filter((g) => isFinal(g) && !isExhibition(g, league) && gameDate(g) <= asofDate);
+  if (finals.length) await env.LINES_KV.put(key, JSON.stringify(finals), { expirationTtl: 600 });
+  return finals;
 }
 
 // ---------- MARKET (sportsbookreview public odds pages) ----------
@@ -188,7 +202,7 @@ function buildRatings(games, league, c, asofDate) {
     let w = Math.pow(0.5, days / (c.halfLife * (league === "nfl" ? 7 : 1)));
     if (isPostseason(g)) w *= c.playoffWeight;
     const h = abbr(g.home_team), v = abbr(g.visitor_team);
-    const hs = g.home_team_score, vs = g.visitor_team_score;
+    const hs = hScore(g), vs = vScore(g);
     // home margin with home court removed
     const m = hs - vs - c.hca;
     t(h).games.push({ opp: v, margin: m, w, date: gameDate(g) });
@@ -421,8 +435,13 @@ async function handleRecord(url, env) {
   } while (cursor);
   const picks = (await Promise.all(keys.map((k) => env.LINES_KV.get(k, "json")))).filter(Boolean);
   const ids = picks.map((p) => p.game_id);
-  const games = ids.length ? await bdl(env, league, "games", { ids }) : [];
-  const byId = Object.fromEntries(games.map((g) => [String(g.id), g]));
+  // Finals are cached forever; anything not final is re-fetched (in one call) each time.
+  const cachedFinals = (await Promise.all(ids.map((id) => env.LINES_KV.get(`final:${league}:${id}`, "json")))).filter(Boolean);
+  const have = new Set(cachedFinals.map((g) => String(g.id)));
+  const need = ids.filter((id) => !have.has(String(id)));
+  const fresh = need.length ? await bdl(env, league, "games", { ids: need }) : [];
+  for (const g of fresh) if (isFinal(g)) await env.LINES_KV.put(`final:${league}:${g.id}`, JSON.stringify(g));
+  const byId = Object.fromEntries([...cachedFinals, ...fresh].map((g) => [String(g.id), g]));
   const rows = [], tally = { side: { w: 0, l: 0, p: 0 }, total: { w: 0, l: 0, p: 0 }, clv_side: [], clv_total: [], model: { w: 0, l: 0 }, override: { w: 0, l: 0 }, by_tier: {} };
   const tierTally = (market, t, res) => { if (!t || res === "P") return; const k = `${market}:${t}`; tally.by_tier[k] ||= { w: 0, l: 0 }; tally.by_tier[k][res.toLowerCase()]++; };
   tally.by_access = { free: { w: 0, l: 0 }, intel: { w: 0, l: 0 } };
@@ -435,9 +454,9 @@ async function handleRecord(url, env) {
       const m = mk?.games?.find((x) => x.home_nick === nick(g.home_team?.full_name || g.home_team?.name) && x.away_nick === nick(g.visitor_team?.full_name || g.visitor_team?.name));
       if (m) { p.spread_home_close ??= m.spread_home.close; p.total_close ??= m.total.close; }
     }
-    const row = { game_id: p.game_id, date: gameDate(g), matchup: `${abbr(g.visitor_team)} @ ${abbr(g.home_team)}`, ...p, final: isFinal(g) ? `${g.visitor_team_score}-${g.home_team_score}` : null };
+    const row = { game_id: p.game_id, date: gameDate(g), matchup: `${abbr(g.visitor_team)} @ ${abbr(g.home_team)}`, ...p, final: isFinal(g) ? `${vScore(g)}-${hScore(g)}` : null };
     if (isFinal(g)) {
-      const homeMargin = g.home_team_score - g.visitor_team_score;
+      const homeMargin = hScore(g) - vScore(g);
       if (p.side && p.spread_home_at_pick != null) {
         const homeCover = homeMargin + p.spread_home_at_pick; // >0 home covers
         const pickedHome = p.side === "HOME";
@@ -451,7 +470,7 @@ async function handleRecord(url, env) {
         }
       }
       if (p.total_side && p.total_at_pick != null) {
-        const pts = g.home_team_score + g.visitor_team_score;
+        const pts = hScore(g) + vScore(g);
         const res = pts === p.total_at_pick ? "P" : (((pts > p.total_at_pick) === (p.total_side === "OVER")) ? "W" : "L");
         row.total_result = res; tally.total[res.toLowerCase()]++; tierTally("total", p.total_tier, res); accessTally(p, res);
         if (p.total_close != null) {
