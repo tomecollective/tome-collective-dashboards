@@ -5,7 +5,7 @@ compatibility_date = "2026-09-01"
 # KV for logged picks, closing lines, and cached ratings
 [[kv_namespaces]]
 binding = "LINES_KV"
-id = "REPLACE_WITH_NAMESPACE_ID"   # npx wrangler kv namespace create LINES_KV
+id = "bc0817505d8d4909be4742d131b202de"
 
 # Secrets (set with: npx wrangler secret put NAME)
 #   BALLDONTLIE_API_KEY   same GOAT-tier key the Fast Break refresh worker uses

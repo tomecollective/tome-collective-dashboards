@@ -74,7 +74,8 @@ async function bdl(env, league, path, params = {}) {
   return out;
 }
 function abbr(team) { return team?.abbreviation || team?.abbr || String(team?.id); }
-function gameDate(g) { return (g.date || g.datetime || "").slice(0, 10); }
+// BALLDONTLIE stamps games in UTC; a night game in the US lands on the next UTC day. Use the Eastern date when a time is present.
+function gameDate(g) { const s = String(g.datetime || g.date || ""); return s.includes("T") ? etDate(s) : s.slice(0, 10); }
 function isFinal(g) {
   const s = String(g.status || "").toLowerCase();
   return s === "final" || s.startsWith("final") || (g.home_team_score > 0 && g.visitor_team_score > 0 && (g.period ?? 0) >= 4 && !s.includes("q") && !s.includes("half"));
@@ -319,10 +320,12 @@ async function handleProjection(url, env) {
   try { lines = JSON.parse(url.searchParams.get("lines") || "[]"); } catch { return json({ error: "lines must be JSON" }, 400); }
   const byId = Object.fromEntries(lines.map((l) => [String(l.game_id), l]));
   const yesterday = new Date(new Date(date + "T00:00:00Z").getTime() - 864e5).toISOString().slice(0, 10);
-  const [hist, slate] = await Promise.all([
+  const tomorrow = new Date(new Date(date + "T00:00:00Z").getTime() + 864e5).toISOString().slice(0, 10);
+  const [hist, slateRaw] = await Promise.all([
     fetchSeasonGames(env, league, yesterday),
-    bdl(env, league, "games", { dates: [date] }),
+    bdl(env, league, "games", { dates: [date, tomorrow] }), // UTC-stamped night games spill into the next day
   ]);
+  const slate = slateRaw.filter((g) => gameDate(g) === date);
   const ratings = buildRatings(hist, league, c, date);
   // Market rows from sportsbookreview (best effort; the lines param still wins when given)
   let mkt = null, tr = {};
