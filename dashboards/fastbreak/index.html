@@ -615,7 +615,14 @@ const STAT_CODES = ["PTS", "REB", "AST", "STL", "BLK", "TOV", "FGM", "FGA", "3PM
 // startup; these are the fallback if that call fails, and must match the
 // LEAGUES table in the refresh Worker.
 let RUNS = {
-  WNBA: { runLabel: "Playoffs", runStart: "2026-09-27", runEnd: "2026-10-14" },
+  WNBA: {
+    runLabel: "Playoffs",
+    runStart: "2026-09-27",
+    runEnd: "2026-10-14",
+    // Only these dates have games -- Day N is this list's index, not a
+    // calendar offset, so the 8 off days between rounds don't get a tab.
+    runDates: ["2026-09-27", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-04", "2026-10-07", "2026-10-09", "2026-10-11", "2026-10-14"],
+  },
   NBA: { runLabel: "Run 1", runStart: "2026-10-20", runEnd: "2026-10-26" },
 };
 
@@ -888,6 +895,9 @@ function earliestSelectableRunDate(league) {
   }
   if (earliest < run.runStart) earliest = run.runStart;
   if (earliest > run.runEnd) earliest = run.runEnd;
+  if (run.runDates && run.runDates.length && !run.runDates.includes(earliest)) {
+    earliest = run.runDates.find((ds) => ds >= earliest) || run.runDates[run.runDates.length - 1];
+  }
   return earliest;
 }
 
@@ -898,8 +908,20 @@ function initRunDays() {
   selectedDate = earliest;
   const container = document.getElementById("run-days");
   container.innerHTML = "";
-  let dayNum = 1;
-  for (let d = new Date(`${run.runStart}T00:00:00Z`); ymd(d) <= run.runEnd; d.setUTCDate(d.getUTCDate() + 1), dayNum++) {
+  // Only real game dates get a tab (and Day N is its slot in that list, not
+  // a calendar offset) when the run supplies an explicit date list; leagues
+  // without one (e.g. a regular-season run where every day has games) fall
+  // back to iterating the calendar range.
+  const dayDates = run.runDates && run.runDates.length
+    ? run.runDates.map((ds) => new Date(`${ds}T00:00:00Z`))
+    : (() => {
+        const out = [];
+        for (let d = new Date(`${run.runStart}T00:00:00Z`); ymd(d) <= run.runEnd; d.setUTCDate(d.getUTCDate() + 1)) out.push(new Date(d));
+        return out;
+      })();
+  let dayNum = 0;
+  for (const d of dayDates) {
+    dayNum++;
     const dateStr = ymd(d);
     if (dateStr < earliest) continue;
     const btn = document.createElement("button");
@@ -1730,6 +1752,10 @@ document.getElementById("hist-has-second").addEventListener("change", (e) => {
 // -- Admin: view schedule (selected league) ------------------------------------
 function dayNumberFor(league, date) {
   const run = runFor(league);
+  if (run.runDates && run.runDates.length) {
+    const idx = run.runDates.indexOf(date);
+    return idx >= 0 ? `Day ${idx + 1}` : "--";
+  }
   const n = Math.round((new Date(`${date}T00:00:00Z`) - new Date(`${run.runStart}T00:00:00Z`)) / 86400000) + 1;
   return date >= run.runStart && date <= run.runEnd ? `Day ${n}` : "--";
 }
