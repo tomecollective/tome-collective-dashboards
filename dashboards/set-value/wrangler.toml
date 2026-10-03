@@ -1,0 +1,22 @@
+name = "tome-set-value"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[[kv_namespaces]]
+binding = "SET_VALUE_KV"
+id = "f1bcbe15c77b4d9da98573cb0fb9d1d6"
+
+[[services]]
+binding = "AUTH"
+service = "tome-proxy"
+environment = "production"
+
+[triggers]
+crons = [
+  "0 14 * * 2",
+  "0 14 * * 4",
+  "0 14 * * 6",
+]
+
+[observability.logs]
+enabled = true
