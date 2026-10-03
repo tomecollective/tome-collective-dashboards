@@ -53,7 +53,7 @@
   }
   function sortBy(i){ if(state.col===i) state.dir=-state.dir; else { state.col=i; state.dir=(i<=3)?1:-1; } apply(); }
   function apply(){
-    var rows=R.slice().sort(function(a,b){ var x=a[state.col], y=b[state.col]; var nx=parseFloat(x), ny=parseFloat(y); if(!isNaN(nx)&&!isNaN(ny)) return (nx-ny)*state.dir; return String(x).localeCompare(String(y))*state.dir; });
+    var rows=R.slice().sort(function(a,b){ var x=a[state.col], y=b[state.col]; var nx=parseFloat(x), ny=parseFloat(y); var xn=(x===null||x===undefined||x===''||isNaN(nx))&&state.col>3, yn=(y===null||y===undefined||y===''||isNaN(ny))&&state.col>3; if(xn&&yn) return 0; if(xn) return 1; if(yn) return -1; if(!isNaN(nx)&&!isNaN(ny)) return (nx-ny)*state.dir; return String(x).localeCompare(String(y))*state.dir; });
     render(rows);
   }
   apply();
