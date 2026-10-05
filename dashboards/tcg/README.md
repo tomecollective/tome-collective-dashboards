@@ -87,6 +87,14 @@ necessary given the API's retention capability.
    answers 401 unless the request carries `X-Admin-Token: <that value>`; the cron and the
    worker's own batch chain (`?resume=1`, authenticated by a per-run nonce) don't need it.
    Manual kick: `curl -X POST -H "X-Admin-Token: ..." https://tome-tcg.tomecollective.workers.dev/api/refresh`
+   -- that starts the batch chain (~7 min). The chain never publishes itself (see below); once
+   `/api/refresh-status` is quiet and the KV key `refresh:progress` shows `readyToPublish`, publish with
+   `curl -X POST -H "X-Admin-Token: ..." "https://tome-tcg.tomecollective.workers.dev/api/refresh?resume=1"`.
+10. **Two crons, not one.** `0 13 * * *` refreshes prices across a chain of ~30 self-invocations;
+   `20 13 * * *` publishes the finished run from a fresh invocation. Publishing at the tail of the
+   chain failed every day from 2026-10-02 to 10-05 with `KV PUT failed: 500` (every KV write in that
+   final invocation failed, tiny or large) while the same publish from a fresh invocation worked
+   first try. If you change the second cron string, change `PUBLISH_CRON` in `worker/index.js` too.
    Local check: `node dashboards/tcg/worker/_local_test.mjs`
 
 ## Future: usage analytics

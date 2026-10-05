@@ -90,6 +90,10 @@ const BATCH_SIZE = 12;
 // and the publish gate at the end of processBatch().
 const MAX_FAILURE_RATE_TO_PUBLISH = 0.5;
 
+// Second cron entry in wrangler.toml: the publish step runs here, in a
+// fresh invocation, instead of at the tail of the refresh chain. Must match
+// wrangler.toml exactly (Cloudflare passes the matching string in event.cron).
+const PUBLISH_CRON = "20 13 * * *";
 const KEY_LAST_STATUS = "refresh:last_status"; // small always-written diagnostic record, see processBatch()
 
 function resolveKey(name, setName) {
@@ -543,7 +547,7 @@ async function checkChainNonce(request, env) {
 // to the next batch (fire-and-forget, via ctx.waitUntil so it doesn't block
 // this invocation's response) or, once every card has been visited,
 // recomputes the index and publishes the final payload to KV.
-async function processBatch(env, origin, resume, ctx) {
+async function processBatch(env, origin, resume, ctx, opts = {}) {
   let progress = resume ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
   if (!progress) progress = await freshProgress(env);
 
@@ -573,9 +577,24 @@ async function processBatch(env, origin, resume, ctx) {
     if (!progress.chainNonce) progress.chainNonce = crypto.randomUUID(); // progress written before this field existed
     await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
     ctx.waitUntil(
-      env.SELF.fetch(`${origin}/api/refresh?resume=1`, { method: "POST", headers: { "X-Refresh-Chain": progress.chainNonce } })
+      env.SELF.fetch(`${origin}/api/refresh?resume=1&chain=1`, { method: "POST", headers: { "X-Refresh-Chain": progress.chainNonce } })
     );
     return { done: false, progress: `${progress.offset}/${total}`, message: "batch complete, next batch chaining automatically" };
+  }
+
+  // Every card is refreshed. Publishing from HERE -- the invocation at the
+  // tail of a ~30-deep chain of SELF.fetch() calls -- is what broke from
+  // 2026-10-02 to 10-05: every KV write in that final invocation returned
+  // "KV PUT failed: 500", large or tiny, while an identical publish from a
+  // fresh invocation (manual ?resume=1 from the CLI) succeeded first try.
+  // So the chain never publishes. It records the run as ready and stops;
+  // the publish happens in a brand-new invocation: the second cron entry
+  // (PUBLISH_CRON in wrangler.toml, 20 min after the refresh cron) or a
+  // manual POST /api/refresh?resume=1 with the admin token.
+  if (opts.fromChain) {
+    progress.readyToPublish = true;
+    await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
+    return { done: false, progress: `${total}/${total}`, readyToPublish: true, message: "all cards refreshed; publish deferred to the next fresh invocation (publish cron or manual ?resume=1)" };
   }
 
   recomputeIndex(progress.sets, progress.today);
@@ -706,7 +725,8 @@ export default {
       // the worker calls on itself between batches); no resume param means
       // "start a fresh run from card 0", which is what you want the first
       // time you POST here by hand (with the X-Admin-Token header).
-      const result = await processBatch(env, url.origin, resume, ctx);
+      const fromChain = url.searchParams.get("chain") === "1";
+      const result = await processBatch(env, url.origin, resume, ctx, { fromChain });
       return new Response(JSON.stringify(result), { headers: corsHeaders });
     }
 
@@ -714,17 +734,24 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    // Cron runs every 30 minutes. If an earlier run today got cut off
-    // partway through (Cloudflare's per-invocation limits, a transient
-    // error, etc.), the next tick picks up where it stopped instead of
-    // restarting from card 0, so the run still reaches completion within
-    // the same day instead of endlessly resetting itself. (Merged in from
-    // a live-only edit made directly in the Cloudflare dashboard that had
-    // drifted out of sync with this repo -- see KEY_PROGRESS above.)
+    // Two crons (wrangler.toml): 13:00 UTC refreshes prices across a chain
+    // of batches; PUBLISH_CRON (13:20 UTC) publishes the finished run from a
+    // fresh invocation. If a run got cut off, the next tick resumes it.
     const today = new Date().toISOString().slice(0, 10);
     const existing = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
-    const resume = !!(existing && existing.today === today);
-    ctx.waitUntil(processBatch(env, SELF_URL, resume, ctx));
+    const isToday = !!(existing && existing.today === today);
+    if (event.cron === PUBLISH_CRON) {
+      // Fresh invocation (not a chain tail): publish today's finished run.
+      // If the run isn't finished (a batch died), this resumes it instead;
+      // the chain marks it ready and the manual path picks it up. Nothing
+      // to do if there's no run from today.
+      if (!isToday) return;
+      ctx.waitUntil(processBatch(env, SELF_URL, true, ctx, { fromChain: false }));
+      return;
+    }
+    // Refresh cron: start (or continue) today's run. The first slice runs in
+    // this invocation; subsequent slices chain via SELF with chain=1.
+    ctx.waitUntil(processBatch(env, SELF_URL, isToday, ctx, { fromChain: true }));
   },
 };
 

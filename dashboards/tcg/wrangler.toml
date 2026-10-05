@@ -31,7 +31,11 @@ id = "91fb21abc1084fe1ae7f723cec1b4e61"
 [observability.logs]
 enabled = true
 [triggers]
-crons = ["0 13 * * *"]
+# 13:00 UTC: refresh prices (chained batches). 13:20 UTC: publish the finished
+# run from a fresh invocation -- publishing at the tail of the refresh chain
+# failed with "KV PUT failed: 500" every day 2026-10-02..05. The second string
+# must match PUBLISH_CRON in worker/index.js exactly.
+crons = ["0 13 * * *", "20 13 * * *"]
 
 # Secrets (never committed):
 #   wrangler secret put JUSTTCG_API_KEY
