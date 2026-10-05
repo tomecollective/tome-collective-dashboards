@@ -96,6 +96,28 @@ function resolveKey(name, setName) {
   return `${RESOLVE_PREFIX}${name}|${setName}`;
 }
 
+// KV writes occasionally fail on Cloudflare's side ("KV PUT failed: 500").
+// From 2026-10-02 to 10-04 the final publish write did exactly that three
+// days running, after all 345 cards had refreshed cleanly -- and because the
+// throw happened before refresh:last_status was written, /api/refresh-status
+// kept reporting the Oct 1 success. Retry transient failures with backoff,
+// and let the caller record the failure visibly if every attempt fails.
+const KV_PUT_RETRIES = 4;
+
+async function kvPutWithRetry(kv, key, value) {
+  let lastErr;
+  for (let attempt = 0; attempt <= KV_PUT_RETRIES; attempt++) {
+    try {
+      await kv.put(key, value);
+      return attempt;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < KV_PUT_RETRIES) await sleep(500 * 2 ** attempt); // 0.5s, 1s, 2s, 4s
+    }
+  }
+  throw lastErr;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -549,7 +571,7 @@ async function processBatch(env, origin, resume, ctx) {
     // with no visible error. Service bindings route worker-to-worker
     // internally and aren't subject to that restriction -- see wrangler.toml.
     if (!progress.chainNonce) progress.chainNonce = crypto.randomUUID(); // progress written before this field existed
-    await env.CHASE_INDEX_KV.put(KEY_PROGRESS, JSON.stringify(progress));
+    await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
     ctx.waitUntil(
       env.SELF.fetch(`${origin}/api/refresh?resume=1`, { method: "POST", headers: { "X-Refresh-Chain": progress.chainNonce } })
     );
@@ -599,10 +621,21 @@ async function processBatch(env, origin, resume, ctx) {
         ? ` ${progress.failures.length} card(s) failed to refresh and kept their last known price: ${progress.failures.slice(0, 5).join("; ")}${progress.failures.length > 5 ? "..." : ""}`
         : ""),
   };
-  await env.CHASE_INDEX_KV.put(CACHE_KEY_LATEST, JSON.stringify(payload));
-  await env.CHASE_INDEX_KV.put(KEY_LAST_STATUS, JSON.stringify({ ...status, published: true }));
+  let publishRetries = 0;
+  try {
+    publishRetries = await kvPutWithRetry(env.CHASE_INDEX_KV, CACHE_KEY_LATEST, JSON.stringify(payload));
+  } catch (err) {
+    // Publishing failed after retries. Record it where the healthcheck and
+    // /api/refresh-status can see it (best effort -- this write may fail
+    // too), leave refresh:progress in place so ?resume=1 can retry just the
+    // publish step, then surface the error.
+    const failure = { ...status, published: false, publishError: String(err && err.message || err), publishAttempts: KV_PUT_RETRIES + 1 };
+    try { await env.CHASE_INDEX_KV.put(KEY_LAST_STATUS, JSON.stringify(failure)); } catch { /* reported via the throw below */ }
+    throw new Error(`publish failed after ${KV_PUT_RETRIES + 1} attempts: ${failure.publishError}`);
+  }
+  await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_LAST_STATUS, JSON.stringify({ ...status, published: true, publishRetries }));
   await env.CHASE_INDEX_KV.delete(KEY_PROGRESS);
-  return { done: true, total, published: true, payload };
+  return { done: true, total, published: true, publishRetries, payload };
 }
 
 export default {
@@ -649,7 +682,11 @@ export default {
 
     if (url.pathname === "/api/refresh" && request.method === "POST") {
       const resume = url.searchParams.get("resume") === "1";
-      const authorized = resume ? await checkChainNonce(request, env) : checkAdminToken(request, env);
+      // The admin token works for both; the per-run chain nonce only for
+      // resume=1 (that's what the worker hands itself between batches). An
+      // operator can therefore POST ?resume=1 with the admin token to retry
+      // just the publish step after a failed run, without re-fetching cards.
+      const authorized = checkAdminToken(request, env) || (resume && (await checkChainNonce(request, env)));
       if (!authorized) {
         return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
       }
