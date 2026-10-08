@@ -327,6 +327,7 @@ header to sort.
 <div class="toggle-group" id="fd-league-toggle">
 <button data-fdleague="WNBA" class="active">WNBA</button>
 <button data-fdleague="NBA">NBA</button>
+<button data-fdleague="HISTORIC">NBA Historic</button>
 </div>
 <div class="toggle-group" id="fd-subtab-toggle">
 <button data-fdtab="players" class="active">Players</button>
@@ -602,6 +603,20 @@ Each key you include replaces that dataset in full; keys you leave out are untou
 <button id="hist-seed-repo-btn">Seed from repo files</button>
 </div>
 <div id="hist-seed-status"></div>
+</div>
+
+<div class="admin-form">
+<h2>Historic Optimizer Data (slate, RP, history)</h2>
+<p style="font-size:0.7rem;color:var(--text-3);line-height:1.45;margin:4px 0 0;">
+Feeds the Historic tab (lineup optimizer) and the Historic section of Full Data. Choose the
+<code>historic-optimizer-data.json</code> file (or paste its contents) and upload -- it replaces the
+previous dataset. Subscribers read it through the gated Worker route; nothing is public in the repo.
+Re-upload after each Historic day with the new box scores and the next slate.
+</p>
+<input type="file" id="hist-opt-file" accept=".json,application/json" style="margin-top:8px;">
+<textarea id="hist-opt-json" rows="6" placeholder='{"version":2,"players":[...],"slates":[...]}' class="admin-textarea"></textarea>
+<button id="hist-opt-btn">Upload optimizer data</button>
+<div id="hist-opt-status"></div>
 </div>
 
 <div class="admin-form">
@@ -1083,10 +1098,13 @@ function syncLeagueToggles() {
 })();
 
 // -- Historic tab (Top Shot Historic Legends) ---------------------------------
-// Data comes from data/historic.json (players: name/team/base RP/site AVG/Historic game
-// scores; slates: teams in action + eligible players per day). Collector discounts are
-// personal, so they live only in this browser (localStorage), never on the server.
-const HISTORIC_DATA_URL = "data/historic.json";
+// Data is the Historic optimizer dataset (players: name/team/base RP/site AVG,
+// per-game Fast Break scores `g` and stat lines `s`; slates: teams in action and
+// eligible players per day). It is served by the refresh Worker behind the
+// subscriber gate (GET /api/fastbreak/historic/optimizer) and loaded once per
+// page, shared by the Historic tab and the Full Data tab. Collector discounts
+// are personal, so they live only in this browser (localStorage).
+const HISTORIC_DATA_URL = WORKER_BASE + "/api/fastbreak/historic/optimizer";
 const HX_PCTS = [0, 5, 10, 15, 20];
 const HX_TIER_NAMES = { 0: "No discount", 5: "Common / Fandom", 10: "Rare", 15: "Legendary", 20: "Ultimate" };
 const HX_LS = "fbHistoricDiscounts";
@@ -1101,30 +1119,53 @@ const hxPct = (p) => (HX_PCTS.includes(hx.disc[p.n]) ? hx.disc[p.n] : 0);
 const hxRP = (p) => Math.ceil((p.rp * (100 - hxPct(p)) - 50) / 100);
 const hxVal = (p) => (hx.rating === "avg" ? p.avg : p.blend);
 const hxSum = (l, f) => l.reduce((a, p) => a + f(p), 0);
+const hxMean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 function hxSaveDisc() { try { localStorage.setItem(HX_LS, JSON.stringify(hx.disc)); } catch (e) {} }
+
+// Adds mean / blend / games to each player once (idempotent). Blend = season AVG
+// (offset-corrected by the average gap between observed scores and the site AVG)
+// shrunk toward the player's observed mean, with AVG weighted like kPrior games.
+function hxPrepare(D) {
+  if (D._prepared) return D;
+  const k = D.kPrior || 8, res = [];
+  D.players.forEach((p) => { p.n_games = p.g.length; p.g.forEach((x) => res.push(x - p.avg)); });
+  D.shift = res.length ? res.reduce((a, b) => a + b, 0) / res.length : 0;
+  D.players.forEach((p) => {
+    p.mean = p.n_games ? hxMean(p.g) : null;
+    const a = p.avg + D.shift;
+    p.blend = p.n_games ? (k * a + p.n_games * p.mean) / (k + p.n_games) : a;
+  });
+  D._prepared = true;
+  return D;
+}
+let hxDataPromise = null;
+function loadHistoricOptData(force) {
+  if (!hxDataPromise || force) {
+    hxDataPromise = (async () => {
+      const res = await apiGet(HISTORIC_DATA_URL);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "HTTP " + res.status);
+      if (!body || !Array.isArray(body.players) || !Array.isArray(body.slates)) throw new Error("unexpected data shape");
+      return hxPrepare(body);
+    })();
+    hxDataPromise.catch(() => { hxDataPromise = null; });
+  }
+  return hxDataPromise;
+}
 
 async function initHistoric() {
   if (!hx.loaded) {
     document.getElementById("hx-meta").textContent = "Loading...";
     try {
-      const res = await fetch(HISTORIC_DATA_URL, { cache: "no-cache", headers: (typeof readHeaders === "function" ? readHeaders() : {}) });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      hx.data = await res.json();
+      hx.data = await loadHistoricOptData();
     } catch (err) {
       document.getElementById("hx-meta").textContent = "Historic data unavailable (" + err.message + ").";
       return;
     }
-    const D = hx.data, k = D.kPrior || 8;
-    hx.players = D.players.map((p) => ({ ...p, n_games: p.g.length }));
-    const res2 = []; hx.players.forEach((p) => p.g.forEach((x) => res2.push(x - p.avg)));
-    hx.shift = res2.length ? res2.reduce((a, b) => a + b, 0) / res2.length : 0;
-    hx.players.forEach((p) => {
-      p.mean = p.n_games ? p.g.reduce((a, b) => a + b, 0) / p.n_games : null;
-      const a = p.avg + hx.shift;
-      p.blend = p.n_games ? (k * a + p.n_games * p.mean) / (k + p.n_games) : a;
-    });
+    hx.players = hx.data.players;
+    hx.shift = hx.data.shift;
     hx.byName = Object.fromEntries(hx.players.map((p) => [p.n, p]));
-    hx.slateIdx = D.slates.length - 1;
+    hx.slateIdx = hx.data.slates.length - 1;
     const sel = document.getElementById("hx-team");
     [...new Set(hx.players.map((p) => p.t).filter(Boolean))].sort().forEach((t) => {
       const o = document.createElement("option"); o.value = o.textContent = t; sel.appendChild(o);
@@ -1250,6 +1291,90 @@ function hxSetDisc(name, pct) { if (pct) hx.disc[name] = pct; else delete hx.dis
   $("hx-team").addEventListener("change", hxRender);
 })();
 
+// -- Full Data tab: NBA Historic section ---------------------------------------
+// Same Players table as the WNBA/NBA sections (L10 / YTD per stat, sortable,
+// searchable, Download CSV), built client-side from the optimizer dataset: L10 is
+// the mean of a player's last 10 Historic games, YTD the mean of all of them.
+const FD_HX_META = [
+  { k: "rp", l: "Base RP" }, { k: "avg", l: "Site AVG" }, { k: "blend", l: "Blend" },
+  { k: "gp", l: "GP" }, { k: "sd", l: "FBP SD" }, { k: "min", l: "FBP Min" }, { k: "max", l: "FBP Max" },
+];
+const hxR1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
+function buildHistoricFullData(D) {
+  const codes = ["FBP", ...(D.statCodes || [])];
+  const players = D.players.map((p) => {
+    const stats = {};
+    const series = { FBP: p.g };
+    (D.statCodes || []).forEach((c, i) => { series[c] = (p.s || []).map((row) => row[i]); });
+    codes.forEach((c) => {
+      const a = series[c] || [];
+      stats[c] = a.length ? { l10: hxR1(hxMean(a.slice(-10))), ytd: hxR1(hxMean(a)) } : { l10: null, ytd: null };
+    });
+    const m = hxMean(p.g);
+    const sd = p.g.length > 1 ? Math.sqrt(p.g.reduce((s, x) => s + (x - m) ** 2, 0) / (p.g.length - 1)) : null;
+    return {
+      name: p.n, team: p.t, stats,
+      meta: { rp: p.rp, avg: p.avg, blend: hxR1(p.blend), gp: p.g.length, sd: hxR1(sd), min: p.g.length ? Math.min(...p.g) : null, max: p.g.length ? Math.max(...p.g) : null },
+    };
+  });
+  return {
+    players, teams: {}, teamsDetail: {}, statCodes: codes, metaCols: FD_HX_META,
+    generated_at: D.updated ? D.updated + "T12:00:00Z" : null,
+    note: "NBA Historic: FBP = Fast Break Points (estimated from the box score; PTS + REB + 2 AST + 2 STL + 3 BLK + 5 per double-double, less a 1.5 calibration). L10 = last 10 Historic games, YTD = all Historic games on record (beta and Season 3). Base RP is Top Shot's public price before any collector discount.",
+  };
+}
+async function loadHistoricFullData({ silent } = {}) {
+  const metaEl = document.getElementById("fd-meta");
+  if (!silent && metaEl && fdLeague === "HISTORIC") metaEl.textContent = "Loading...";
+  if (fullDataLoading.HISTORIC) return;
+  fullDataLoading.HISTORIC = true;
+  try {
+    fullDataByLeague.HISTORIC = buildHistoricFullData(await loadHistoricOptData());
+  } catch (err) {
+    if (metaEl && fdLeague === "HISTORIC" && activeView === "fulldata") metaEl.textContent = `NBA Historic Full Data unavailable (${err.message}).`;
+  } finally {
+    fullDataLoading.HISTORIC = false;
+  }
+  if (activeView === "fulldata" && fdLeague === "HISTORIC") renderFullData();
+}
+function fdMeta() { return fullDataFor(fdLeague).metaCols || []; }
+function fdMetaHeaderHtml() { return fdMeta().map((m, i) => `<th data-fd-key="meta:${m.k}"${i === 0 ? ' class="fd-group-start"' : ""}>${m.l}</th>`).join(""); }
+function fdMetaCellsHtml(p) { return fdMeta().map((m, i) => `<td class="${i === 0 ? "fd-group-start" : ""}">${p.meta && p.meta[m.k] != null ? p.meta[m.k] : "--"}</td>`).join(""); }
+function fdMetaCsvHeaders() { return fdMeta().map((m) => m.l); }
+function fdMetaCsvValues(p) { return fdMeta().map((m) => (p.meta && p.meta[m.k] != null ? p.meta[m.k] : "")); }
+function syncFdHistoricUI() {
+  const teamsBtn = document.querySelector('#fd-subtab-toggle button[data-fdtab="teams"]');
+  const isHx = fdLeague === "HISTORIC";
+  if (teamsBtn) teamsBtn.style.display = isHx ? "none" : "";
+  if (isHx && fdSubTab === "teams") {
+    fdSubTab = "players";
+    document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((b) => b.classList.toggle("active", b.dataset.fdtab === "players"));
+  }
+}
+
+// -- Admin: Historic optimizer data upload (gated read, admin-token write) --------
+(function hxAdminWire() {
+  const $ = (id) => document.getElementById(id);
+  const btn = $("hist-opt-btn"); if (!btn) return;
+  $("hist-opt-file").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    $("hist-opt-json").value = await f.text();
+    setStatus("hist-opt-status", `Loaded ${f.name} (${Math.round(f.size / 1024)} KB). Review, then click Upload.`);
+  });
+  btn.addEventListener("click", async () => {
+    setStatus("hist-opt-status", "Uploading...");
+    let payload;
+    try { payload = JSON.parse($("hist-opt-json").value); } catch (err) { return setStatus("hist-opt-status", `Not valid JSON: ${err.message}`, false); }
+    if (!payload || !Array.isArray(payload.players) || !Array.isArray(payload.slates)) return setStatus("hist-opt-status", "JSON needs a players array and a slates array.", false);
+    try {
+      const res = await fetch(WORKER_BASE + "/api/fastbreak/historic/optimizer", { method: "POST", headers: adminHeaders(), body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setStatus("hist-opt-status", `Saved ${data.players} players and ${data.slates} slate(s), updated ${data.updated || "n/a"}.`, true);
+      hxDataPromise = null; hx.loaded = false; fullDataByLeague.HISTORIC = null; // reload next time the tabs open
+    } catch (err) { setStatus("hist-opt-status", `Upload failed: ${err.message}`, false); }
+  });
+})();
 
 // -- Admin view toggle --------------------------------------------------------
 document.getElementById("admin-toggle-btn").addEventListener("click", () => {
@@ -1647,6 +1772,7 @@ document.getElementById("export-csv-btn").addEventListener("click", downloadCSV)
 
 // -- Full Data tab --------------------------------------------------------------
 async function loadFullData(league, { silent } = {}) {
+  if (league === "HISTORIC") return loadHistoricFullData({ silent });
   if (fullDataLoading[league]) return;
   fullDataLoading[league] = true;
   const metaEl = document.getElementById("fd-meta");
@@ -1673,6 +1799,7 @@ function buildFullDataHeader() {
   const thead = document.getElementById("fd-table-head");
   const cols = fdColumns();
   let row = `<tr><th data-fd-key="name">Player</th><th data-fd-key="team">Team</th>`;
+  row += fdMetaHeaderHtml();
   cols.forEach((c, i) => {
     const groupStart = i === 0 ? ' class="fd-group-start"' : "";
     row += `<th data-fd-key="${c.code}:l10"${groupStart}>${c.code} L10</th>`;
@@ -1693,6 +1820,7 @@ function buildFullDataHeader() {
 
 function fdSortValue(p, key) {
   if (key === "name" || key === "team") return p[key];
+  if (key.startsWith("meta:")) return p.meta ? p.meta[key.slice(5)] : null;
   const [code, field] = key.split(":");
   return p.stats[code] ? p.stats[code][field] : null;
 }
@@ -1731,6 +1859,7 @@ function renderFullDataPlayers() {
   rows.forEach((p) => {
     const row = document.createElement("tr");
     let html = `<td>${p.name}</td><td>${p.team || "--"}</td>`;
+    html += fdMetaCellsHtml(p);
     cols.forEach((c, i) => {
       const s = p.stats[c.code] || {};
       const groupStart = i === 0 ? " fd-group-start" : "";
@@ -1857,6 +1986,7 @@ document.querySelectorAll("#fd-subtab-toggle button[data-fdtab]").forEach((btn) 
 document.querySelectorAll("#fd-league-toggle button[data-fdleague]").forEach((btn) => {
   btn.addEventListener("click", () => {
     fdLeague = btn.dataset.fdleague;
+    syncFdHistoricUI();
     document.querySelectorAll("#fd-league-toggle button[data-fdleague]").forEach((b) => b.classList.toggle("active", b === btn));
     if (fullDataByLeague[fdLeague]) renderFullData();
     else {
@@ -1876,10 +2006,10 @@ function downloadFullDataCSV() {
     return;
   }
   const cols = fdColumns();
-  const headers = ["Player", "Team"];
+  const headers = ["Player", "Team", ...fdMetaCsvHeaders()];
   cols.forEach((c) => headers.push(`${c.code} L10`, `${c.code} YTD`));
   const rows = getFullDataFiltered().map((p) => {
-    const row = [p.name, p.team];
+    const row = [p.name, p.team, ...fdMetaCsvValues(p)];
     cols.forEach((c) => {
       const s = p.stats[c.code] || {};
       row.push(s.l10 ?? "", s.ytd ?? "");
