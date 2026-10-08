@@ -1533,6 +1533,30 @@ async function warmUpcomingRunDate(env, league, budget) {
   return { date, building: Boolean(dashboard.building), used: dashboard._subrequests_used || 0 };
 }
 
+// -- Historic optimizer dataset (see the /historic/optimizer routes) -------------
+const HISTORIC_OPTIMIZER_KEY = "fastbreak:historic:optimizer";
+function validateHistoricOptimizer(b) {
+  if (!b || typeof b !== "object") return "Body must be a JSON object.";
+  if (!Array.isArray(b.players) || !b.players.length) return "players must be a non-empty array.";
+  if (!Array.isArray(b.slates) || !b.slates.length) return "slates must be a non-empty array.";
+  if (b.players.length > 2000) return "Too many players (max 2000).";
+  const names = new Set();
+  for (const p of b.players) {
+    if (!p || typeof p.n !== "string" || !p.n) return "Every player needs a name (n).";
+    if (typeof p.rp !== "number" || typeof p.avg !== "number") return `${p.n}: rp and avg must be numbers.`;
+    if (!Array.isArray(p.g) || p.g.some((x) => typeof x !== "number")) return `${p.n}: g must be an array of numbers.`;
+    if (p.s !== undefined && (!Array.isArray(p.s) || p.s.length !== p.g.length)) return `${p.n}: s must have one stat row per game in g.`;
+    names.add(p.n);
+  }
+  for (const s of b.slates) {
+    if (!s || !Array.isArray(s.players) || !Array.isArray(s.teams)) return "Every slate needs players and teams arrays.";
+    const missing = s.players.find((n) => !names.has(n));
+    if (missing) return `Slate "${s.label || ""}" lists "${missing}", who is not in players.`;
+  }
+  if (b.budget !== undefined && typeof b.budget !== "number") return "budget must be a number.";
+  return null;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token, X-Tome-Key, X-Tome-Sub",
@@ -1985,6 +2009,36 @@ export default {
       try {
         const body = await request.json();
         return json(await upsertHistoricObjectivesDay(env, { day: body.day, date: body.date, objectives: body.objectives }));
+      } catch (err) {
+        return json({ error: err.message }, 400);
+      }
+    }
+
+    // -- Historic optimizer dataset (Top Shot Historic Legends) ---------------
+    // The data behind the Historic tab (lineup optimizer) and the Historic
+    // section of Full Data: players (base RP, site AVG, per-game FBP + stat
+    // lines) and per-day slates. Subscriber-gated read; admin-token write.
+    // Own KV key only -- never touches the simulated-season data above.
+    if (url.pathname === "/api/fastbreak/historic/optimizer" && request.method === "GET") {
+      const gate = await subscriberGate(request, url, env);
+      if (gate) return gate;
+      try {
+        const data = await loadJSON(env, HISTORIC_OPTIMIZER_KEY);
+        if (!data) return json({ error: "Historic optimizer data has not been uploaded yet." }, 404);
+        return json(data);
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/fastbreak/historic/optimizer" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json();
+        const problem = validateHistoricOptimizer(body);
+        if (problem) return json({ error: problem }, 400);
+        await saveJSON(env, HISTORIC_OPTIMIZER_KEY, body);
+        return json({ ok: true, players: body.players.length, slates: body.slates.length, updated: body.updated || null });
       } catch (err) {
         return json({ error: err.message }, 400);
       }
