@@ -212,6 +212,24 @@ visually with the dashboard itself) ----------------------------------- */
   .fd-meta{margin-left:0;}
   #locked-panel{padding:14px;}
 }
+/* -- Historic tab (Top Shot Historic Legends: RP budget optimizer) ------------ */
+#view-historic { display: none; }
+.hx-bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; }
+.hx-bar .grow { flex:1; }
+.hx-input, .hx-select { background: var(--surface2); border: 0.5px solid var(--border-str); color: var(--text); padding: 8px 12px; border-radius: var(--r); font-family: inherit; font-size: 0.8rem; outline:none; }
+.hx-input:focus, .hx-select:focus { border-color: var(--green); }
+.hx-lbl { font-size:0.7rem; color:var(--text-3); font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
+.dsc { display:inline-flex; border:0.5px solid var(--border-str); border-radius:8px; overflow:hidden; background:var(--surface2); }
+.dsc button { font-family:inherit; font-size:0.72rem; font-weight:600; padding:5px 9px; border:0; border-right:0.5px solid var(--border-str); background:transparent; color:var(--text-3); cursor:pointer; }
+.dsc button:last-child { border-right:0; }
+.dsc button:hover { background:var(--surface3); color:var(--text); }
+.dsc button.on { background:var(--green); color:#fff; }
+.hx-result { background:var(--surface2); border:0.5px solid var(--border-str); border-radius:var(--r-lg); padding:14px 16px; margin-bottom:16px; }
+.hx-result .hx-pick { display:inline-block; background:var(--surface); border:0.5px solid var(--border-str); border-radius:20px; padding:4px 12px; margin:4px 6px 0 0; font-size:0.78rem; }
+.hx-alt { font-size:0.74rem; color:var(--text-3); margin-top:8px; }
+tr.hx-pick-row td { background: rgba(15,163,119,0.14); }
+.hx-was { color:var(--text-3); text-decoration:line-through; margin-right:5px; }
+
 </style>
 </head>
 <body>
@@ -329,6 +347,50 @@ header to sort.
 </div>
 
 <p class="note" id="fd-note"></p>
+</div>
+
+<div id="view-historic">
+  <div class="hx-bar">
+    <div class="toggle-group" id="hx-sub-toggle">
+      <button data-hxsub="slate" class="active">Today's slate</button>
+      <button data-hxsub="players">Players &amp; discounts</button>
+    </div>
+    <div class="run-days" id="hx-days"></div>
+    <span class="grow"></span>
+    <span class="fd-meta" id="hx-meta"></span>
+  </div>
+
+  <div id="hx-slate">
+    <div id="hx-teams" class="schedule-row"></div>
+    <div class="hx-bar">
+      <span class="hx-lbl">Rating</span>
+      <select class="hx-select" id="hx-rating"><option value="blend">Blend (recommended)</option><option value="avg">Site AVG</option></select>
+      <input type="text" class="hx-input" id="hx-search" placeholder="Search player or team...">
+      <span class="grow"></span>
+      <button class="export-btn" id="hx-opt" style="margin-left:0">Optimize lineup</button>
+      <button class="admin-link-btn" id="hx-clear" style="margin-left:0">Clear</button>
+    </div>
+    <div id="hx-result"></div>
+    <div class="tbl-outer"><div class="tbl-scroll"><table>
+      <thead id="hx-slate-head"></thead><tbody id="hx-slate-body"></tbody>
+    </table></div></div>
+  </div>
+
+  <div id="hx-players" style="display:none">
+    <div class="hx-bar">
+      <input type="text" class="hx-input" id="hx-psearch" placeholder="Search player or team...">
+      <select class="hx-select" id="hx-team"><option value="">All teams</option></select>
+      <span class="hx-lbl">Set all shown to</span>
+      <span class="dsc" id="hx-bulk"><button data-b="0">0%</button><button data-b="5">5%</button><button data-b="10">10%</button><button data-b="15">15%</button><button data-b="20">20%</button></span>
+      <span class="grow"></span>
+      <span class="fd-meta" id="hx-pmeta"></span>
+    </div>
+    <div class="tbl-outer"><div class="tbl-scroll"><table>
+      <thead id="hx-players-head"></thead><tbody id="hx-players-body"></tbody>
+    </table></div></div>
+  </div>
+
+  <p class="note" id="hx-note">Everyone starts at 0%. Set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's observed Historic average, weighting AVG like 8 games. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
 </div>
 
 <div id="view-admin">
@@ -839,6 +901,7 @@ function setActiveView(view) {
   document.getElementById("view-main").style.display = view === "main" ? "block" : "none";
   document.getElementById("view-admin").style.display = view === "admin" ? "block" : "none";
   document.getElementById("view-fulldata").style.display = view === "fulldata" ? "block" : "none";
+  document.getElementById("view-historic").style.display = view === "historic" ? "block" : "none";
 }
 
 // Hover tooltip showing a team's PPG/PAPG (from the current league's Full
@@ -948,6 +1011,16 @@ document.getElementById("mode-toggle").addEventListener("click", (e) => {
     return;
   }
 
+  if (mode === "Historic") {
+    currentLeague = "NBA";
+    currentMode = "Historic";
+    document.getElementById("pg-eye").textContent = "Tome Collective · NBA Historic · Fast Break";
+    document.getElementById("mode-note").textContent = "";
+    setActiveView("historic");
+    initHistoric();
+    return;
+  }
+
   const leagueChanged = e.target.dataset.league !== currentLeague;
   currentLeague = e.target.dataset.league;
   currentMode = mode;
@@ -987,12 +1060,181 @@ function syncLeagueToggles() {
   btn.title = HISTORIC_ENABLED ? "" : "Historic sim pipeline is live and manageable in Objectives Admin -- the public toggle turns on when the season starts";
 })();
 
+// -- Historic tab (Top Shot Historic Legends) ---------------------------------
+// Data comes from data/historic.json (players: name/team/base RP/site AVG/Historic game
+// scores; slates: teams in action + eligible players per day). Collector discounts are
+// personal, so they live only in this browser (localStorage), never on the server.
+const HISTORIC_DATA_URL = "data/historic.json";
+const HX_PCTS = [0, 5, 10, 15, 20];
+const HX_TIER_NAMES = { 0: "No discount", 5: "Common / Fandom", 10: "Rare", 15: "Legendary", 20: "Ultimate" };
+const HX_LS = "fbHistoricDiscounts";
+const hx = { loaded: false, data: null, players: [], byName: {}, shift: 0, slateIdx: 0, sub: "slate",
+  rating: "blend", disc: {}, excluded: new Set(), result: null,
+  sort: { slate: { k: "val", d: -1 }, players: { k: "avg", d: -1 } } };
+try { hx.disc = JSON.parse(localStorage.getItem(HX_LS) || "{}"); } catch (e) { hx.disc = {}; }
+const hxEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const hxF1 = (x) => (x == null ? "--" : x.toFixed(1));
+const hxPct = (p) => (HX_PCTS.includes(hx.disc[p.n]) ? hx.disc[p.n] : 0);
+// Discounted RP: nearest whole number, .5 rounds down (matches beta prices).
+const hxRP = (p) => Math.ceil((p.rp * (100 - hxPct(p)) - 50) / 100);
+const hxVal = (p) => (hx.rating === "avg" ? p.avg : p.blend);
+const hxSum = (l, f) => l.reduce((a, p) => a + f(p), 0);
+function hxSaveDisc() { try { localStorage.setItem(HX_LS, JSON.stringify(hx.disc)); } catch (e) {} }
+
+async function initHistoric() {
+  if (!hx.loaded) {
+    document.getElementById("hx-meta").textContent = "Loading...";
+    try {
+      const res = await fetch(HISTORIC_DATA_URL, { cache: "no-cache", headers: (typeof readHeaders === "function" ? readHeaders() : {}) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      hx.data = await res.json();
+    } catch (err) {
+      document.getElementById("hx-meta").textContent = "Historic data unavailable (" + err.message + ").";
+      return;
+    }
+    const D = hx.data, k = D.kPrior || 8;
+    hx.players = D.players.map((p) => ({ ...p, n_games: p.g.length }));
+    const res2 = []; hx.players.forEach((p) => p.g.forEach((x) => res2.push(x - p.avg)));
+    hx.shift = res2.length ? res2.reduce((a, b) => a + b, 0) / res2.length : 0;
+    hx.players.forEach((p) => {
+      p.mean = p.n_games ? p.g.reduce((a, b) => a + b, 0) / p.n_games : null;
+      const a = p.avg + hx.shift;
+      p.blend = p.n_games ? (k * a + p.n_games * p.mean) / (k + p.n_games) : a;
+    });
+    hx.byName = Object.fromEntries(hx.players.map((p) => [p.n, p]));
+    hx.slateIdx = D.slates.length - 1;
+    const sel = document.getElementById("hx-team");
+    [...new Set(hx.players.map((p) => p.t).filter(Boolean))].sort().forEach((t) => {
+      const o = document.createElement("option"); o.value = o.textContent = t; sel.appendChild(o);
+    });
+    hx.loaded = true;
+  }
+  hxRender();
+}
+
+function hxBest(pool, ban) { // exact DP: exactly `lineup` players, total RP <= budget
+  const it = pool.filter((p) => !ban || !ban.has(p.n)), n = it.length;
+  const C = hx.data.budget, S = hx.data.lineup, NEG = -1e9, W = C + 1;
+  const dp = new Float64Array((n + 1) * (S + 1) * W).fill(NEG);
+  const ix = (i, k, c) => (i * (S + 1) + k) * W + c;
+  for (let c = 0; c <= C; c++) dp[ix(0, 0, c)] = 0;
+  for (let i = 1; i <= n; i++) {
+    const w = hxRP(it[i - 1]), v = hxVal(it[i - 1]);
+    for (let k = 0; k <= S; k++) for (let c = 0; c <= C; c++) {
+      let b = dp[ix(i - 1, k, c)];
+      if (k > 0 && c >= w) { const t = dp[ix(i - 1, k - 1, c - w)]; if (t > NEG / 2 && t + v > b) b = t + v; }
+      dp[ix(i, k, c)] = b;
+    }
+  }
+  if (dp[ix(n, S, C)] < NEG / 2) return null;
+  let k = S, c = C; const out = [];
+  for (let i = n; i >= 1; i--) {
+    const w = hxRP(it[i - 1]);
+    if (dp[ix(i, k, c)] !== dp[ix(i - 1, k, c)]) { out.push(it[i - 1]); k--; c -= w; }
+  }
+  return out.reverse();
+}
+function hxSlatePlayers() {
+  const s = hx.data.slates[hx.slateIdx];
+  return s.players.map((n) => hx.byName[n]).filter(Boolean);
+}
+function hxOptimize() {
+  const pool = hxSlatePlayers().filter((p) => !hx.excluded.has(p.n));
+  const best = hxBest(pool);
+  if (!best) { hx.result = { best: [], alts: [] }; return; }
+  const seen = new Set([best.map((p) => p.n).sort().join("|")]), alts = [];
+  best.forEach((p) => {
+    const l = hxBest(pool, new Set([p.n]));
+    if (l) { const id = l.map((x) => x.n).sort().join("|"); if (!seen.has(id)) { seen.add(id); alts.push(l); } }
+  });
+  alts.sort((a, b) => hxSum(b, hxVal) - hxSum(a, hxVal));
+  hx.result = { best, alts: alts.slice(0, 2) };
+}
+function hxDiscButtons(p) {
+  const cur = hxPct(p);
+  return `<span class="dsc">` + HX_PCTS.map((v) =>
+    `<button data-hxn="${hxEsc(p.n)}" data-pct="${v}" class="${cur === v ? "on" : ""}" title="${HX_TIER_NAMES[v]}">${v}%</button>`).join("") + `</span>`;
+}
+const hxRpCell = (p) => (hxPct(p) ? `<span class="hx-was">${p.rp}</span>${hxRP(p)}` : `${p.rp}`);
+function hxHead(id, cols, st) {
+  document.getElementById(id).innerHTML = "<tr>" + cols.map((c) =>
+    `<th data-k="${c.k || ""}" class="${c.k && c.k === st.k ? (st.d === 1 ? "sorted-asc" : "sorted-desc") : ""}"${c.k ? "" : ' style="cursor:default"'}>${c.t}</th>`).join("") + "</tr>";
+}
+function hxSorter(st) {
+  const g = (p) => st.k === "val" ? hxVal(p) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : p[st.k];
+  return (a, b) => { const A = g(a), B = g(b); return (A > B ? 1 : A < B ? -1 : 0) * st.d; };
+}
+function hxRender() {
+  const D = hx.data; if (!D) return;
+  const slate = D.slates[hx.slateIdx];
+  document.getElementById("hx-meta").textContent = `Updated ${D.updated} · ${D.budget} RP · pick ${D.lineup}`;
+  document.getElementById("hx-slate").style.display = hx.sub === "slate" ? "" : "none";
+  document.getElementById("hx-players").style.display = hx.sub === "players" ? "" : "none";
+  document.querySelectorAll("#hx-sub-toggle button").forEach((b) => b.classList.toggle("active", b.dataset.hxsub === hx.sub));
+  const days = document.getElementById("hx-days");
+  days.innerHTML = D.slates.map((s, i) => `<button class="run-day-btn${i === hx.slateIdx ? " active" : ""}" data-i="${i}">${hxEsc(s.label)}</button>`).join("");
+  document.getElementById("hx-rating").value = hx.rating;
+  if (hx.sub === "slate") {
+    document.getElementById("hx-teams").innerHTML = slate.teams.map((t) => `<div class="game-tile"><div class="matchup">${hxEsc(t)}</div></div>`).join("");
+    const q = document.getElementById("hx-search").value.toLowerCase();
+    const st = hx.sort.slate;
+    const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Games", k: "gp" }, { t: "Discount" }, { t: "Skip" }], st);
+    const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
+    document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
+      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${p.n_games}</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
+    const r = document.getElementById("hx-result");
+    if (hx.result && hx.result.best.length) {
+      const L = [...hx.result.best].sort((a, b) => hxVal(b) - hxVal(a));
+      const line = (l) => l.map((p) => `${hxEsc(p.n)} (${hxRP(p)})`).join(", ");
+      r.innerHTML = `<div class="hx-result"><strong>Optimal lineup</strong> <span class="toggle-note">by ${hx.rating === "avg" ? "site AVG" : "blend"}, with your discounts</span>
+        <div class="objective-row" style="margin:10px 0 4px"><div class="objective-tile"><div class="val">${hxF1(hxSum(L, hxVal))}</div><div class="lbl">Projected score</div></div><div class="objective-tile"><div class="val">${hxSum(L, hxRP)} / ${D.budget}</div><div class="lbl">RP used</div></div><div class="objective-tile"><div class="val">${D.budget - hxSum(L, hxRP)}</div><div class="lbl">RP left</div></div></div>
+        <div>${L.map((p) => `<span class="hx-pick">${hxEsc(p.n)} · ${hxRP(p)} RP${hxPct(p) ? " (−" + hxPct(p) + "%)" : ""} · ${hxF1(hxVal(p))}</span>`).join("")}</div>
+        ${hx.result.alts.map((l, i) => `<div class="hx-alt"><strong>Alternate ${i + 1}</strong> (${hxF1(hxSum(l, hxVal))}, ${hxSum(l, hxRP)} RP): ${line(l)}</div>`).join("")}</div>`;
+    } else r.innerHTML = "";
+  } else {
+    const q = document.getElementById("hx-psearch").value.toLowerCase(), tf = document.getElementById("hx-team").value;
+    const st = hx.sort.players;
+    const list = hx.players.filter((p) => (!tf || p.t === tf) && (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
+    hx.shown = list;
+    document.getElementById("hx-pmeta").textContent = `${list.length} players · ${Object.values(hx.disc).filter((v) => v > 0).length} discounted`;
+    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp" }, { t: "Your RP" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Discount" }], st);
+    document.getElementById("hx-players-body").innerHTML = list.map((p, i) =>
+      `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td><td>${hxDiscButtons(p)}</td></tr>`).join("");
+  }
+}
+function hxSetDisc(name, pct) { if (pct) hx.disc[name] = pct; else delete hx.disc[name]; }
+(function hxWire() {
+  const $ = (id) => document.getElementById(id);
+  $("view-historic").addEventListener("click", (e) => {
+    const sub = e.target.closest("[data-hxsub]"); if (sub) { hx.sub = sub.dataset.hxsub; return hxRender(); }
+    const day = e.target.closest("#hx-days .run-day-btn"); if (day) { hx.slateIdx = +day.dataset.i; hx.result = null; hx.excluded.clear(); return hxRender(); }
+    const d = e.target.closest("[data-hxn]"); if (d) { hxSetDisc(d.dataset.hxn, +d.dataset.pct); hxSaveDisc(); hx.result = null; return hxRender(); }
+    const b = e.target.closest("#hx-bulk [data-b]"); if (b) { (hx.shown || []).forEach((p) => hxSetDisc(p.n, +b.dataset.b)); hxSaveDisc(); hx.result = null; return hxRender(); }
+    const th = e.target.closest("th[data-k]"); if (th && th.dataset.k) {
+      const st = hx.sort[hx.sub], k = th.dataset.k;
+      st.d = st.k === k ? -st.d : (k === "n" || k === "t" ? 1 : -1); st.k = k; return hxRender();
+    }
+  });
+  $("view-historic").addEventListener("change", (e) => {
+    const x = e.target.dataset && e.target.dataset.hxex;
+    if (x) { e.target.checked ? hx.excluded.add(x) : hx.excluded.delete(x); hx.result = null; hxRender(); }
+  });
+  $("hx-opt").addEventListener("click", () => { hxOptimize(); hxRender(); });
+  $("hx-clear").addEventListener("click", () => { hx.excluded.clear(); hx.result = null; hxRender(); });
+  $("hx-rating").addEventListener("change", (e) => { hx.rating = e.target.value; hx.result = null; hxRender(); });
+  $("hx-search").addEventListener("input", hxRender);
+  $("hx-psearch").addEventListener("input", hxRender);
+  $("hx-team").addEventListener("change", hxRender);
+})();
+
+
 // -- Admin view toggle --------------------------------------------------------
 document.getElementById("admin-toggle-btn").addEventListener("click", () => {
   const showingAdmin = activeView === "admin";
   if (showingAdmin) {
     const activeModeBtn = document.querySelector("#mode-toggle button.active");
-    setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : "main");
+    setActiveView(activeModeBtn?.dataset.mode === "FullData" ? "fulldata" : activeModeBtn?.dataset.mode === "Historic" ? "historic" : "main");
   } else {
     setActiveView("admin");
   }
