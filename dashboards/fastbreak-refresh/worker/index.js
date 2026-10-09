@@ -332,8 +332,17 @@ async function getTeamRosters(cfg, teamIds, env) {
     const pageData = data.data || [];
     players = players.concat(pageData);
     const nextCursor = data.meta?.next_cursor;
-    if (!nextCursor || pageData.length < 100) break;
+    // Follow the cursor whenever one is returned (short pages can still have more behind them).
+    if (!nextCursor) break;
     cursor = nextCursor;
+  }
+  // Safety net: any requested team with zero players is fetched on its own.
+  const have = new Set(players.map((p) => p.team?.id).filter((id) => id != null));
+  for (const id of teamIds) {
+    if (have.has(id)) continue;
+    const solo = await leagueFetch(cfg, `/players/active?team_ids[]=${id}&per_page=100`, env);
+    requestsUsed += 1;
+    players = players.concat(solo.data || []);
   }
   return { players, requestsUsed };
 }
@@ -1090,6 +1099,11 @@ function dateNeedsAdvanced(schedule, league, date) {
 function snapshotIsFresh(snapshot, date) {
   if (!snapshot || snapshot.status !== "done") return false;
   if (snapshot.schema !== SNAPSHOT_SCHEMA) return false; // built before a data fix: rebuild
+  // Self-heal: a slate with a team that has no roster is partial, so never treat it as fresh.
+  if (Array.isArray(snapshot.teamIds) && snapshot.teamIds.length) {
+    const rostered = new Set((snapshot.roster || []).map((p) => p.teamId));
+    if (snapshot.teamIds.some((id) => !rostered.has(id))) return false;
+  }
   const age = Date.now() - (snapshot.finishedAt || 0);
   const today = todayStr();
   const ttl = date < today ? PAST_DAY_CACHE_FRESH_MS : date > today ? FUTURE_DAY_CACHE_FRESH_MS : DAY_CACHE_FRESH_MS;
