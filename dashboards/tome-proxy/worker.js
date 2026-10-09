@@ -833,7 +833,7 @@ async function runDailyPipeline(env) {
   status.finishedAt = new Date().toISOString(); status.durationMs = Date.now() - t0;
   await record();
 }
-const HEALTH_GRADED_STALE_MS = 30 * 3600 * 1000;   // cron is daily at 14:00 UTC; 30h = one missed run + slack
+const HEALTH_GRADED_STALE_MS = 30 * 3600 * 1000;   // cron is daily at 10:00 UTC; 30h = one missed run + slack
 // ---- Tag-filtered RSS feed --------------------------------------------------------------
 // GET /feed?tags=nfl,preview&limit=30  -> RSS 2.0 of published web posts carrying EVERY
 // listed tag (case-insensitive; comma = AND). Posts hidden from the feed are skipped.

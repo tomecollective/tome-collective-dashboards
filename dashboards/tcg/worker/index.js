@@ -93,7 +93,7 @@ const MAX_FAILURE_RATE_TO_PUBLISH = 0.5;
 // Second cron entry in wrangler.toml: the publish step runs here, in a
 // fresh invocation, instead of at the tail of the refresh chain. Must match
 // wrangler.toml exactly (Cloudflare passes the matching string in event.cron).
-const PUBLISH_CRON = "20 13 * * *";
+const PUBLISH_CRON = "20 10 * * *";
 const KEY_LAST_STATUS = "refresh:last_status"; // small always-written diagnostic record, see processBatch()
 
 function resolveKey(name, setName) {
@@ -254,6 +254,25 @@ function toHistory(priceHistory) {
 // Merge new points into existing history by date, so a re-run never loses a
 // day that's already been captured, and a day that gets corrected upstream
 // (JustTCG revises a price) picks up the newer value.
+// Pad a card's history from its last recorded day through today with its last
+// known price. Used only when a refresh fails; the next successful refresh
+// overwrites the padded days via mergeHistory (incoming wins per date).
+function carryForward(card) {
+  const history = (card.history || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+  if (!history.length) return card;
+  const last = history[history.length - 1];
+  const price = typeof card.price === "number" ? card.price : last.price;
+  const today = new Date().toISOString().slice(0, 10);
+  const out = history.slice();
+  for (let d = new Date(last.date + "T00:00:00Z"); ; ) {
+    d = new Date(d.getTime() + 86400000);
+    const date = d.toISOString().slice(0, 10);
+    if (date > today) break;
+    out.push({ date, price, carried: true });
+  }
+  return { ...card, history: out, note: card.note || "refresh failed; price carried forward" };
+}
+
 function mergeHistory(existing, incoming) {
   const byDate = new Map((existing || []).map((p) => [p.date, p.price]));
   for (const p of incoming) byDate.set(p.date, p.price);
@@ -562,6 +581,12 @@ async function processBatch(env, origin, resume, ctx, opts = {}) {
       set.top_5[ref.ci] = await refreshCard(env, card, ref.setName);
     } catch (err) {
       progress.failures.push(`${card.name} (${ref.setName}): ${err.message}`);
+      // Carry the last known price forward so the index value series stays
+      // computable. indexHistory only includes a date once every holding has a
+      // point there; before 2026-10-09 a single JustTCG 503 left the newest
+      // days with 49 of 50 points and the published index silently lagged by
+      // a day or two (last_updated said Oct 8, the series ended Oct 6).
+      set.top_5[ref.ci] = carryForward(card);
     }
   }
   progress.offset += slice.length;
@@ -735,7 +760,7 @@ export default {
 
   async scheduled(event, env, ctx) {
     // Two crons (wrangler.toml): 13:00 UTC refreshes prices across a chain
-    // of batches; PUBLISH_CRON (13:20 UTC) publishes the finished run from a
+    // of batches; PUBLISH_CRON (10:20 UTC) publishes the finished run from a
     // fresh invocation. If a run got cut off, the next tick resumes it.
     const today = new Date().toISOString().slice(0, 10);
     const existing = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;

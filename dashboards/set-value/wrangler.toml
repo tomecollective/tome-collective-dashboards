@@ -12,11 +12,10 @@ service = "tome-proxy"
 environment = "production"
 
 [triggers]
-crons = [
-  "0 14 * * 2",
-  "0 14 * * 4",
-  "0 14 * * 6",
-]
+# Daily at 10:30 UTC, all three games (one JustTCG /sets call each). Was a
+# weekly per-game stagger until 2026-10-08; daily keeps the Saturday Tome Cards
+# figures and each Spike Report's featured set on the same freshness as the index.
+crons = ["30 10 * * *"]
 
 [observability.logs]
 enabled = true

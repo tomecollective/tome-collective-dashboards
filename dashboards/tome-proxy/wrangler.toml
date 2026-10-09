@@ -15,10 +15,12 @@ compatibility_date = "2026-08-08"
 binding = "SNAPSHOTS"
 id = "adfd85aea0784373b2787e5a103b0de0"   # namespace TOME_SNAPSHOTS
 
-# Daily at 14:00 UTC (9am Central). Runs captureSnapshot ->
-# captureGradedPrices -> captureScoreHistoryAndDigest sequentially.
+# Daily at 10:00 UTC (5am Central in daylight time, 4am in standard time). Moved from 14:00
+# UTC on 2026-10-08 so each snapshot is a true previous-day close that exists
+# before the 8am/9am newsletter sends (Tome Sports daily, Tome Cards Saturday).
+# Runs captureSnapshot -> captureGradedPrices -> captureScoreHistoryAndDigest.
 [triggers]
-crons = ["0 14 * * *"]
+crons = ["0 10 * * *"]
 
 [observability.logs]
 enabled = true

@@ -29,13 +29,13 @@ verbatim from tome-tcg's live code rather than reinvented.
   set"). This means the whole pipeline is **3 total JustTCG requests**
   (one per game), regardless of update frequency - no per-card resolution
   needed at all.
-- **Cadence**: weekly per game, staggered one day before that game's Spike
-  Report capture day - Lorcana Tuesday, One Piece Thursday, Pokemon
-  Saturday (`0 14 * * 2/4/6` respectively). Three separate cron entries;
-  `event.cron` tells the scheduled handler which game to snapshot.
+- **Cadence**: daily at 10:30 UTC, all three games in one run (one JustTCG
+  `/sets` call per game). Replaced the weekly per-game stagger on 2026-10-08
+  so the Saturday Tome Cards issue and each Spike Report quote the previous
+  day's close rather than a figure up to a week old.
 - **Storage**: one KV record per set (`set:<game>:<setId>`) holding
-  current value + a running history array (`{date, value}`, capped at 208
-  entries - about 4 years of weekly snapshots), plus one index list per
+  current value + a running history array (`{date, value}`, capped at 1500
+  entries - about 4 years of daily snapshots, `HISTORY_CAP = 1500`), plus one index list per
   game (`index:<game>`) so the API can list all sets without a KV `list()`
   scan (same reasoning as the Top Shot build - `list()` caps at 1000 keys
   per call).

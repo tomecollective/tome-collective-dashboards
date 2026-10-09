@@ -20,17 +20,12 @@
 
 const JUSTTCG_SETS_URL = "https://api.justtcg.com/v1/sets";
 const GAMES = ["pokemon", "disney-lorcana", "one-piece-card-game"];
-const HISTORY_CAP = 208; // ~4 years of weekly snapshots
+const HISTORY_CAP = 1500; // ~4 years of daily snapshots
 
-// Cron-to-game mapping: each game refreshes once a week, staggered one day
-// before that game's Spike Report capture day (Lorcana captured Wed, One
-// Piece Thu, Pokemon Sun -> refreshed Tue/Thu/Sat respectively), so fresh
-// numbers are ready right as that week's drafting starts.
-const GAME_FOR_CRON = {
-  "0 14 * * 2": "disney-lorcana", // Tuesday
-  "0 14 * * 4": "one-piece-card-game", // Thursday
-  "0 14 * * 6": "pokemon", // Saturday
-};
+// One daily cron (10:30 UTC) refreshes every game. The earlier weekly per-game
+// stagger (Tue/Thu/Sat) was retired on 2026-10-08: a /sets call per game per day
+// is three requests, and daily history is what the Spike Reports and Tome Cards
+// need to quote a set's cost to complete as of the previous close.
 
 // ---- Auth utilities (copied from tome-tcg's proven, live implementation -
 // not reinvented, since this exact code is already tested in production) ---
@@ -251,8 +246,7 @@ async function handleRequest(request, env) {
 
 export default {
   async scheduled(event, env, ctx) {
-    const game = GAME_FOR_CRON[event.cron];
-    if (game) ctx.waitUntil(snapshotSetValues(env, game));
+    ctx.waitUntil((async () => { for (const game of GAMES) { try { await snapshotSetValues(env, game); } catch (e) { console.error(`set-value snapshot failed for ${game}:`, e); } } })());
   },
 
   async fetch(request, env) {
