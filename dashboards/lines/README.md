@@ -2,6 +2,10 @@
 
 A small Worker that puts a projection under every Tome lean, grades how confident that lean deserves to be, logs picks with the line at pick time, and grades them against final scores and the closing line. WNBA, NBA, NFL. Informational tooling; it never places or recommends anything.
 
+## The Record (added Oct 10, 2026)
+
+`GET /api/lines/record/summary[?asof=YYYY-MM-DD][&league=][&slate=YYYY-MM-DD]` returns every published cut in one call: per league, per segment (`<league>-<season>-regular|playoffs`, the reset boundary) the season-to-date side and total records with denominator, rate and an `early` flag under 20 leans; the slate (7 days through `asof`, or the one day given by `slate=`); chapters (NFL week, NBA month); tier rows gated at 20 segment leans and 8 per tier; the free/Intel split; closing-line value; voids; and the full ledger, one row per market. `POST /api/lines/void` (admin, `{league, game_id, reason}`) marks a card "no result". `tome_record.py` renders the recap block, the Monday rows and the page JSON from that one feed. Vocabulary is fixed: cleared / missed / push / no result; a push counts in neither side of a rate.
+
 ## Deploy (once)
 
 ```

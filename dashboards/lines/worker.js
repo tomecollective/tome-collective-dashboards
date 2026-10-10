@@ -7,9 +7,11 @@
 //   GET  /api/lines/projection?league=wnba&date=YYYY-MM-DD
 //        optional: &adjust=IND:-3,WAS:+1   (manual points adjustments, e.g. injuries; + helps that team)
 //        optional: &lines=<urlencoded JSON> [{"game_id":123,"spread_home":-6.5,"total":177.5}]
-//   POST /api/lines/pick        (admin)  body: {league, game_id, side?: "HOME"|"AWAY", spread_home_at_pick, total_at_pick, total_side?: "OVER"|"UNDER", side_tier?, total_tier?, access?: "free"|"intel", note?}
+//   POST /api/lines/pick        (admin)  body: {league, game_id, side?: "HOME"|"AWAY", spread_home_at_pick, total_at_pick, total_side?: "OVER"|"UNDER", side_tier?, total_tier?, access?: "free"|"intel", note?, source_post_id?}
 //   POST /api/lines/close       (admin)  body: {league, game_id, spread_home_close, total_close}
-//   GET  /api/lines/record?league=wnba[&from=YYYY-MM-DD]   grades logged picks against final scores + CLV
+//   GET  /api/lines/record?league=wnba[&from=YYYY-MM-DD][&to=]   graded ledger (one row per market) + cuts over the window
+//   GET  /api/lines/record/summary[?asof=YYYY-MM-DD][&league=][&slate=YYYY-MM-DD]   every published cut: segments, season-to-date, slate, chapters, tiers
+//   POST /api/lines/void        (admin)  body: {league, game_id, reason?, undo?}  -- postponed / no closing number / withdrawn
 //   GET  /api/lines/market?league=wnba&date=YYYY-MM-DD      open/current lines, public %, finals (sportsbookreview, cached in KV)
 //   GET  /api/lines/trends?league=wnba&date=YYYY-MM-DD&n=10 last-N ATS and O/U per team against the closing number
 //   POST /api/lines/market/backfill?league=wnba&from=&to=   (admin) cache up to 20 past market days per call
@@ -405,7 +407,8 @@ async function handlePick(request, env) {
     projected_spread_home: b.projected_spread_home ?? existing.projected_spread_home ?? null, projected_total: b.projected_total ?? existing.projected_total ?? null,
     side_tier: b.side_tier ?? existing.side_tier ?? null, total_tier: b.total_tier ?? existing.total_tier ?? null,
     access: (b.access ?? existing.access ?? "free") === "intel" ? "intel" : "free", // free = in the open; intel = behind the gate
-    override: b.override ?? existing.override ?? false, note: b.note ?? existing.note ?? null, picked_at: existing.picked_at || new Date().toISOString() };
+    override: b.override ?? existing.override ?? false, note: b.note ?? existing.note ?? null, source_post_id: b.source_post_id ?? existing.source_post_id ?? null,
+    void: existing.void ?? false, void_reason: existing.void_reason ?? null, picked_at: existing.picked_at || new Date().toISOString() };
   await env.LINES_KV.put(key, JSON.stringify(rec));
   return json({ ok: true, pick: rec });
 }
@@ -422,76 +425,192 @@ async function handleClose(request, env) {
   return json({ ok: true, pick: rec });
 }
 
-async function handleRecord(url, env) {
-  const league = (url.searchParams.get("league") || "").toLowerCase();
-  if (!LEAGUE[league]) return json({ error: "league must be wnba, nba, or nfl" }, 400);
-  const from = url.searchParams.get("from") || "2000-01-01";
-  const keys = [];
-  let cursor;
-  do {
-    const page = await env.LINES_KV.list({ prefix: `pick:${league}:`, cursor });
-    keys.push(...page.keys.map((k) => k.name));
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  const picks = (await Promise.all(keys.map((k) => env.LINES_KV.get(k, "json")))).filter(Boolean);
-  const ids = picks.map((p) => p.game_id);
-  // Finals are cached forever; anything not final is re-fetched (in one call) each time.
-  const cachedFinals = (await Promise.all(ids.map((id) => env.LINES_KV.get(`final:${league}:${id}`, "json")))).filter(Boolean);
-  const have = new Set(cachedFinals.map((g) => String(g.id)));
+// ---------- THE RECORD ----------
+// One graded ledger feeds the recap block, the Monday social rows and the record page.
+// Storage stays one KV record per game (pick:<league>:<game_id>); the ledger is emitted one row
+// per market (side, total) so every cut below is a group-by. Nothing derived is stored.
+//
+// Vocabulary (fixed): cleared / missed / push / void. A push lands exactly on the number and counts
+// in neither the numerator nor the denominator of a rate. A void (postponed, no closing number,
+// card withdrawn before kickoff) is listed as "no result" and excluded from every count.
+// A segment is the reset boundary: <league>-<season>-regular | -playoffs. A chapter is a grouping
+// inside a segment: NFL league week, NBA calendar month, nothing for a WNBA playoff run.
+const RATE_GATE = 20;   // cards (cleared+missed) before a rate is printed without the "early" flag
+const TIER_GATE = 8;    // cards in a tier before that tier row is shown, and only once the segment clears RATE_GATE
+const SEGMENT_IDLE_DAYS = 14; // a segment with no graded card in this many days is reported as final
+
+function seasonOf(league, date) { return LEAGUE[league].season(new Date(date + "T00:00:00Z")); }
+function segmentOf(league, g) {
+  const date = gameDate(g);
+  const phase = isPostseason(g) ? "playoffs" : "regular";
+  return { segment: `${league}-${seasonOf(league, date)}-${phase}`, phase, season: seasonOf(league, date),
+    segment_label: `${league.toUpperCase()} ${phase === "playoffs" ? "playoffs" : "regular season"}` };
+}
+function chapterOf(league, date) {
+  if (league === "nfl") return `Week ${nflWeek(date)}`;
+  if (league === "nba") return new Date(date + "T00:00:00Z").toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+  return null;
+}
+function recordStr(t) { return `${t.w}-${t.l}${t.p ? `-${t.p}` : ""}`; }
+function rate(t) { const n = t.w + t.l; return n ? +((100 * t.w) / n).toFixed(1) : null; }
+// Every published record carries its denominator and an early flag below the gate.
+function cut(t) { const n = t.w + t.l; return { record: recordStr(t), cleared: t.w, missed: t.l, push: t.p, cards: t.w + t.l + t.p, rated: n, pct: rate(t), early: n < RATE_GATE }; }
+const tally0 = () => ({ w: 0, l: 0, p: 0 });
+const add = (t, res) => { if (res === "cleared") t.w++; else if (res === "missed") t.l++; else if (res === "push") t.p++; };
+
+async function loadPicks(env, league) {
+  const keys = []; let cursor;
+  do { const page = await env.LINES_KV.list({ prefix: `pick:${league}:`, cursor }); keys.push(...page.keys.map((k) => k.name)); cursor = page.list_complete ? undefined : page.cursor; } while (cursor);
+  return (await Promise.all(keys.map((k) => env.LINES_KV.get(k, "json")))).filter(Boolean);
+}
+async function loadFinals(env, league, ids) {
+  const cached = (await Promise.all(ids.map((id) => env.LINES_KV.get(`final:${league}:${id}`, "json")))).filter(Boolean);
+  const have = new Set(cached.map((g) => String(g.id)));
   const need = ids.filter((id) => !have.has(String(id)));
-  const fresh = need.length ? await bdl(env, league, "games", { ids: need }) : [];
+  let fresh = [];
+  if (need.length) { try { fresh = await bdl(env, league, "games", { ids: need }); } catch (e) { fresh = []; } } // a 429 degrades to "not yet graded", never to an error page
   for (const g of fresh) if (isFinal(g)) await env.LINES_KV.put(`final:${league}:${g.id}`, JSON.stringify(g));
-  const byId = Object.fromEntries([...cachedFinals, ...fresh].map((g) => [String(g.id), g]));
-  const rows = [], tally = { side: { w: 0, l: 0, p: 0 }, total: { w: 0, l: 0, p: 0 }, clv_side: [], clv_total: [], model: { w: 0, l: 0 }, override: { w: 0, l: 0 }, by_tier: {} };
-  const tierTally = (market, t, res) => { if (!t || res === "P") return; const k = `${market}:${t}`; tally.by_tier[k] ||= { w: 0, l: 0 }; tally.by_tier[k][res.toLowerCase()]++; };
-  tally.by_access = { free: { w: 0, l: 0 }, intel: { w: 0, l: 0 } };
-  const accessTally = (p, res) => { if (res === "P") return; tally.by_access[p.access === "intel" ? "intel" : "free"][res.toLowerCase()]++; };
+  return Object.fromEntries([...cached, ...fresh].map((g) => [String(g.id), g]));
+}
+
+// Grade every logged card for a league. Returns ledger rows, one per market.
+async function gradeLeague(env, league) {
+  const picks = await loadPicks(env, league);
+  const byId = await loadFinals(env, league, picks.map((p) => p.game_id));
+  const rows = [];
   for (const p of picks) {
     const g = byId[String(p.game_id)];
-    if (!g || gameDate(g) < from) continue;
+    if (!g) continue;
+    const date = gameDate(g);
     if ((p.spread_home_close == null || p.total_close == null)) { // fill the close from the market cache when it wasn't logged by hand
-      const mk = await env.LINES_KV.get(`market:${league}:${gameDate(g)}`, "json");
+      const mk = await env.LINES_KV.get(`market:${league}:${date}`, "json");
       const m = mk?.games?.find((x) => x.home_nick === nick(g.home_team?.full_name || g.home_team?.name) && x.away_nick === nick(g.visitor_team?.full_name || g.visitor_team?.name));
       if (m) { p.spread_home_close ??= m.spread_home.close; p.total_close ??= m.total.close; }
     }
-    const row = { game_id: p.game_id, date: gameDate(g), matchup: `${abbr(g.visitor_team)} @ ${abbr(g.home_team)}`, ...p, final: isFinal(g) ? `${vScore(g)}-${hScore(g)}` : null };
-    if (isFinal(g)) {
-      const homeMargin = hScore(g) - vScore(g);
-      if (p.side && p.spread_home_at_pick != null) {
-        const homeCover = homeMargin + p.spread_home_at_pick; // >0 home covers
-        const pickedHome = p.side === "HOME";
-        const res = homeCover === 0 ? "P" : ((homeCover > 0) === pickedHome ? "W" : "L");
-        row.side_result = res; tally.side[res.toLowerCase()]++; tierTally("side", p.side_tier, res); accessTally(p, res);
-        if (res !== "P") (p.override ? tally.override : tally.model)[res.toLowerCase()]++;
-        if (p.spread_home_close != null) {
-          // CLV in points from the picked team's perspective
-          const clv = pickedHome ? (p.spread_home_at_pick - p.spread_home_close) : (p.spread_home_close - p.spread_home_at_pick);
-          row.side_clv = +clv.toFixed(1); tally.clv_side.push(clv);
+    const seg = segmentOf(league, g);
+    const base = { league, ...seg, chapter: chapterOf(league, date), date, game_id: p.game_id, matchup: `${abbr(g.visitor_team)} @ ${abbr(g.home_team)}`,
+      access: p.access === "intel" ? "intel" : "free", override: !!p.override, source_post_id: p.source_post_id || null,
+      final: isFinal(g) ? `${vScore(g)}-${hScore(g)}` : null, graded: isFinal(g) && !p.void };
+    const voidRow = (extra) => ({ ...base, ...extra, result: "void", void_reason: p.void_reason || "no result", margin_vs_number: null, clv_points: null, graded: false });
+    if (p.side && p.spread_home_at_pick != null) {
+      const pickedHome = p.side === "HOME";
+      const lean = `${abbr(pickedHome ? g.home_team : g.visitor_team)} ${sp(pickedHome ? p.spread_home_at_pick : -p.spread_home_at_pick)}`;
+      const r = { market: "side", lean, tier: tierWord(p.side_tier), number_at_pick: p.spread_home_at_pick, number_close: p.spread_home_close ?? null, result: null, margin_vs_number: null, clv_points: null };
+      if (p.void) rows.push(voidRow(r));
+      else {
+        if (isFinal(g)) {
+          const homeCover = (hScore(g) - vScore(g)) + p.spread_home_at_pick; // >0 home covers
+          r.margin_vs_number = +(pickedHome ? homeCover : -homeCover).toFixed(1);
+          r.result = homeCover === 0 ? "push" : ((homeCover > 0) === pickedHome ? "cleared" : "missed");
         }
-      }
-      if (p.total_side && p.total_at_pick != null) {
-        const pts = hScore(g) + vScore(g);
-        const res = pts === p.total_at_pick ? "P" : (((pts > p.total_at_pick) === (p.total_side === "OVER")) ? "W" : "L");
-        row.total_result = res; tally.total[res.toLowerCase()]++; tierTally("total", p.total_tier, res); accessTally(p, res);
-        if (p.total_close != null) {
-          const clv = p.total_side === "OVER" ? (p.total_close - p.total_at_pick) : (p.total_at_pick - p.total_close);
-          row.total_clv = +clv.toFixed(1); tally.clv_total.push(clv);
-        }
+        if (p.spread_home_close != null) r.clv_points = +(pickedHome ? (p.spread_home_at_pick - p.spread_home_close) : (p.spread_home_close - p.spread_home_at_pick)).toFixed(1);
+        rows.push({ ...base, ...r });
       }
     }
-    rows.push(row);
+    if (p.total_side && p.total_at_pick != null) {
+      const r = { market: "total", lean: `${p.total_side === "OVER" ? "Over" : "Under"} ${p.total_at_pick}`, tier: tierWord(p.total_tier), number_at_pick: p.total_at_pick, number_close: p.total_close ?? null, result: null, margin_vs_number: null, clv_points: null };
+      if (p.void) rows.push(voidRow(r));
+      else {
+        if (isFinal(g)) {
+          const pts = hScore(g) + vScore(g);
+          r.margin_vs_number = +((p.total_side === "OVER" ? 1 : -1) * (pts - p.total_at_pick)).toFixed(1);
+          r.result = pts === p.total_at_pick ? "push" : (((pts > p.total_at_pick) === (p.total_side === "OVER")) ? "cleared" : "missed");
+        }
+        if (p.total_close != null) r.clv_points = +(p.total_side === "OVER" ? (p.total_close - p.total_at_pick) : (p.total_at_pick - p.total_close)).toFixed(1);
+        rows.push({ ...base, ...r });
+      }
+    }
+  }
+  return rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+function tierWord(t) { return ({ STRONG: "strong", LEAN: "lean", "COIN FLIP": "tossup", TOSSUP: "tossup", "TOSS-UP": "tossup" })[String(t || "").toUpperCase()] || null; }
+function sp(x) { return x == null ? "" : x === 0 ? "PK" : (x > 0 ? `+${x}` : `${x}`); }
+
+// Aggregate a set of graded rows into the published cuts.
+function summarize(rows) {
+  const out = { side: tally0(), total: tally0(), void: 0, clv: { side: [], total: [] }, by_tier: {}, by_access: { free: { side: tally0(), total: tally0() }, intel: { side: tally0(), total: tally0() } } };
+  for (const r of rows) {
+    if (r.result === "void") { out.void++; continue; }
+    if (!r.result) continue;
+    add(out[r.market], r.result); add(out.by_access[r.access][r.market], r.result);
+    if (r.tier) { out.by_tier[r.tier] ||= { side: tally0(), total: tally0() }; add(out.by_tier[r.tier][r.market], r.result); }
+    if (r.clv_points != null) out.clv[r.market].push(r.clv_points);
   }
   const mean = (a) => (a.length ? +(a.reduce((s, x) => s + x, 0) / a.length).toFixed(2) : null);
-  const pct = (t) => (t.w + t.l ? +((100 * t.w) / (t.w + t.l)).toFixed(1) : null);
-  return json({
-    league, from,
-    record: { side: `${tally.side.w}-${tally.side.l}${tally.side.p ? `-${tally.side.p}` : ""}`, side_pct: pct(tally.side), total: `${tally.total.w}-${tally.total.l}${tally.total.p ? `-${tally.total.p}` : ""}`, total_pct: pct(tally.total) },
-    closing_line_value: { side_avg_points: mean(tally.clv_side), side_n: tally.clv_side.length, total_avg_points: mean(tally.clv_total), total_n: tally.clv_total.length },
-    model_vs_override: { model: `${tally.model.w}-${tally.model.l}`, override: `${tally.override.w}-${tally.override.l}` },
-    by_tier: Object.fromEntries(Object.entries(tally.by_tier).map(([k, t]) => [k, { record: `${t.w}-${t.l}`, pct: pct(t) }])),
-    by_access: Object.fromEntries(Object.entries(tally.by_access).map(([k, t]) => [k, { record: `${t.w}-${t.l}`, pct: pct(t) }])), // sides and totals combined
-    picks: rows.sort((a, b) => (a.date < b.date ? 1 : -1)),
-  });
+  const gateOpen = (out.side.w + out.side.l) >= RATE_GATE || (out.total.w + out.total.l) >= RATE_GATE;
+  return {
+    side: cut(out.side), total: cut(out.total), void: out.void, cards: out.side.w + out.side.l + out.side.p + out.total.w + out.total.l + out.total.p,
+    closing_line_value: { side_avg_points: mean(out.clv.side), side_n: out.clv.side.length, total_avg_points: mean(out.clv.total), total_n: out.clv.total.length },
+    // Tier rows are published only once the segment clears the rate gate and the tier itself has TIER_GATE cards in that market.
+    by_tier: Object.fromEntries(["strong", "lean", "tossup"].filter((t) => out.by_tier[t]).map((t) => [t, {
+      side: { ...cut(out.by_tier[t].side), shown: gateOpen && (out.by_tier[t].side.w + out.by_tier[t].side.l) >= TIER_GATE },
+      total: { ...cut(out.by_tier[t].total), shown: gateOpen && (out.by_tier[t].total.w + out.by_tier[t].total.l) >= TIER_GATE } }])),
+    tiers_shown: gateOpen,
+    by_access: { free: { side: cut(out.by_access.free.side), total: cut(out.by_access.free.total) }, intel: { side: cut(out.by_access.intel.side), total: cut(out.by_access.intel.total) } },
+  };
+}
+
+// GET /api/lines/record?league=wnba[&from=][&to=]  -- the full graded ledger plus the cuts over that window (back-compatible shape kept under `record`).
+async function handleRecord(url, env) {
+  const league = (url.searchParams.get("league") || "").toLowerCase();
+  if (!LEAGUE[league]) return json({ error: "league must be wnba, nba, or nfl" }, 400);
+  const from = url.searchParams.get("from") || "2000-01-01", to = url.searchParams.get("to") || "2999-12-31";
+  const rows = (await gradeLeague(env, league)).filter((r) => r.date >= from && r.date <= to);
+  const s = summarize(rows);
+  return json({ league, from, to, record: { side: s.side.record, side_pct: s.side.pct, total: s.total.record, total_pct: s.total.pct }, ...s, picks: rows });
+}
+
+// GET /api/lines/record/summary?asof=YYYY-MM-DD[&league=nfl][&slate=YYYY-MM-DD]
+// Every published cut in one call: per league, per segment -> season-to-date, the slate (the 7 days
+// through asof, or one day when slate= is given), chapters, tiers, access split, CLV, voids.
+// `asof` defaults to today (ET). Rows dated after asof are ignored so a Monday post "through Sunday"
+// and a recap for a given day both reproduce exactly later.
+async function handleRecordSummary(url, env) {
+  const asof = url.searchParams.get("asof") || etDate(new Date().toISOString());
+  const slateDay = url.searchParams.get("slate");
+  const slateFrom = slateDay || new Date(new Date(asof + "T00:00:00Z").getTime() - 6 * 864e5).toISOString().slice(0, 10);
+  const slateTo = slateDay || asof;
+  const leagues = url.searchParams.get("league") ? [url.searchParams.get("league").toLowerCase()] : Object.keys(LEAGUE);
+  const out = { asof, slate: { from: slateFrom, to: slateTo, label: slateDay ? slateDay : `7 days through ${asof}` }, gates: { rate_cards: RATE_GATE, tier_cards: TIER_GATE }, leagues: {} };
+  for (const league of leagues) {
+    if (!LEAGUE[league]) continue;
+    const all = (await gradeLeague(env, league)).filter((r) => r.date <= asof);
+    const segments = {};
+    for (const r of all) (segments[r.segment] ||= { segment: r.segment, label: r.segment_label, season: r.season, phase: r.phase, rows: [] }).rows.push(r);
+    const segOut = [];
+    for (const seg of Object.values(segments).sort((a, b) => (a.rows[0].date < b.rows[0].date ? 1 : -1))) {
+      const graded = seg.rows.filter((r) => r.result);
+      const lastDate = graded.length ? graded.map((r) => r.date).sort().slice(-1)[0] : null;
+      const idleDays = lastDate ? Math.round((new Date(asof + "T00:00:00Z") - new Date(lastDate + "T00:00:00Z")) / 864e5) : null;
+      const chapters = {};
+      for (const r of seg.rows) if (r.chapter) (chapters[r.chapter] ||= []).push(r);
+      segOut.push({
+        ...seg, rows: undefined,
+        status: idleDays != null && idleDays > SEGMENT_IDLE_DAYS ? "final" : "active",
+        through: lastDate, chapter_now: chapterOf(league, asof),
+        season_to_date: summarize(seg.rows),
+        slate: { ...summarize(seg.rows.filter((r) => r.date >= slateFrom && r.date <= slateTo)), from: slateFrom, to: slateTo,
+          cards: seg.rows.filter((r) => r.date >= slateFrom && r.date <= slateTo && r.result) },
+        chapters: Object.entries(chapters).map(([name, rs]) => ({ chapter: name, ...summarize(rs) })),
+        pending: seg.rows.filter((r) => !r.result).length,
+        ledger: seg.rows,
+      });
+    }
+    out.leagues[league] = { segments: segOut };
+  }
+  return json(out);
+}
+
+// POST /api/lines/void (admin) body: {league, game_id, reason}  -- postponed, no closing number, withdrawn before kickoff.
+async function handleVoid(request, env) {
+  const b = await request.json().catch(() => null);
+  if (!b || !LEAGUE[b.league] || !b.game_id) return json({ error: "league and game_id required" }, 400);
+  const key = `pick:${b.league}:${b.game_id}`;
+  const rec = JSON.parse((await env.LINES_KV.get(key)) || "null");
+  if (!rec) return json({ error: "no pick logged for that game" }, 404);
+  rec.void = b.undo ? false : true; rec.void_reason = b.undo ? null : (b.reason || "no result"); rec.voided_at = new Date().toISOString();
+  await env.LINES_KV.put(key, JSON.stringify(rec));
+  return json({ ok: true, pick: rec });
 }
 
 export default {
@@ -509,11 +628,13 @@ export default {
       if (url.pathname === "/api/lines/ratings") return await handleRatings(url, env);
       if (url.pathname === "/api/lines/projection") return await handleProjection(url, env);
       if (url.pathname === "/api/lines/record") return await handleRecord(url, env);
+      if (url.pathname === "/api/lines/record/summary") return await handleRecordSummary(url, env);
       if (url.pathname === "/api/lines/market") return await handleMarket(url, env);
       if (url.pathname === "/api/lines/trends") return await handleTrends(url, env);
       if (url.pathname === "/api/lines/market/backfill" && request.method === "POST") return isAdmin(request, env) ? await handleBackfill(url, env) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/pick" && request.method === "POST") return isAdmin(request, env) ? await handlePick(request, env) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/close" && request.method === "POST") return isAdmin(request, env) ? await handleClose(request, env) : json({ error: "unauthorized" }, 401);
+      if (url.pathname === "/api/lines/void" && request.method === "POST") return isAdmin(request, env) ? await handleVoid(request, env) : json({ error: "unauthorized" }, 401);
       return new Response("tome-lines", { status: 200 });
     } catch (e) {
       return json({ error: e.message }, 502);
