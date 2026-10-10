@@ -468,9 +468,12 @@ function renderStats() {
 }
 
 function renderChart() {
-const cutoff = new Date();
+// Anchor the window on the newest data point (not the real clock) so it
+// matches the WoW/Daily stats above and doesn't shrink while a refresh lags.
+const lastDate = indexHistory.length ? indexHistory[indexHistory.length - 1].date : null;
+const cutoff = lastDate ? new Date(lastDate + "T00:00:00") : new Date();
 cutoff.setDate(cutoff.getDate() - currentTimeframeDays);
-const filtered = indexHistory.filter(p => new Date(p.date) >= cutoff);
+const filtered = indexHistory.filter(p => new Date(p.date + "T00:00:00") >= cutoff);
 
 const ctx = document.getElementById("indexChart");
 if (window._chaseChart) window._chaseChart.destroy();
