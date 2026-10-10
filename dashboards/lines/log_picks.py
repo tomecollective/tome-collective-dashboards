@@ -2,10 +2,13 @@
 
     export TOME_LINES_URL=https://tome-lines.<account>.workers.dev
     export TOME_ADMIN_TOKEN=...            # paste yourself; never commit
-    python3 log_picks.py projection.json [--free 3] [--free-games BOS@NYK,LAL@DEN] [--override AWAY@HOME:side=HOME,total=UNDER ...]
+    python3 log_picks.py projection.json [--free 3] [--free-games BOS@NYK,LAL@DEN] [--override AWAY@HOME:side=HOME,total=UNDER ...] [--post post_<uuid>]
 
 Uses the same prominence rule as tome_card.py: the first N games in slate order are free unless --free-games says which.
 --override lets you log your lean where it differs from the model (it is stored with override:true and still graded).
+--post ties every lean on the slate to the preview it was published in (source_post_id on the ledger).
+Each pick also carries its slate identity (date, abbreviations, SBR nicknames, postseason) so The Record can list and
+grade it from the cached market page even when BALLDONTLIE is rate-limited.
 """
 import json, os, sys, urllib.request
 
@@ -23,6 +26,7 @@ for i, a in enumerate(args):
         k, spec = args[i + 1].split(":", 1)
         overrides[k] = dict(x.split("=") for x in spec.split(","))
 
+post_id = args[args.index("--post") + 1] if "--post" in args else None
 key = lambda g: f'{g["away"]}@{g["home"]}'
 free_set = {key(g) for g in (games[:free] if not free_keys else [g for g in games if key(g) in free_keys])}
 
@@ -37,7 +41,8 @@ for g in games:
         "projected_spread_home": g.get("projected_spread_home"), "projected_total": g.get("projected_total"),
         "side_tier": L.get("side_tier"), "total_tier": L.get("total_tier"),
         "access": "free" if key(g) in free_set else "intel",
-        "override": bool(ov), "note": ov.get("note"),
+        "override": bool(ov), "note": ov.get("note"), "source_post_id": post_id,
+        "date": g.get("date"), "home": g.get("home"), "away": g.get("away"), "home_nick": g.get("home_nick"), "away_nick": g.get("away_nick"), "postseason": bool(g.get("postseason")),
     }
     req = urllib.request.Request(f"{URL}/api/lines/pick", data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "X-Admin-Token": TOKEN})

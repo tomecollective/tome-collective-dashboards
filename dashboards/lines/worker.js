@@ -7,7 +7,7 @@
 //   GET  /api/lines/projection?league=wnba&date=YYYY-MM-DD
 //        optional: &adjust=IND:-3,WAS:+1   (manual points adjustments, e.g. injuries; + helps that team)
 //        optional: &lines=<urlencoded JSON> [{"game_id":123,"spread_home":-6.5,"total":177.5}]
-//   POST /api/lines/pick        (admin)  body: {league, game_id, side?: "HOME"|"AWAY", spread_home_at_pick, total_at_pick, total_side?: "OVER"|"UNDER", side_tier?, total_tier?, access?: "free"|"intel", note?, source_post_id?}
+//   POST /api/lines/pick        (admin)  body: {league, game_id, side?: "HOME"|"AWAY", spread_home_at_pick, total_at_pick, total_side?: "OVER"|"UNDER", side_tier?, total_tier?, access?: "free"|"intel", note?, source_post_id?, date?, home?, away?, home_nick?, away_nick?, postseason?}
 //   POST /api/lines/close       (admin)  body: {league, game_id, spread_home_close, total_close}
 //   GET  /api/lines/record?league=wnba[&from=YYYY-MM-DD][&to=]   graded ledger (one row per market) + cuts over the window
 //   GET  /api/lines/record/summary[?asof=YYYY-MM-DD][&league=][&slate=YYYY-MM-DD]   every published cut: segments, season-to-date, slate, chapters, tiers
@@ -364,7 +364,7 @@ async function handleProjection(url, env) {
       rest: { home_days_since: p.inputs.rest_home, away_days_since: p.inputs.rest_away, home_days: p.inputs.days_since_home, away_days: p.inputs.days_since_away },
       league,
     } : null;
-    return { ...p, market, lean: L, card };
+    return { ...p, home_nick: hn, away_nick: vn, market, lean: L, card };
   });
   const count = (k) => games.reduce((acc, g) => { const t = g.lean[k]; if (t) acc[t] = (acc[t] || 0) + 1; return acc; }, {});
   return json({ league, date, games_used_for_ratings: hist.length, league_avg_pts: ratings.leagueAvg ?? null, market_source: mkt?.error ? `unavailable: ${mkt.error}` : (mkt ? "sportsbookreview" : "lines param only"),
@@ -408,6 +408,10 @@ async function handlePick(request, env) {
     side_tier: b.side_tier ?? existing.side_tier ?? null, total_tier: b.total_tier ?? existing.total_tier ?? null,
     access: (b.access ?? existing.access ?? "free") === "intel" ? "intel" : "free", // free = in the open; intel = behind the gate
     override: b.override ?? existing.override ?? false, note: b.note ?? existing.note ?? null, source_post_id: b.source_post_id ?? existing.source_post_id ?? null,
+    // slate identity (ET date, abbreviations, SBR nicknames, postseason) lets the ledger list and grade the card from the
+    // cached market page when BALLDONTLIE is rate-limited or down; log_picks.py sends these from the projection row
+    date: b.date ?? existing.date ?? null, home: b.home ?? existing.home ?? null, away: b.away ?? existing.away ?? null,
+    home_nick: b.home_nick ?? existing.home_nick ?? null, away_nick: b.away_nick ?? existing.away_nick ?? null, postseason: b.postseason ?? existing.postseason ?? false,
     void: existing.void ?? false, void_reason: existing.void_reason ?? null, picked_at: existing.picked_at || new Date().toISOString() };
   await env.LINES_KV.put(key, JSON.stringify(rec));
   return json({ ok: true, pick: rec });
@@ -479,14 +483,26 @@ async function gradeLeague(env, league) {
   const byId = await loadFinals(env, league, picks.map((p) => p.game_id));
   const rows = [];
   for (const p of picks) {
-    const g = byId[String(p.game_id)];
-    if (!g) continue;
-    const date = gameDate(g);
-    if ((p.spread_home_close == null || p.total_close == null)) { // fill the close from the market cache when it wasn't logged by hand
-      const mk = await env.LINES_KV.get(`market:${league}:${date}`, "json");
-      const m = mk?.games?.find((x) => x.home_nick === nick(g.home_team?.full_name || g.home_team?.name) && x.away_nick === nick(g.visitor_team?.full_name || g.visitor_team?.name));
+    let g = byId[String(p.game_id)];
+    // No BALLDONTLIE record (rate-limited, or the game is still pending): fall back to the slate identity stored on the
+    // pick and the cached sportsbookreview page, which carries the final score once the game is over. A pick with
+    // neither can't be placed on a date and is skipped (log_picks.py always stores the identity).
+    let m = null;
+    const pdate = g ? gameDate(g) : p.date;
+    if (!pdate) continue;
+    const hn = g ? nick(g.home_team?.full_name || g.home_team?.name) : p.home_nick, vn = g ? nick(g.visitor_team?.full_name || g.visitor_team?.name) : p.away_nick;
+    if (p.spread_home_close == null || p.total_close == null || !g) {
+      const mk = await env.LINES_KV.get(`market:${league}:${pdate}`, "json");
+      m = mk?.games?.find((x) => x.home_nick === hn && x.away_nick === vn) || null;
       if (m) { p.spread_home_close ??= m.spread_home.close; p.total_close ??= m.total.close; }
     }
+    if (!g) {
+      const fin = m && m.final && m.home_score != null && m.away_score != null;
+      g = { id: p.game_id, date: pdate, status: fin ? "Final" : "Scheduled", postseason: !!p.postseason,
+        home_team: { abbreviation: p.home || (hn || "").toUpperCase() }, visitor_team: { abbreviation: p.away || (vn || "").toUpperCase() },
+        home_team_score: fin ? m.home_score : null, visitor_team_score: fin ? m.away_score : null };
+    }
+    const date = gameDate(g);
     const seg = segmentOf(league, g);
     const base = { league, ...seg, chapter: chapterOf(league, date), date, game_id: p.game_id, matchup: `${abbr(g.visitor_team)} @ ${abbr(g.home_team)}`,
       access: p.access === "intel" ? "intel" : "free", override: !!p.override, source_post_id: p.source_post_id || null,
