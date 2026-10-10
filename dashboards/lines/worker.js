@@ -11,6 +11,7 @@
 //   POST /api/lines/close       (admin)  body: {league, game_id, spread_home_close, total_close}
 //   GET  /api/lines/record?league=wnba[&from=YYYY-MM-DD][&to=]   graded ledger (one row per market) + cuts over the window
 //   GET  /api/lines/record/summary[?asof=YYYY-MM-DD][&league=][&slate=YYYY-MM-DD]   every published cut: segments, season-to-date, slate, chapters, tiers
+//   POST /api/lines/pick/delete (admin)  body: {league, game_id}  -- remove a duplicate or test card
 //   POST /api/lines/void        (admin)  body: {league, game_id, reason?, undo?}  -- postponed / no closing number / withdrawn
 //   GET  /api/lines/market?league=wnba&date=YYYY-MM-DD      open/current lines, public %, finals (sportsbookreview, cached in KV)
 //   GET  /api/lines/trends?league=wnba&date=YYYY-MM-DD&n=10 last-N ATS and O/U per team against the closing number
@@ -617,6 +618,16 @@ async function handleRecordSummary(url, env) {
   return json(out);
 }
 
+// POST /api/lines/pick/delete (admin) body: {league, game_id}  -- remove a logged card entirely (duplicates, test entries).
+async function handleDeletePick(request, env) {
+  const b = await request.json().catch(() => null);
+  if (!b || !LEAGUE[b.league] || !b.game_id) return json({ error: "league and game_id required" }, 400);
+  const key = `pick:${b.league}:${b.game_id}`;
+  const existed = !!(await env.LINES_KV.get(key));
+  await env.LINES_KV.delete(key);
+  return json({ ok: true, deleted: existed, key });
+}
+
 // POST /api/lines/void (admin) body: {league, game_id, reason}  -- postponed, no closing number, withdrawn before kickoff.
 async function handleVoid(request, env) {
   const b = await request.json().catch(() => null);
@@ -650,6 +661,7 @@ export default {
       if (url.pathname === "/api/lines/market/backfill" && request.method === "POST") return isAdmin(request, env) ? await handleBackfill(url, env) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/pick" && request.method === "POST") return isAdmin(request, env) ? await handlePick(request, env) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/close" && request.method === "POST") return isAdmin(request, env) ? await handleClose(request, env) : json({ error: "unauthorized" }, 401);
+      if (url.pathname === "/api/lines/pick/delete" && request.method === "POST") return isAdmin(request, env) ? await handleDeletePick(request, env) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/void" && request.method === "POST") return isAdmin(request, env) ? await handleVoid(request, env) : json({ error: "unauthorized" }, 401);
       return new Response("tome-lines", { status: 200 });
     } catch (e) {
