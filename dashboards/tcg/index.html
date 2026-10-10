@@ -733,27 +733,28 @@ tbody.appendChild(row);
 // matching dates. Once the real JustTCG history feed is wired into the
 // Worker (see worker/index.js), every card's `history` array will be
 // populated server-side and this just works without further changes.
-//
-// A day only counts once EVERY index card has posted a price for it. The
-// daily refresh writes each card's history point as its own batch finishes,
-// so mid-refresh there can be a window where only a handful of the 50 cards
-// have today's point and the rest don't yet -- summing that partial set
-// looks like the index crashed (e.g. $4.5K instead of ~$38K) when nothing
-// actually happened to any card's price. Dropping incomplete dates avoids
-// ever showing that false plunge; the day appears once the refresh finishes
-// and every card has reported in.
-const dateMap = {};
-const dateCounts = {};
-indexCards.forEach(card => {
-(card.history || []).forEach(point => {
-dateMap[point.date] = (dateMap[point.date] || 0) + point.price;
-dateCounts[point.date] = (dateCounts[point.date] || 0) + 1;
+// Carry-forward: if a card has no point for a given day (its refresh failed
+// that day -- e.g. a JustTCG outage -- or its batch hasn't landed yet), use
+// that card's last known price instead of dropping the whole day. The Worker
+// does the same ("kept their last known price"), so this keeps the trend line
+// moving instead of freezing, and a mid-refresh read never shows a false crash.
+// A day only counts once every index card has SOME price at or before it.
+const cardPrices = indexCards.map(card => {
+const m = {};
+(card.history || []).forEach(p => { m[p.date] = p.price; });
+return m;
 });
+const allDates = [...new Set(cardPrices.flatMap(m => Object.keys(m)))].sort();
+const lastKnown = new Array(indexCards.length).fill(null);
+indexHistory = [];
+allDates.forEach(date => {
+let total = 0, complete = true;
+cardPrices.forEach((m, i) => {
+if (m[date] !== undefined) lastKnown[i] = m[date];
+if (lastKnown[i] === null) complete = false; else total += lastKnown[i];
 });
-indexHistory = Object.entries(dateMap)
-.filter(([date]) => dateCounts[date] === indexCards.length)
-.map(([date, total]) => ({ date, total }))
-.sort((a, b) => new Date(a.date) - new Date(b.date));
+if (complete) indexHistory.push({ date, total });
+});
 
 updateTimeframeAvailability();
 updateChartCaption();
