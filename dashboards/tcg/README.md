@@ -86,15 +86,19 @@ necessary given the API's retention capability.
 9. **Admin token (required):** `wrangler secret put TCG_ADMIN_TOKEN`. `POST /api/refresh`
    answers 401 unless the request carries `X-Admin-Token: <that value>`; the cron and the
    worker's own batch chain (`?resume=1`, authenticated by a per-run nonce) don't need it.
-   Manual kick: `curl -X POST -H "X-Admin-Token: ..." https://tome-tcg.tomecollective.workers.dev/api/refresh`
-   -- that starts the batch chain (~7 min). The chain never publishes itself (see below); once
-   `/api/refresh-status` is quiet and the KV key `refresh:progress` shows `readyToPublish`, publish with
-   `curl -X POST -H "X-Admin-Token: ..." "https://tome-tcg.tomecollective.workers.dev/api/refresh?resume=1"`.
-10. **Two crons, not one.** `0 13 * * *` refreshes prices across a chain of ~30 self-invocations;
-   `20 13 * * *` publishes the finished run from a fresh invocation. Publishing at the tail of the
-   chain failed every day from 2026-10-02 to 10-05 with `KV PUT failed: 500` (every KV write in that
-   final invocation failed, tiny or large) while the same publish from a fresh invocation worked
-   first try. If you change the second cron string, change `PUBLISH_CRON` in `worker/index.js` too.
+   Manual run (each call does one slice of 12 cards; loop until `done` is true -- about 30 calls):
+   ```powershell
+   $tok = "<TCG_ADMIN_TOKEN>"; $u = "https://tome-tcg.tomecollective.workers.dev/api/refresh"
+   $r = curl.exe -s -X POST -H "X-Admin-Token: $tok" $u | ConvertFrom-Json
+   while (-not $r.done) { $r = curl.exe -s -X POST -H "X-Admin-Token: $tok" "$u`?resume=1" | ConvertFrom-Json; $r.progress }
+   $r.published
+   ```
+10. **How the daily run is driven.** One cron, `* 10 * * *` (every minute of the 10:00 UTC
+   hour). Each tick is an independent invocation: continue today's run by one slice, or publish if
+   that slice was the last, or do nothing if today is already published, or finish+publish
+   yesterday's run if it never completed. No self-chaining: the earlier chained design (all slices
+   nested under the first invocation's `waitUntil`) was cut off by the runtime partway through
+   every day 2026-10-09..11 and could never publish. The hour must match `RUN_WINDOW_UTC_HOUR`.
    Local check: `node dashboards/tcg/worker/_local_test.mjs`
 
 ## Future: usage analytics

@@ -33,11 +33,12 @@ id = "91fb21abc1084fe1ae7f723cec1b4e61"
 [observability.logs]
 enabled = true
 [triggers]
-# 10:00 UTC: refresh prices (chained batches). 10:20 UTC: publish the finished
-# run from a fresh invocation -- publishing at the tail of the refresh chain
-# failed with "KV PUT failed: 500" every day 2026-10-02..05. The second string
-# must match PUBLISH_CRON in worker/index.js exactly.
-crons = ["0 10 * * *", "20 10 * * *"]
+# Every minute during the 10:00 UTC hour. Each tick is a fresh invocation that
+# does one slice of cards; the tick that finishes the last slice publishes.
+# No self-chaining (the chained design was cancelled by the runtime partway
+# through every day 2026-10-09..11 and could never publish). The hour must
+# match RUN_WINDOW_UTC_HOUR in worker/index.js.
+crons = ["* 10 * * *"]
 
 # Secrets (never committed):
 #   wrangler secret put JUSTTCG_API_KEY

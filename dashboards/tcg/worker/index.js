@@ -67,7 +67,6 @@ const TOP_N = 50;
 const CACHE_KEY_LATEST = "latest";
 const RESOLVE_PREFIX = "resolved:"; // resolved:<name>|<set_name> -> {cardId, variantId}
 const KEY_PROGRESS = "refresh:progress"; // in-flight batch state between chained invocations
-const SELF_URL = "https://tome-tcg.tomecollective.workers.dev"; // used by scheduled() to call itself
 
 // Cloudflare Workers cap outbound requests (fetch calls AND KV operations
 // both count) at 50 per single invocation on the Free plan (1000 on Workers
@@ -93,7 +92,25 @@ const MAX_FAILURE_RATE_TO_PUBLISH = 0.5;
 // Second cron entry in wrangler.toml: the publish step runs here, in a
 // fresh invocation, instead of at the tail of the refresh chain. Must match
 // wrangler.toml exactly (Cloudflare passes the matching string in event.cron).
-const PUBLISH_CRON = "20 10 * * *";
+// ---- How a daily run is driven (since 2026-10-12) ----
+// One cron fires every minute during the 10:00 UTC hour (wrangler.toml:
+// "* 10 * * *"). Each tick is an independent, fresh invocation that does ONE
+// slice of cards and returns; the tick that finishes the last slice publishes
+// right there. There is no self-chaining any more.
+//
+// History, so nobody reintroduces the chain: the previous design ran all ~30
+// slices as nested SELF.fetch() calls under the first invocation's
+// waitUntil(). Cloudflare caps how long that tree may live: from 2026-10-02
+// the tail invocation's KV writes failed with "500", and after the move to
+// 10:00 UTC (slower JustTCG responses, ~41 s per slice) the runtime logged
+// "waitUntil() tasks did not complete within the allowed time ... and have
+// been cancelled" around slice 24, so the run never finished and the 10:20
+// publish cron, finding it unfinished, resumed it as another chain -- which
+// again could not publish. The dashboard sat on Oct 8 data for four days.
+// Independent cron ticks have no shared lifetime, so none of that applies.
+const RUN_WINDOW_UTC_HOUR = 10; // must match the hour in wrangler.toml's cron
+// A tick skips its slice if another tick is mid-slice (JustTCG slow day).
+const SLICE_LOCK_MS = 55 * 1000;
 const KEY_LAST_STATUS = "refresh:last_status"; // small always-written diagnostic record, see processBatch()
 
 function resolveKey(name, setName) {
@@ -396,9 +413,6 @@ async function freshProgress(env) {
     sets: JSON.parse(JSON.stringify(chaseIndexData.sets)),
     offset: 0,
     failures: [],
-    // Per-run secret the batch chain presents on its resume=1 calls, so the
-    // chain keeps working without exposing an unauthenticated /api/refresh.
-    chainNonce: crypto.randomUUID(),
   };
 }
 
@@ -513,11 +527,9 @@ async function rateLimited(request, env, corsHeaders) {
 }
 
 // -- Admin auth for POST /api/refresh -----------------------------------------
-// A fresh run may only be started by the cron (scheduled(), no HTTP) or by an
-// admin presenting X-Admin-Token == TCG_ADMIN_TOKEN. Batch continuations
-// (?resume=1) are authenticated by the per-run chainNonce stored in KV
-// progress and sent back as X-Refresh-Chain -- never by the admin token, so
-// the chain works even if the secret is rotated mid-run.
+// Runs are driven by the cron (scheduled(), no HTTP) or by an admin presenting
+// X-Admin-Token == TCG_ADMIN_TOKEN on POST /api/refresh (start) and
+// POST /api/refresh?resume=1 (next slice).
 // -- Constant-time secret comparison --------------------------------------------
 // Plain `===` short-circuits on the first differing byte, which leaks how many
 // leading characters of a guess match. Both branches below are constant-time:
@@ -555,24 +567,30 @@ function checkAdminToken(request, env) {
   return secretEquals(token, env.TCG_ADMIN_TOKEN || "");
 }
 
-async function checkChainNonce(request, env) {
-  const presented = request.headers.get("X-Refresh-Chain") || "";
-  if (!presented || !env.CHASE_INDEX_KV) return false;
-  const progress = await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json");
-  return Boolean(progress && progress.chainNonce) && secretEquals(presented, progress.chainNonce);
-}
 
 // Processes one BATCH_SIZE-sized slice of cards, then either chains itself
 // to the next batch (fire-and-forget, via ctx.waitUntil so it doesn't block
 // this invocation's response) or, once every card has been visited,
 // recomputes the index and publishes the final payload to KV.
-async function processBatch(env, origin, resume, ctx, opts = {}) {
+async function processBatch(env, resume) {
   let progress = resume ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
   if (!progress) progress = await freshProgress(env);
 
   const refs = flattenRefs(progress.sets);
   const total = refs.length;
   const slice = refs.slice(progress.offset, progress.offset + BATCH_SIZE);
+
+  // Overlap guard: cron ticks are a minute apart and a slice normally takes
+  // 25-45 s, but a slow JustTCG day could push one past the next tick. Two
+  // ticks working the same slice would double-spend quota and race on KV.
+  const now = Date.now();
+  if (slice.length && progress.lockUntil && progress.lockUntil > now) {
+    return { done: false, progress: `${progress.offset}/${total}`, skipped: true, message: "another tick is mid-slice; try again next tick" };
+  }
+  if (slice.length) {
+    progress.lockUntil = now + SLICE_LOCK_MS;
+    await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
+  }
 
   for (const ref of slice) {
     const set = progress.sets[ref.si];
@@ -592,36 +610,15 @@ async function processBatch(env, origin, resume, ctx, opts = {}) {
   progress.offset += slice.length;
 
   if (progress.offset < total) {
-    // Chain to the next batch via the SELF service binding, NOT a plain
-    // fetch() to our own workers.dev URL -- Cloudflare silently blocks a
-    // worker from fetch()-ing its own *.workers.dev URL as anti-loop
-    // protection (error 1042/404, request never actually invoked), which is
-    // exactly what made the first version of this chain die after batch 1
-    // with no visible error. Service bindings route worker-to-worker
-    // internally and aren't subject to that restriction -- see wrangler.toml.
-    if (!progress.chainNonce) progress.chainNonce = crypto.randomUUID(); // progress written before this field existed
+    // Save and stop. The next cron tick (or the next manual POST ?resume=1)
+    // picks up from here in a fresh invocation. No self-chaining -- see the
+    // RUN_WINDOW_UTC_HOUR comment near the top of this file.
+    delete progress.lockUntil;
     await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
-    ctx.waitUntil(
-      env.SELF.fetch(`${origin}/api/refresh?resume=1&chain=1`, { method: "POST", headers: { "X-Refresh-Chain": progress.chainNonce } })
-    );
-    return { done: false, progress: `${progress.offset}/${total}`, message: "batch complete, next batch chaining automatically" };
+    return { done: false, progress: `${progress.offset}/${total}`, message: "slice complete; next cron tick (or POST ?resume=1) continues" };
   }
 
-  // Every card is refreshed. Publishing from HERE -- the invocation at the
-  // tail of a ~30-deep chain of SELF.fetch() calls -- is what broke from
-  // 2026-10-02 to 10-05: every KV write in that final invocation returned
-  // "KV PUT failed: 500", large or tiny, while an identical publish from a
-  // fresh invocation (manual ?resume=1 from the CLI) succeeded first try.
-  // So the chain never publishes. It records the run as ready and stops;
-  // the publish happens in a brand-new invocation: the second cron entry
-  // (PUBLISH_CRON in wrangler.toml, 20 min after the refresh cron) or a
-  // manual POST /api/refresh?resume=1 with the admin token.
-  if (opts.fromChain) {
-    progress.readyToPublish = true;
-    await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_PROGRESS, JSON.stringify(progress));
-    return { done: false, progress: `${total}/${total}`, readyToPublish: true, message: "all cards refreshed; publish deferred to the next fresh invocation (publish cron or manual ?resume=1)" };
-  }
-
+  // Every card is refreshed: publish from this (fresh, un-nested) invocation.
   recomputeIndex(progress.sets, progress.today);
 
   const failureRate = total > 0 ? progress.failures.length / total : 0;
@@ -730,7 +727,7 @@ export default {
       // resume=1 (that's what the worker hands itself between batches). An
       // operator can therefore POST ?resume=1 with the admin token to retry
       // just the publish step after a failed run, without re-fetching cards.
-      const authorized = checkAdminToken(request, env) || (resume && (await checkChainNonce(request, env)));
+      const authorized = checkAdminToken(request, env);
       if (!authorized) {
         return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
       }
@@ -746,12 +743,10 @@ export default {
           headers: corsHeaders,
         });
       }
-      // ?resume=1 continues a chained run already in progress (this is what
-      // the worker calls on itself between batches); no resume param means
-      // "start a fresh run from card 0", which is what you want the first
-      // time you POST here by hand (with the X-Admin-Token header).
-      const fromChain = url.searchParams.get("chain") === "1";
-      const result = await processBatch(env, url.origin, resume, ctx, { fromChain });
+      // Each POST does ONE slice. No resume param = start a fresh run from
+      // card 0; ?resume=1 = continue the run in KV. To run a whole refresh by
+      // hand, loop on ?resume=1 until the response has done:true (see README).
+      const result = await processBatch(env, resume);
       return new Response(JSON.stringify(result), { headers: corsHeaders });
     }
 
@@ -759,28 +754,27 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    // Two crons (wrangler.toml): 13:00 UTC refreshes prices across a chain
-    // of batches; PUBLISH_CRON (10:20 UTC) publishes the finished run from a
-    // fresh invocation. If a run got cut off, the next tick resumes it.
+    // One tick per minute during RUN_WINDOW_UTC_HOUR. Each tick: if a run is
+    // in progress, do its next slice (the tick that does the last slice also
+    // publishes); if today's run is already published, do nothing; if no run
+    // exists for today, start one. ~30 slices at one per minute finishes and
+    // publishes about 30-35 minutes into the hour.
     const today = new Date().toISOString().slice(0, 10);
     const existing = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_PROGRESS, "json") : null;
-    const isToday = !!(existing && existing.today === today);
-    if (event.cron === PUBLISH_CRON) {
-      // Fresh invocation (not a chain tail): publish today's finished run.
-      // If the run isn't finished (a batch died), this resumes it instead;
-      // the chain marks it ready and the manual path picks it up. Nothing
-      // to do if there's no run from today.
-      if (!isToday) return;
-      ctx.waitUntil(processBatch(env, SELF_URL, true, ctx, { fromChain: false }));
+    if (existing && existing.today !== today) {
+      // Yesterday's run never finished (window ran out). Finish and publish
+      // it anyway from here -- a day-late price is better than a hole -- and
+      // today's run starts on the next tick once this one has published.
+      ctx.waitUntil(processBatch(env, true));
       return;
     }
-    // Refresh cron: start (or continue) today's run. The first slice runs in
-    // this invocation; subsequent slices chain via SELF with chain=1.
-    ctx.waitUntil(processBatch(env, SELF_URL, isToday, ctx, { fromChain: true }));
+    if (!existing) {
+      const status = env.CHASE_INDEX_KV ? await env.CHASE_INDEX_KV.get(KEY_LAST_STATUS, "json") : null;
+      if (status && status.ranAt === today && status.published) return; // already done today
+      // Starting late in the window is fine: whatever isn't finished by the
+      // end of the hour is completed and published by tomorrow's first tick.
+    }
+    ctx.waitUntil(processBatch(env, !!existing));
   },
 };
 
-// Note: SELF_URL is still used as the base for building the /api/refresh?
-// resume=1 URL passed to env.SELF.fetch() -- the service binding needs a
-// full Request/URL, it just doesn't route over the public network the way a
-// bare global fetch() to that same URL would.
