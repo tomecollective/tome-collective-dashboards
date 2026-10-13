@@ -1,4 +1,5 @@
 name = "tome-tcg"
+account_id = "a5a1f051b5d52a453505495144f5a1e5"
 main = "worker/index.js"
 compatibility_date = "2026-08-08"
 
