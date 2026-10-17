@@ -63,7 +63,7 @@ const LEAGUES = {
     advancedUrl: `${BDL_ROOT}/wnba/v1/player_game_advanced_stats`,
     // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
-    run: { label: "Run 11", start: "2026-09-17", end: "2026-09-24" },
+    run: { label: "Finals", start: "2026-10-17", end: "2026-10-29" },
     // Cron refreshes only run while a league is in season (playoffs included).
     seasonActive: { start: "2026-05-01", end: "2026-10-31" },
     // How far back to look for a team's last 10 completed games. WNBA plays
@@ -291,7 +291,6 @@ function isExhibitionGame(g) {
     if (abbr === "COOP" || abbr === "SPO" || abbr === "SPOON") return true;
     // A team object that carries a conference field but no value is a
     // made-up squad (every real WNBA/NBA team is East or West).
-    if ("conference" in t && !t.conference && !REAL_TEAM_ABBRS.has(abbr)) return true;
   }
   return false;
 }
@@ -1096,9 +1095,20 @@ function dateNeedsAdvanced(schedule, league, date) {
   );
 }
 
+// BALLDONTLIE sometimes returns only a handful of players for a big slate on
+// the first build. A "done" snapshot with fewer than MIN_PLAYERS_PER_TEAM
+// players per team is treated as incomplete so the next tick rebuilds it.
+const MIN_PLAYERS_PER_TEAM = 6;
+function rosterLooksIncomplete(snapshot) {
+  const teamCount = snapshot.teamIds?.length || 0;
+  if (teamCount === 0) return false;
+  return (snapshot.totalPlayers || 0) < teamCount * MIN_PLAYERS_PER_TEAM;
+}
+
 function snapshotIsFresh(snapshot, date) {
   if (!snapshot || snapshot.status !== "done") return false;
   if (snapshot.schema !== SNAPSHOT_SCHEMA) return false; // built before a data fix: rebuild
+  if (rosterLooksIncomplete(snapshot)) return false;
   // Self-heal: a slate with a team that has no roster is partial, so never treat it as fresh.
   if (Array.isArray(snapshot.teamIds) && snapshot.teamIds.length) {
     const rostered = new Set((snapshot.roster || []).map((p) => p.teamId));
@@ -1295,8 +1305,10 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     projectionOverrides[obj.stat] = projectionsForDate(schedule, league, date, obj.stat) || {};
   }
 
+  // IMPORTANT: pending players are still shown. The roster is fetched up
+  // front; only their stats are pending, so they render with null/"--" values
+  // (pendingStats: true) instead of vanishing from the dashboard mid-build.
   const playerBase = snapshot.roster
-    .filter((p) => !pendingIds.has(p.id))
     .map((p) => {
       const nameKey = normalizePlayerName(p.name);
       const objectiveValues = {};
@@ -1352,6 +1364,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
         injuryStatus: injury?.status || null,
         injuryNote: injury?.note || null,
         objectives: objectiveValues,
+        pendingStats: pendingIds.has(p.id),
       };
     });
 
