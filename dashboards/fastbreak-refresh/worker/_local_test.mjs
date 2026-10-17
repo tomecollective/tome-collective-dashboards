@@ -154,8 +154,10 @@ assert.equal(T.LEAGUES.WNBA.seasonFor("2026-09-17"), 2026);
 assert.equal(T.etDateStrForGame({ date: "2026-10-20" }), "2026-10-20", "plain NBA date is not shifted");
 assert.equal(T.etDateStrForGame({ datetime: "2026-10-21T02:30:00.000Z" }), "2026-10-20", "late ET tip stays on its ET date");
 assert.equal(T.etDateStrForGame({ datetime: "2026-11-10T03:00:00.000Z" }), "2026-11-09", "EST handled after DST ends");
-assert.equal(T.dayNumberForDate("WNBA", "2026-09-17"), 1);
-assert.equal(T.dayNumberForDate("WNBA", "2026-09-24"), 8);
+assert.equal(T.dayNumberForDate("WNBA", "2026-10-17"), 1);
+assert.equal(T.dayNumberForDate("WNBA", "2026-10-19"), 2);
+assert.equal(T.dayNumberForDate("WNBA", "2026-10-18"), null, "off day has no day number");
+assert.equal(T.dayNumberForDate("WNBA", "2026-10-29"), 6);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-20"), 1);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-26"), 7);
 assert.equal(T.isWithinRun("NBA", "2026-10-27"), false);
@@ -210,7 +212,7 @@ console.log("pure helpers ok");
   const env = { FASTBREAK_KV: makeKV(), FASTBREAK_ADMIN_TOKEN: "t" };
   await T.upsertObjectivesDay(env, { league: "NBA", date: "2026-10-20", mode: "Classic", objectives: [{ stat: "PTS", dailyTeamTarget: 100 }] });
   await T.upsertObjectivesDay(env, { league: "NBA", date: "2026-10-20", mode: "Pro", objectives: [{ stat: "3PM", dailyTeamTarget: 12 }], badgeSetName: "Rookie Year" });
-  await T.upsertObjectivesDay(env, { league: "WNBA", date: "2026-09-17", mode: "Classic", objectives: [{ stat: "PITP", dailyTeamTarget: 25 }, { stat: "OREB", dailyTeamTarget: 10 }] });
+  await T.upsertObjectivesDay(env, { league: "WNBA", date: "2026-10-29", mode: "Classic", objectives: [{ stat: "PITP", dailyTeamTarget: 25 }, { stat: "OREB", dailyTeamTarget: 10 }] });
   const s = await T.upsertProjections(env, { league: "NBA", date: "2026-10-20", stat: "PTS", projections: [{ name: "P100 N0", value: 24.5 }] });
   assert.equal(T.objectivesForDate(s, "NBA", "2026-10-20", "Classic")[0].stat, "PTS");
   assert.equal(T.objectivesForDate(s, "NBA", "2026-10-20", "Pro")[0].stat, "3PM");
@@ -223,7 +225,7 @@ console.log("pure helpers ok");
 
 // -- Full builds --------------------------------------------------------------------
 const NBA_DATE = "2026-10-21";
-const WNBA_DATE = "2026-09-17";
+const WNBA_DATE = "2026-10-29";
 const fixtures = {
   // NBA prior games sit before this season's Sept 1 start (i.e. last season), like a real opening week.
   NBA: makeLeagueFixture({ league: "NBA", date: NBA_DATE, numGames: 12, priorSeason: 2025, priorBase: T.addDaysStr(`${T.LEAGUES.NBA.seasonFor(T.todayStr())}-09-01`, -1) }),
@@ -248,7 +250,8 @@ function countSince(mark) {
   assert.ok(countSince(mark) <= T.MAX_SUBREQUESTS, `first call used ${countSince(mark)} subrequests`);
   assert.equal(payload.building, true, "big slate is still building after one call");
   assert.equal(payload.progress.total, 384);
-  assert.ok(payload.players.length > 0 && payload.players.length < 384, `partial players served (${payload.players.length})`);
+  assert.equal(payload.players.length, 384, "full roster is shown even while stats are pending");
+  assert.ok(payload.players.some((p) => p.pendingStats) && payload.players.some((p) => !p.pendingStats), "mix of pending and loaded players");
   assert.equal(payload.games.length, 12);
   assert.equal(payload.runLabel, "Run 1");
   assert.equal(payload.dayNumber, 2);
@@ -326,8 +329,8 @@ function countSince(mark) {
   assert.equal(payload.building, false);
   assert.ok(rounds <= 3, `WNBA PITP day finished in ${rounds} rounds`);
   assert.equal(payload.league, "WNBA");
-  assert.equal(payload.runLabel, "Run 11");
-  assert.equal(payload.dayNumber, 1);
+  assert.equal(payload.runLabel, "Finals");
+  assert.equal(payload.dayNumber, 6);
   assert.equal(payload.players.length, 96);
   const p = payload.players[0];
   assert.equal(p.objectives.PITP.l10, 6);
@@ -339,7 +342,7 @@ function countSince(mark) {
   assert.ok(/PITP: no|OREB: no Rotowire/.test(payload.note));
 
   // No-games date.
-  const empty = await T.buildDashboard(env, { league: "WNBA", date: "2026-09-18", mode: "Pro" });
+  const empty = await T.buildDashboard(env, { league: "WNBA", date: "2027-06-01", mode: "Pro" });
   assert.equal(empty.players.length, 0);
   assert.match(empty.note, /No WNBA games/);
   console.log("WNBA PITP day ok");
@@ -351,8 +354,8 @@ function countSince(mark) {
   let res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
   let body = await res.json();
   assert.equal(body.NBA.runStart, "2026-10-20");
-  assert.equal(body.WNBA.runEnd, "2026-09-24");
-  assert.equal(body.WNBA.runLength, 8);
+  assert.equal(body.WNBA.runEnd, "2026-10-29");
+  assert.equal(body.WNBA.runLength, 6);
   assert.equal(body.NBA.runLength, 7);
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);

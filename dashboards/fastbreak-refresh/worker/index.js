@@ -63,7 +63,15 @@ const LEAGUES = {
     advancedUrl: `${BDL_ROOT}/wnba/v1/player_game_advanced_stats`,
     // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
-    run: { label: "Run 11", start: "2026-09-17", end: "2026-09-24" },
+    // Finals: only game days get a tab; Day N = index in runDates (the off days
+    // between games are skipped). Dates per the 2026 WNBA Finals schedule:
+    // G1 Oct 17, G2 Oct 19, G3 Oct 22, G4 Oct 24, G5 Oct 26, G6 Oct 29 (G7 Oct 31 not included).
+    run: {
+      label: "Finals",
+      start: "2026-10-17",
+      end: "2026-10-29",
+      runDates: ["2026-10-17", "2026-10-19", "2026-10-22", "2026-10-24", "2026-10-26", "2026-10-29"],
+    },
     // Cron refreshes only run while a league is in season (playoffs included).
     seasonActive: { start: "2026-05-01", end: "2026-10-31" },
     // How far back to look for a team's last 10 completed games. WNBA plays
@@ -135,6 +143,11 @@ function leagueConfig(league) {
 }
 
 function dayNumberForDate(league, dateStr) {
+  const rd = leagueConfig(league).run.runDates;
+  if (Array.isArray(rd) && rd.length) {
+    const i = rd.indexOf(dateStr);
+    return i >= 0 ? i + 1 : null; // off day between games: no day number
+  }
   const start = new Date(`${leagueConfig(league).run.start}T00:00:00Z`);
   const d = new Date(`${dateStr}T00:00:00Z`);
   return Math.round((d - start) / 86400000) + 1;
@@ -142,6 +155,7 @@ function dayNumberForDate(league, dateStr) {
 
 function isWithinRun(league, dateStr) {
   const run = leagueConfig(league).run;
+  if (Array.isArray(run.runDates) && run.runDates.length) return run.runDates.includes(dateStr);
   return dateStr >= run.start && dateStr <= run.end;
 }
 
@@ -291,7 +305,6 @@ function isExhibitionGame(g) {
     if (abbr === "COOP" || abbr === "SPO" || abbr === "SPOON") return true;
     // A team object that carries a conference field but no value is a
     // made-up squad (every real WNBA/NBA team is East or West).
-    if ("conference" in t && !t.conference && !REAL_TEAM_ABBRS.has(abbr)) return true;
   }
   return false;
 }
@@ -1096,9 +1109,20 @@ function dateNeedsAdvanced(schedule, league, date) {
   );
 }
 
+// BALLDONTLIE sometimes returns only a handful of players for a big slate on
+// the first build. A "done" snapshot with fewer than MIN_PLAYERS_PER_TEAM
+// players per team is treated as incomplete so the next tick rebuilds it.
+const MIN_PLAYERS_PER_TEAM = 6;
+function rosterLooksIncomplete(snapshot) {
+  const teamCount = snapshot.teamIds?.length || 0;
+  if (teamCount === 0) return false;
+  return (snapshot.totalPlayers || 0) < teamCount * MIN_PLAYERS_PER_TEAM;
+}
+
 function snapshotIsFresh(snapshot, date) {
   if (!snapshot || snapshot.status !== "done") return false;
   if (snapshot.schema !== SNAPSHOT_SCHEMA) return false; // built before a data fix: rebuild
+  if (rosterLooksIncomplete(snapshot)) return false;
   // Self-heal: a slate with a team that has no roster is partial, so never treat it as fresh.
   if (Array.isArray(snapshot.teamIds) && snapshot.teamIds.length) {
     const rostered = new Set((snapshot.roster || []).map((p) => p.teamId));
@@ -1295,8 +1319,10 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     projectionOverrides[obj.stat] = projectionsForDate(schedule, league, date, obj.stat) || {};
   }
 
+  // IMPORTANT: pending players are still shown. The roster is fetched up
+  // front; only their stats are pending, so they render with null/"--" values
+  // (pendingStats: true) instead of vanishing from the dashboard mid-build.
   const playerBase = snapshot.roster
-    .filter((p) => !pendingIds.has(p.id))
     .map((p) => {
       const nameKey = normalizePlayerName(p.name);
       const objectiveValues = {};
@@ -1352,6 +1378,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
         injuryStatus: injury?.status || null,
         injuryNote: injury?.note || null,
         objectives: objectiveValues,
+        pendingStats: pendingIds.has(p.id),
       };
     });
 
@@ -1529,7 +1556,7 @@ async function staleUpcomingRunDates(env, league) {
   const out = [];
   for (let i = 1; i <= WARM_DAYS_AHEAD; i++) {
     const date = addDaysStr(today, i);
-    if (date < cfg.run.start || date > cfg.run.end) continue;
+    if (!isWithinRun(cfg.key, date)) continue;
     const published = await loadJSON(env, dayKey(cfg, date));
     const ok = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, date);
     if (ok && snapshotIsFresh(published, date)) continue;
@@ -1748,6 +1775,7 @@ function runInfo(league, enabledMap = LEAGUE_ENABLED_DEFAULT) {
     runLabel: cfg.run.label,
     runStart: cfg.run.start,
     runEnd: cfg.run.end,
+    ...(cfg.run.runDates ? { runDates: cfg.run.runDates } : {}),
     runLength: dayNumberForDate(league, cfg.run.end),
     seasonActive: cfg.seasonActive,
     enabled: enabledMap[league] !== false,
