@@ -53,6 +53,24 @@ for l in lines:
 if cur and cur.get("name") and cur.get("rp") is not None: blocks.append(cur)
 if not blocks: sys.exit("no player blocks found in the paste; check the file")
 
+# ---- rescore observed games with the 2026-27 FastBreak weights -----------------------------------------
+# Stored `g` scores came from the beta (steals 2, threes 0, triple-double not stacked). The stat lines in `s`
+# are the record; recompute each game's score with the live weights so the blend is on today's scale.
+# Turnovers were never captured, so the beta's constant 1.5 deduction is kept as the best available estimate.
+W = {"PTS": 1, "REB": 1, "AST": 2, "STL": 3, "BLK": 3, "3PM": 0.5, "DD": 5, "TD": 10}
+TOV_EST = 1.5
+codes = D.get("statCodes", ["PTS", "REB", "AST", "STL", "BLK", "3PM"])
+def rescore(line):
+    v = dict(zip(codes, line))
+    cats = sum(1 for k in ("PTS", "REB", "AST", "STL", "BLK") if v.get(k, 0) >= 10)
+    pts = sum(W[k] * v.get(k, 0) for k in ("PTS", "REB", "AST", "STL", "BLK", "3PM"))
+    return round(pts + (W["DD"] if cats >= 2 else 0) + (W["TD"] if cats >= 3 else 0) - TOV_EST, 1)
+if D.get("scoring") != "2026-27":
+    for p in D["players"]:
+        if p.get("s") and len(p["s"]) == len(p.get("g", [])):
+            p["g"] = [rescore(s) for s in p["s"]]
+    D["scoring"] = "2026-27"
+
 # ---- apply -------------------------------------------------------------------------------------------
 matched, added, pool, teams = 0, 0, [], set()
 for b in blocks:
