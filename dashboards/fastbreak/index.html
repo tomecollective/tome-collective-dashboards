@@ -359,6 +359,7 @@ header to sort.
     <div class="run-days" id="hx-days"></div>
     <span class="grow"></span>
     <span class="fd-meta" id="hx-meta"></span>
+    <button class="export-btn" id="hx-csv-btn" style="margin-left:0">Download CSV</button>
   </div>
 
   <div id="hx-slate">
@@ -1241,6 +1242,7 @@ function hxRender() {
     const q = document.getElementById("hx-search").value.toLowerCase();
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
+    hx.shownSlate = list;
     hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Games", k: "gp" }, { t: "Discount" }, { t: "Skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
@@ -1265,6 +1267,25 @@ function hxRender() {
       `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td><td>${hxDiscButtons(p)}</td></tr>`).join("");
   }
 }
+// CSV of whatever table is on screen (Today's slate or Players & discounts), in the
+// current sort order, with the current search/team filters and your discount picks.
+function hxDownloadCSV() {
+  if (!hx.data) return;
+  const slate = hx.data.slates[hx.slateIdx];
+  let headers, rows, view;
+  if (hx.sub === "slate") {
+    view = "slate";
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Games", "Skipped"];
+    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.n_games, hx.excluded.has(p.n) ? "Yes" : ""]);
+  } else {
+    view = "players";
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend"];
+    rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1)]);
+  }
+  const slug = String(slate.label || "slate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  triggerDownload([headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))], `tome-edge-fastbreak-nba-historic-${view}-${slug}-${todayFileSuffix()}.csv`);
+}
+document.getElementById("hx-csv-btn").addEventListener("click", hxDownloadCSV);
 function hxSetDisc(name, pct) { if (pct) hx.disc[name] = pct; else delete hx.disc[name]; }
 (function hxWire() {
   const $ = (id) => document.getElementById(id);
