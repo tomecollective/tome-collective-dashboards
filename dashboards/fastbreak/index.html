@@ -2213,9 +2213,10 @@ function parseProjRows(text, stat) {
   if (!lines.length) return { byStat: {}, errors: [] };
 
   const headerCells = lines[0].split("\t").map((c) => c.trim());
-  if (headerCells[0] === "Player" && headerCells.length > 2) {
+  // Rotowire's WNBA export starts with "Player"; its NBA export starts with "NAME".
+  if (["player", "name"].includes(headerCells[0].toLowerCase()) && headerCells.length > 2) {
     const statColumns = headerCells
-      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h], colIndex }))
+      .map((h, colIndex) => ({ stat: ROTOWIRE_HEADER_TO_STAT[h.toUpperCase()], colIndex }))
       .filter((c) => c.stat);
     if (!statColumns.length) {
       return { byStat: {}, errors: [`The pasted table has no columns we recognize (columns found: ${headerCells.join(", ")}).`] };
