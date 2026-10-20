@@ -132,6 +132,15 @@ tr.row-out td:first-child { opacity: 0.7; }
 .historic-owned-filter.on{display:flex;}
 .historic-owned-filter button{background:var(--surface);border:0.5px solid var(--border);color:var(--text-2);border-radius:20px;padding:5px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;}
 .historic-owned-filter button.active{background:var(--green);color:#fff;border-color:var(--green);}
+/* Pro-night set eligibility */
+.pro-elig-bar{display:none;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:0.85rem;font-size:0.72rem;color:var(--text-2);}
+.pro-elig-bar.on{display:flex;}
+.pro-elig-bar button{background:var(--surface);border:0.5px solid var(--border);color:var(--text-2);border-radius:20px;padding:5px 12px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;}
+.pro-elig-bar button.active{background:var(--green);color:#fff;border-color:var(--green);}
+tr.row-inelig td{opacity:0.42;}
+tr.row-inelig td:first-child{opacity:0.75;}
+.chip-inelig{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;font-size:0.6rem;font-weight:600;background:rgba(248,113,113,0.12);color:#f87171;border:0.5px solid rgba(248,113,113,0.35);white-space:nowrap;}
+.badge-tile .sub{font-size:0.62rem;color:var(--text-3);margin-top:3px;}
 .historic-lineup-bar{display:none;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:10px 14px;margin-bottom:0.85rem;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:0.78rem;}
 .historic-lineup-bar.on{display:flex;}
 .historic-lineup-bar .hlb-budget{font-family:var(--mono);color:var(--text-2);}
@@ -289,6 +298,7 @@ HISTORIC_ENABLED is flipped in the script below. -->
 <div id="objective-tiles" class="objective-row"></div>
 
 <div id="historic-owned-filter" class="historic-owned-filter"></div>
+<div id="pro-elig-bar" class="pro-elig-bar"></div>
 <div id="historic-lineup-bar" class="historic-lineup-bar"></div>
 
 <div class="toolbar">
@@ -504,8 +514,17 @@ carries more weight).
 </div>
 </div>
 
-<label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only)</label>
-<input type="text" id="admin-badge-name" placeholder="e.g. Rookie Year" style="display:none;">
+<label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only) -- display text for the tile</label>
+<input type="text" id="admin-badge-name" placeholder="e.g. Season Tip-Off + Fresh Threads" style="display:none;">
+<div id="admin-pro-elig" style="display:none;">
+<label>Eligible sets (comma-separated, exact Top Shot set names)</label>
+<input type="text" id="admin-pro-sets" placeholder="e.g. Season Tip-Off, Fresh Threads">
+<div class="admin-form-row" style="display:flex;gap:10px;">
+<div style="flex:1;"><label>Set season (optional)</label><input type="text" id="admin-pro-season" placeholder="e.g. 2026-27 (blank = any year)"></div>
+<div style="flex:1;"><label>Badge keyword (optional)</label><input type="text" id="admin-pro-badge" placeholder="rookie_debut / rookie_year"></div>
+</div>
+<div style="font-size:0.7rem;color:var(--text-3);margin:4px 0 8px;">Players with no Moment in any listed set are hidden from the Pro ranking (verified against the Top Shot index). Leave sets and badge blank to skip the check. Badges from Challenges, Leaderboards or Crafting can't be verified; the board will say so.</div>
+</div>
 
 <button id="admin-save-btn">Save Day</button>
 <div id="admin-status"></div>
@@ -1498,10 +1517,16 @@ function renderObjectiveTiles() {
     tile.innerHTML = `<div class="val">${o.dailyTeamTarget} ${o.label || o.stat}</div><div class="lbl">Daily Team Target</div>`;
     row.appendChild(tile);
   });
-  if (currentMode === "Pro" && dashboard.badgeSetName) {
+  const proSetList = (dashboard.proSets || []).join(" · ");
+  if (currentMode === "Pro" && (dashboard.badgeSetName || proSetList || dashboard.proBadge)) {
     const tile = document.createElement("div");
     tile.className = "objective-tile badge-tile";
-    tile.innerHTML = `<div class="val">${dashboard.badgeSetName}</div><div class="lbl">Required Badge / Set</div>`;
+    const val = proSetList || dashboard.badgeSetName || dashboard.proBadge;
+    const season = dashboard.proSeason ? ` <span style="font-weight:500;color:var(--text-2);">(${dashboard.proSeason})</span>` : "";
+    let sub = "";
+    if (dashboard.proEligibility === "verified") sub = `<div class="sub">Board shows players with a Moment in these sets</div>`;
+    else if (dashboard.proEligibility === "unverified") sub = `<div class="sub">Eligibility not verified for badge nights.</div>`;
+    tile.innerHTML = `<div class="val">${String(val).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])}${season}</div><div class="lbl">Required Badge / Set${proSetList && dashboard.proSets.length > 1 ? "s (any one)" : ""}</div>${sub}`;
     row.appendChild(tile);
   }
 }
@@ -1563,8 +1588,15 @@ function isDtd(p) {
 
 // Out players always sink to the bottom whatever the sort column -- they are
 // shown for completeness, never as a lineup option.
+// Pro nights with a verified set list hide players who have no Moment in
+// tonight's sets (proEligible:false). "Show ineligible" reveals them dimmed.
+let showIneligible = false;
+function proVerified() { return currentMode === "Pro" && dashboard.proEligibility === "verified"; }
+function isIneligible(p) { return proVerified() && p.proEligible === false; }
+
 function getSorted() {
   let players = [...(dashboard.players || [])];
+  if (proVerified() && !showIneligible) players = players.filter((p) => p.proEligible !== false);
   if (historicRPAvailable()) {
     applyHistoricOwnership(players);
     players.forEach((p) => { p.score = p.genProj != null ? p.genProj : null; });
@@ -1572,6 +1604,8 @@ function getSorted() {
     else if (historicOwnFilter === "unowned") players = players.filter((p) => p.tier === "none");
   }
   players.sort((a, b) => {
+    const ai = isIneligible(a), bi = isIneligible(b);
+    if (ai !== bi) return ai ? 1 : -1;
     const ao = isOut(a), bo = isOut(b);
     if (ao !== bo) return ao ? 1 : -1;
     let av = sortValue(a, sortKey);
@@ -1610,13 +1644,16 @@ function render() {
     const row = document.createElement("tr");
     const out = isOut(p);
     const dtd = isDtd(p);
-    if (out) row.className = "row-out";
+    const inelig = isIneligible(p);
+    if (inelig) row.className = "row-inelig";
+    else if (out) row.className = "row-out";
     else if (dtd) row.className = "row-dtd";
     // Out: no rank (never a lineup option). DTD: ranked, but tier colours are
     // hatched so the projection reads as "at risk" rather than a lock.
-    const rankCell = out ? `<span class="rank-out" title="Listed Out on the injury report -- not ranked">OUT</span>` : `<strong>${p.ovrRank ?? "--"}</strong>`;
+    const rankCell = inelig ? `<span title="No Moment in tonight's sets -- not ranked">--</span>` : out ? `<span class="rank-out" title="Listed Out on the injury report -- not ranked">OUT</span>` : `<strong>${p.ovrRank ?? "--"}</strong>`;
     const risk = dtd ? " tier-risk" : "";
-    let html = `<td>${p.name}${injuryPillHtml(p)}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td>${rankCell}</td>`;
+    const ineligChip = inelig ? `<span class="chip-inelig">No Moment in tonight's sets</span>` : "";
+    let html = `<td>${p.name}${injuryPillHtml(p)}${ineligChip}</td><td>${teamCellHtml(p.team)}</td><td>${p.opp || "--"}</td><td>${rankCell}</td>`;
     if (histOn) {
       const tierOpts = Object.keys(HISTORIC_TIERS)
         .map((t) => `<option value="${t}"${p.tier === t ? " selected" : ""}>${HISTORIC_TIER_LABELS[t]}</option>`)
@@ -1660,6 +1697,7 @@ function render() {
     });
   }
   renderHistoricExtras(histOn);
+  renderProEligBar();
 
   document.querySelectorAll("#table-head th").forEach((th) => {
     th.classList.remove("sorted-asc", "sorted-desc");
@@ -1674,6 +1712,23 @@ function render() {
     })
     .join(" + ");
   document.getElementById("dashboard-note").textContent = (objLabel ? `This day's objective(s): ${objLabel}. ` : "") + (dashboard.note || "");
+}
+
+// Pro eligibility bar: the one plain-words definition + the reveal toggle.
+function renderProEligBar() {
+  const el = document.getElementById("pro-elig-bar");
+  if (!el) return;
+  if (!proVerified()) {
+    el.classList.remove("on");
+    el.innerHTML = "";
+    return;
+  }
+  const hidden = (dashboard.players || []).filter((p) => p.proEligible === false).length;
+  el.classList.add("on");
+  el.innerHTML = `<span>Eligible means a Moment of the player exists in tonight's sets; whether you own one is yours to check.</span>` +
+    (hidden ? `<button id="pro-elig-toggle" class="${showIneligible ? "active" : ""}">${showIneligible ? "Hide" : "Show"} ineligible (${hidden})</button>` : "");
+  const btn = document.getElementById("pro-elig-toggle");
+  if (btn) btn.addEventListener("click", () => { showIneligible = !showIneligible; render(); });
 }
 
 // Owned-status filter chips + the budget/lineup bar -- separate from the
@@ -1801,6 +1856,14 @@ async function loadFullData(league, { silent } = {}) {
     const res = await apiGet(`${FULLDATA_URL}?league=${league}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    // Pro Eligible column (everyone stays listed; this only labels them).
+    if (data.proEligibility) {
+      data.metaCols = [{ k: "proElig", l: "Pro Eligible" }];
+      for (const p of data.players || []) {
+        const v = data.proEligibility === "verified" ? (p.proEligible ? "Yes" : "No") : "Unverified";
+        p.meta = { ...(p.meta || {}), proElig: v };
+      }
+    }
     fullDataByLeague[league] = data;
   } catch (err) {
     if (metaEl && league === fdLeague && activeView === "fulldata") metaEl.textContent = `${league} Full Data unavailable (${err.message}).`;
@@ -2115,6 +2178,7 @@ function refreshAdminView() {
   const isPro = adminMode === "Pro";
   document.getElementById("admin-badge-label").style.display = isPro ? "block" : "none";
   document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
+  document.getElementById("admin-pro-elig").style.display = isPro ? "block" : "none";
   // Default the date pickers into the selected league's run window.
   const run = runFor(adminLeague);
   for (const id of ["admin-date", "proj-date", "inv-date"]) {
@@ -2174,7 +2238,7 @@ async function loadAdminSchedule() {
 <td>${dayNumberFor(adminLeague, date)}</td>
 <td>${fmt(entry.objectives?.Classic)}</td>
 <td>${fmt(entry.objectives?.Pro)}</td>
-<td>${entry.badgeSetName || "--"}</td>
+<td>${entry.badgeSetName || "--"}${(entry.proSets && entry.proSets.length) || entry.proBadge ? `<div style="font-size:0.66rem;color:var(--text-3);">check: ${[...(entry.proSets || []), entry.proBadge].filter(Boolean).join(", ")}${entry.proSeason ? ` · ${entry.proSeason}` : ""}</div>` : ""}</td>
 <td>${proj}</td>
 </tr>`;
       })
@@ -2192,6 +2256,9 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
   const target1 = parseFloat(document.getElementById("admin-target-1").value);
   const hasSecond = document.getElementById("admin-has-second").checked;
   const badgeSetName = document.getElementById("admin-badge-name").value.trim();
+  const proSets = document.getElementById("admin-pro-sets").value.trim();
+  const proSeason = document.getElementById("admin-pro-season").value.trim();
+  const proBadge = document.getElementById("admin-pro-badge").value.trim();
 
   if (!date || !target1) {
     setStatus("admin-status", "Date and Objective 1 target are required.", false);
@@ -2212,7 +2279,13 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
     const res = await fetch(OBJECTIVES_DAY_URL, {
       method: "POST",
       headers: adminHeaders(),
-      body: JSON.stringify({ league: adminLeague, date, mode: adminMode, objectives, badgeSetName: adminMode === "Pro" ? badgeSetName : undefined }),
+      body: JSON.stringify({
+        league: adminLeague, date, mode: adminMode, objectives,
+        badgeSetName: adminMode === "Pro" ? badgeSetName : undefined,
+        proSets: adminMode === "Pro" ? proSets : undefined,
+        proSeason: adminMode === "Pro" ? proSeason : undefined,
+        proBadge: adminMode === "Pro" ? proBadge : undefined,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

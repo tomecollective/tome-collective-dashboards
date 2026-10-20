@@ -1,91 +1,81 @@
-// tome-topshot Worker
-// Indexes NBA Top Shot low ask / last sale / circulation / discount-to-market
-// directly from the Flow blockchain (no third-party API dependency).
+// tome-topshot worker — patched 2026-09-24
+// Change from the live version: the scheduled run no longer rebuilds the whole
+// editions snapshot (which read every edition key on every run, ~7M KV reads/day).
+// It now patches only the editions it touched into the stored snapshot.
+// Full rebuilds remain on /admin/rebuild-snapshot and /admin/sweep-sets.
+// 2026-10-20: + GET /api/topshot/eligible (Pro-night set eligibility, internal)
+//             + POST /admin/sweep-sets-range (incremental set sweep)
 
-const FLOW_REST = "https://rest-mainnet.onflow.org/v1";
-const TOPSHOT_ADDR = "0x0b2a3299cc857e29";
-const STOREFRONT_TYPE = "A.4eb8a10cb9f87357.NFTStorefrontV2";
-const NFT_TYPE_MATCH = "TopShot"; // filters out Disney Pinnacle / MFLPack / anything else on the same storefront standard
-const MAX_BLOCK_RANGE = 250; // Flow Access API hard limit per request
-const MAX_EVENTS_PER_RUN = 400; // safety cap so a single cron tick can't run long
-const SALES_HISTORY_CAP = 20; // trailing sales kept per edition for the discount-to-market baseline
-const FREE_TEASER_LIMIT = 10; // ungated response shows this many editions, no history
+import { normalizeName } from "../../shared/names.js";
 
-// ---- Tier classification -------------------------------------------------
-// Confirmed from Top Shot's own developer docs: tier is a Set-level property.
-// Bands below are Top Shot's official published edition-size ranges, validated
-// against real on-chain data (see build notes). Sets that don't cleanly fit
-// (pre-tier-system Series 1 anomalies) are hard-overridden here rather than
-// mis-bucketed by the generic rule.
-// Name-pattern classification for flagship recurring set templates, sourced
-// from NBA Top Shot's own blog rather than inferred from circulation bands
-// (which drift too much across eras to trust alone - see build notes).
-// Checked BEFORE numeric banding, since these confirmed patterns are more
-// reliable than a threshold guess. Note: Top Shot's own copy states rarity
-// is a 4-tier system (Common/Fandom/Rare/Legendary) - "Ultimate" (below) is
-// a historical, auction-only designation outside that ongoing system, not a
-// live 5th tier collectors see today.
-const NAME_PATTERN_TIERS = [
-  { pattern: /^(WNBA )?Base Set$/i, tier: "Common", source: "Top Shot blog: \"The 'Base Set' is the standard Common Set every season\"" },
-  { pattern: /^(WNBA )?Metallic Gold LE\b/i, tier: "Rare", source: "Top Shot blog: \"'Metallic Gold LE' is the standard Rare Set every season\"" },
-  { pattern: /^Throwdowns\d*$/i, tier: "Rare", source: "Top Shot blog: grouped under \"Rare Sets\" alongside Metallic Gold LE" },
-  { pattern: /^For [Tt]he Win$/i, tier: "Rare", source: "Top Shot blog: grouped under \"Rare Sets\" alongside Metallic Gold LE" },
-  { pattern: /^Denied!?$/i, tier: "Rare", source: "Top Shot blog: grouped under \"Rare Sets\" alongside Metallic Gold LE" },
-  { pattern: /^(WNBA )?Video Game Numbers$/i, tier: "Rare", source: "Top Shot blog: grouped under \"Rare Sets\" alongside Metallic Gold LE" },
-  { pattern: /^Fresh Threads$/i, tier: "Rare", source: "Top Shot blog: grouped under \"Rare Sets\" alongside Metallic Gold LE" },
+var FLOW_REST = "https://rest-mainnet.onflow.org/v1";
+var TOPSHOT_ADDR = "0x0b2a3299cc857e29";
+var STOREFRONT_TYPE = "A.4eb8a10cb9f87357.NFTStorefrontV2";
+var NFT_TYPE_MATCH = "TopShot";
+var MAX_BLOCK_RANGE = 250;
+var MAX_EVENTS_PER_RUN = 400;
+var SALES_HISTORY_CAP = 20;
+var FREE_TEASER_LIMIT = 10;
+var EDITIONS_SNAPSHOT_KEY = "editions:snapshot";
+var SNAPSHOT_READ_CONCURRENCY = 25;
+var NAME_PATTERN_TIERS = [
+  { pattern: /^(WNBA )?Base Set$/i, tier: "Common", source: `Top Shot blog: "The 'Base Set' is the standard Common Set every season"` },
+  { pattern: /^(WNBA )?Metallic Gold LE\b/i, tier: "Rare", source: `Top Shot blog: "'Metallic Gold LE' is the standard Rare Set every season"` },
+  { pattern: /^Throwdowns\d*$/i, tier: "Rare", source: 'Top Shot blog: grouped under "Rare Sets" alongside Metallic Gold LE' },
+  { pattern: /^For [Tt]he Win$/i, tier: "Rare", source: 'Top Shot blog: grouped under "Rare Sets" alongside Metallic Gold LE' },
+  { pattern: /^Denied!?$/i, tier: "Rare", source: 'Top Shot blog: grouped under "Rare Sets" alongside Metallic Gold LE' },
+  { pattern: /^(WNBA )?Video Game Numbers$/i, tier: "Rare", source: 'Top Shot blog: grouped under "Rare Sets" alongside Metallic Gold LE' },
+  { pattern: /^Fresh Threads$/i, tier: "Rare", source: 'Top Shot blog: grouped under "Rare Sets" alongside Metallic Gold LE' }
 ];
-
 function classifyByNamePattern(name) {
   for (const { pattern, tier } of NAME_PATTERN_TIERS) {
     if (pattern.test(name)) return tier;
   }
   return null;
 }
-
-const TIER_OVERRIDES = {
-  1: "Founders", // Genesis - 1-of-1-per-play, predates the tier system entirely
-  2: "Common", // Base Set (Series 1) - confirmed via live nbatopshot.com marketplace listing ("Common" label);
-              // circulation (1000-3999) undercuts the current official Common floor of 10,000+, Series 1-era
-              // commons ran smaller than later eras
-  3: "Ultimate", // Platinum Ice - confirmed via Dapper Labs' own blog (edition size of 3, "Ultimate Tier");
-                // NOTE: 7,962 Platinum Ice moments were burned in 2023 per that same post - the circulation
-                // number here is the historical gross mint count, NOT current net circulating supply.
-                // Burn tracking isn't built yet (see README) - this tier label is solid, the raw count may not be.
-  4: "Legendary", // Holo MMXX - circulation (25-50) undercuts the official Legendary floor
-};
-
-function classifyTier(minCirc, maxCirc) {
-  if (maxCirc <= 3) return "Ultimate";
-  if (maxCirc <= 125) return "Legendary";
-  if (minCirc >= 500 && maxCirc <= 2022) return "Rare";
-  if (minCirc >= 4000) return "Common";
-  return "Fandom"; // doesn't fit a clean numeric band - promotional/event sets land here
+var ROOKIE_DEBUT_PATTERN = /^(WNBA )?Rookie (Debut|Revelation)$/i;
+function isRookieDebutSet(setName) {
+  return ROOKIE_DEBUT_PATTERN.test(setName || "");
 }
-
-// ---- Flow Access API helpers ----------------------------------------------
-
-// atob() only decodes base64 into a Latin-1 "binary string" (one char per
-// byte, 0-255) - it does NOT understand UTF-8. Flow's JSON-Cadence responses
-// contain real UTF-8 (accented player names like Nurkic, Doncic, Jokic are
-// common on NBA/WNBA rosters), so decoding with plain atob() silently
-// mangles them into mojibake. This decodes the base64 into raw bytes first,
-// then properly UTF-8-decodes those bytes into text.
+var TIER_OVERRIDES = {
+  1: "Founders",
+  2: "Common",
+  3: "Ultimate",
+  4: "Legendary"
+};
+function classifyTier(counts) {
+  if (!counts || counts.length === 0) return "Unknown";
+  const freq = new Map();
+  for (const c of counts) freq.set(c, (freq.get(c) || 0) + 1);
+  let typical = counts[0];
+  let bestCount = -1;
+  for (const [c, n] of freq) {
+    if (n > bestCount || n === bestCount && c > typical) {
+      typical = c;
+      bestCount = n;
+    }
+  }
+  if (typical <= 3) return "Ultimate";
+  if (typical <= 125) return "Legendary";
+  if (typical >= 500 && typical <= 2022) return "Rare";
+  if (typical >= 4e3) return "Common";
+  return "Fandom";
+}
 function base64ToUtf8(b64) {
   const binaryStr = atob(b64);
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
   return new TextDecoder("utf-8").decode(bytes);
 }
-
 async function flowScript(script, args) {
   const body = JSON.stringify({
     script: btoa(script),
-    arguments: args.map((a) => btoa(JSON.stringify(a))),
+    arguments: args.map((a) => btoa(JSON.stringify(a)))
   });
   const res = await fetch(`${FLOW_REST}/scripts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body,
+    body
   });
   const text = await res.text();
   let parsed;
@@ -99,13 +89,11 @@ async function flowScript(script, args) {
   }
   return JSON.parse(base64ToUtf8(parsed));
 }
-
 async function latestSealedHeight() {
   const res = await fetch(`${FLOW_REST}/blocks?height=sealed`);
   const blocks = await res.json();
   return parseInt(blocks[0].header.height, 10);
 }
-
 async function getEvents(eventType, startHeight, endHeight) {
   const res = await fetch(
     `${FLOW_REST}/events?type=${eventType}&start_height=${startHeight}&end_height=${endHeight}`
@@ -123,21 +111,15 @@ async function getEvents(eventType, startHeight, endHeight) {
   }
   return events;
 }
-
 function fieldStr(fields, name) {
   const f = fields[name];
   if (!f) return null;
   return f.value != null ? f.value.toString() : null;
 }
-
 function isTopShotEvent(fields) {
   const t = fields.nftType?.value?.staticType?.typeID || "";
   return t.includes(NFT_TYPE_MATCH);
 }
-
-// Resolve a moment's setID/playID/serialNumber by borrowing it from its
-// current owner's public collection. Only needed once per nftID ever -
-// results are cached permanently in KV.
 async function resolveMomentIdentity(ownerAddress, nftID) {
   const script = `
 import TopShot from ${TOPSHOT_ADDR}
@@ -165,10 +147,9 @@ access(all) fun main(account: Address, id: UInt64): {String: String}? {
 }`;
   const result = await flowScript(script, [
     { type: "Address", value: ownerAddress },
-    { type: "UInt64", value: String(nftID) },
+    { type: "UInt64", value: String(nftID) }
   ]);
-  if (!result.value) return null; // already moved on (sold/transferred) - skip, will resolve next time it surfaces
-  // Optional<Dictionary> -> {type:"Optional", value: null | {type:"Dictionary", value:[{key,value},...]}}
+  if (!result.value) return null;
   const dictEntries = result.value.value;
   const out = {};
   for (const entry of dictEntries) out[entry.key.value] = entry.value.value;
@@ -176,10 +157,9 @@ access(all) fun main(account: Address, id: UInt64): {String: String}? {
     setID: parseInt(out.setID, 10),
     playID: parseInt(out.playID, 10),
     serialNumber: parseInt(out.serialNumber, 10),
-    imageURL: out.imageURL || null,
+    imageURL: out.imageURL || null
   };
 }
-
 async function getSetName(setID) {
   const script = `
 import TopShot from ${TOPSHOT_ADDR}
@@ -187,10 +167,8 @@ access(all) fun main(setID: UInt32): String? {
     return TopShot.getSetName(setID: setID)
 }`;
   const result = await flowScript(script, [{ type: "UInt32", value: String(setID) }]);
-  // Optional<String> -> {type:"Optional", value: null | {type:"String", value:"Genesis"}}
   return result.value ? result.value.value : null;
 }
-
 async function getSetCirculationStats(setID) {
   const script = `
 import TopShot from ${TOPSHOT_ADDR}
@@ -199,14 +177,10 @@ access(all) fun main(setID: UInt32): TopShot.QuerySetData? {
 }`;
   const result = await flowScript(script, [{ type: "UInt32", value: String(setID) }]);
   if (!result.value) return null;
-  // Optional<Struct> -> {type:"Optional", value: null | {type:"Struct", value:{id, fields:[...]}}}
   const structValue = result.value.value;
   const fields = {};
   for (const f of structValue.fields) fields[f.name] = f.value;
   const nmpp = fields.numberMintedPerPlay?.value || [];
-  // per-play breakdown, keyed by playID as a string (JSON object keys are always strings) -
-  // this is what lets an individual edition show its own exact circulation, not just the
-  // set-wide min/max used for tier classification
   const circulationByPlay = {};
   for (const entry of nmpp) circulationByPlay[entry.key.value] = parseInt(entry.value.value, 10);
   const counts = Object.values(circulationByPlay);
@@ -215,32 +189,25 @@ access(all) fun main(setID: UInt32): TopShot.QuerySetData? {
     minCirc: Math.min(...counts),
     maxCirc: Math.max(...counts),
     playCount: counts.length,
-    circulationByPlay,
+    circulationByPlay
   };
 }
-
-// Play-level identity: player name, team, category, game date, NBA season.
-// This is the same for every copy of an edition, so it's fetched once per
-// playID (not per moment) and cached permanently.
-// 2026 WNBA franchise names - used to tag league since there's no raw
-// on-chain "league" field; team name is the only reliable signal.
-const WNBA_TEAMS = new Set([
+var WNBA_TEAMS = new Set([
   "Aces", "Dream", "Fever", "Liberty", "Lynx", "Mercury", "Mystics",
-  "Sky", "Sparks", "Storm", "Sun", "Valkyries", "Wings",
+  "Sky", "Sparks", "Storm", "Sun", "Valkyries", "Wings"
 ]);
-
-function deriveLeague(teamName) {
+function deriveLeague(setName, teamName) {
+  if (setName && /^WNBA\b/i.test(setName.trim())) return "WNBA";
   if (!teamName) return null;
   const lastWord = teamName.trim().split(/\s+/).pop();
   return WNBA_TEAMS.has(lastWord) ? "WNBA" : "NBA";
 }
-
 async function getPlayIdentity(playID) {
   const script = `
 import TopShot from ${TOPSHOT_ADDR}
 access(all) fun main(playID: UInt32): {String: String} {
     let result: {String: String} = {}
-    let fields = ["FullName", "TeamAtMoment", "PlayCategory", "PlayType", "DateOfMoment", "NbaSeason", "AwayTeamName", "HomeTeamName", "TotalYearsExperience"]
+    let fields = ["FullName", "TeamAtMoment", "PlayCategory", "PlayType", "DateOfMoment", "NbaSeason", "AwayTeamName", "HomeTeamName", "TotalYearsExperience", "JerseyNumber"]
     for field in fields {
         if let v = TopShot.getPlayMetaDataByField(playID: playID, field: field) {
             result[field] = v
@@ -254,28 +221,20 @@ access(all) fun main(playID: UInt32): {String: String} {
   return {
     playerName: out.FullName || null,
     team: out.TeamAtMoment || null,
-    league: deriveLeague(out.TeamAtMoment),
     playCategory: out.PlayCategory || out.PlayType || null,
     dateOfMoment: out.DateOfMoment || null,
-    // "0" total years experience at the time of this play means this
-    // specific highlight happened during the player's rookie season -
-    // there's no raw "Rookie Year" flag on-chain, this is the real proxy.
     isRookieYear: out.TotalYearsExperience === "0",
-    nbaSeason: out.NbaSeason || null, // e.g. "2025-26" - this is the season filter dimension
+    nbaSeason: out.NbaSeason || null,
     matchup: out.AwayTeamName && out.HomeTeamName ? `${out.AwayTeamName} @ ${out.HomeTeamName}` : null,
+    jerseyNumber: /^\d+$/.test(out.JerseyNumber || "") ? parseInt(out.JerseyNumber, 10) : null
   };
 }
-
-// ---- KV-backed edition record ---------------------------------------------
-
 function editionKey(setID, playID) {
   return `edition:${setID}_${playID}`;
 }
-
 async function loadEdition(kv, setID, playID, imageURL) {
   const raw = await kv.get(editionKey(setID, playID));
   if (raw) return JSON.parse(raw);
-  // brand-new edition - pull its identity once now, permanently cached from here on
   const [setName, playIdentity] = await Promise.all([getSetName(setID), getPlayIdentity(playID)]);
   return {
     setID,
@@ -283,30 +242,28 @@ async function loadEdition(kv, setID, playID, imageURL) {
     setName,
     imageURL: imageURL || null,
     ...playIdentity,
+    league: deriveLeague(setName, playIdentity.team),
     activeListings: {},
     salesHistory: [],
     lowAsk: null,
     lastSale: null,
-    lastSaleDate: null,
+    lastSaleDate: null
   };
 }
-
-const LOW_ASK_HISTORY_CAP = 120; // ~4 months of daily snapshots
-
+var LOW_ASK_HISTORY_CAP = 120;
 async function saveEdition(kv, edition) {
   const prices = Object.values(edition.activeListings).map((l) => l.price);
   edition.lowAsk = prices.length ? Math.min(...prices) : null;
   edition.activeListingCount = prices.length;
-
-  // Daily low-ask snapshot - opportunistic: only recorded when this edition
-  // is actually touched by an event (a new listing or sale), not on a fixed
-  // schedule for every tracked edition. This means low-liquidity editions
-  // will have gaps on days with zero activity - that's a real, honest
-  // limitation, not continuous tracking. Also: this can only track forward
-  // from whenever this code first ran - there is no way to backfill what
-  // low ask was before that.
+  edition.lowAskSerial = null;
+  edition.lowAskNftID = null;
+  if (edition.lowAsk != null) {
+    const cheapest = Object.entries(edition.activeListings).find(([, l]) => l.price === edition.lowAsk);
+    edition.lowAskSerial = cheapest?.[1]?.serial ?? null;
+    edition.lowAskNftID = cheapest?.[0] ?? null;
+  }
   if (!edition.lowAskHistory) edition.lowAskHistory = [];
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = new Date().toISOString().slice(0, 10);
   const lastEntry = edition.lowAskHistory[edition.lowAskHistory.length - 1];
   if (edition.lowAsk != null && (!lastEntry || lastEntry.date !== today)) {
     edition.lowAskHistory.push({ date: today, lowAsk: edition.lowAsk });
@@ -314,85 +271,58 @@ async function saveEdition(kv, edition) {
       edition.lowAskHistory = edition.lowAskHistory.slice(-LOW_ASK_HISTORY_CAP);
     }
   } else if (edition.lowAsk != null && lastEntry && lastEntry.date === today) {
-    lastEntry.lowAsk = edition.lowAsk; // same day, multiple touches - keep the latest, not the first
+    lastEntry.lowAsk = edition.lowAsk;
   }
-
+  let dealScore = null;
   if (edition.salesHistory.length) {
     const recent = edition.salesHistory.slice(-SALES_HISTORY_CAP);
     edition.salesHistory = recent;
     const salePrices = recent.map((s) => s.price);
-
     const sorted = [...salePrices].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
     edition.marketValue = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-
-    // ASP - Average Sale Price, the conventional mean (distinct from the
-    // median used for marketValue/discount-to-market - median resists
-    // outlier skew, ASP is the standard reported figure people expect).
     edition.avgSalePrice = salePrices.reduce((sum, p) => sum + p, 0) / salePrices.length;
-
-    // Confidence tag based on sample size, not a fancier price formula -
-    // matches the High/Some/Thin tiers already used on the TCG Chase Index,
-    // so it's consistent with how Tome Collective already communicates this
-    // exact problem (thin sales data = a number that looks precise but
-    // isn't trustworthy) rather than a new framework.
     edition.valueConfidence = salePrices.length >= 10 ? "High" : salePrices.length >= 3 ? "Some" : "Thin";
-
     if (edition.lowAsk != null && edition.marketValue) {
       edition.discountToMarket = (edition.marketValue - edition.lowAsk) / edition.marketValue;
     }
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1e3;
     const salesLast30d = recent.filter((s) => new Date(s.date).getTime() >= thirtyDaysAgo);
     edition.sales30d = salesLast30d.length;
     edition.volume30d = salesLast30d.reduce((sum, s) => sum + s.price, 0);
-    // If every single tracked sale (all 20, the cap) falls within 30 days,
-    // there could be more we evicted from history - we genuinely don't know,
-    // so this is a floor ("20+"), not an exact count.
     edition.sales30dCapped = salesLast30d.length === SALES_HISTORY_CAP;
-
-    // Tome Score - identifies real, actionable deals, not just the raw
-    // biggest-discount number. Raw discountToMarket alone can be misleading:
-    // a 70% "discount" based on one stale sale from months ago isn't a real
-    // deal the way a 20% discount backed by consistent recent trading is.
-    // Two adjustments on top of the raw discount:
-    //   - Confidence multiplier: discounts a discount that's based on thin
-    //     sales data (same High/Some/Thin tiers as valueConfidence above)
-    //   - Liquidity multiplier: rewards editions that are actually trading
-    //     right now (sales30d), since a "deal" nobody's buying isn't very
-    //     actionable
-    // Result is roughly a 0-100+ scale; negative means priced ABOVE market
-    // (not a deal at all, but still real information, so not clamped away).
     if (edition.discountToMarket != null) {
-      const confidenceMultiplier =
-        edition.valueConfidence === "High" ? 1.0 : edition.valueConfidence === "Some" ? 0.7 : 0.4;
+      const confidenceMultiplier = edition.valueConfidence === "High" ? 1 : edition.valueConfidence === "Some" ? 0.7 : 0.4;
       const liquidityMultiplier = Math.min(1, 0.5 + edition.sales30d * 0.1);
-      edition.tomeScore = Math.round(edition.discountToMarket * 100 * confidenceMultiplier * liquidityMultiplier);
-    } else {
-      edition.tomeScore = null;
+      dealScore = edition.discountToMarket * 100 * confidenceMultiplier * liquidityMultiplier;
     }
   }
+  let bumps = 0;
+  const bumpReasons = [];
+  if (edition.isSuperstar) { bumps += 20; bumpReasons.push("Superstar"); }
+  if (edition.isRookieDebut) { bumps += 15; bumpReasons.push("Rookie Debut"); }
+  if (edition.jerseyNumber != null && edition.lowAskSerial === edition.jerseyNumber) { bumps += 15; bumpReasons.push("Jersey Match"); }
+  if (edition.lowAskSerial === 1) { bumps += 15; bumpReasons.push("#1 Serial"); }
+  if (edition.circulation != null && edition.lowAskSerial === edition.circulation) { bumps += 10; bumpReasons.push("Perfect Serial"); }
+  if (edition.isRookieYear) { bumps += 5; bumpReasons.push("Rookie Year"); }
+  edition.tomeScoreBumps = bumpReasons;
+  edition.tomeScore = dealScore != null || bumps > 0 ? Math.round((dealScore || 0) + bumps) : null;
   await kv.put(editionKey(edition.setID, edition.playID), JSON.stringify(edition));
 }
-
-// ---- Main indexing pass ----------------------------------------------------
-
 async function runIndexPass(env) {
   const kv = env.TOPSHOT_KV;
   const latest = await latestSealedHeight();
   const checkpointRaw = await kv.get("checkpoint:events");
-  let start = checkpointRaw ? parseInt(checkpointRaw, 10) + 1 : latest - 50; // first run: last ~50 blocks only
-  if (start > latest) return { skipped: true, reason: "no new blocks" };
-
+  let start = checkpointRaw ? parseInt(checkpointRaw, 10) + 1 : latest - 50;
+  if (start > latest) return { skipped: true, reason: "no new blocks", touched: [] };
   let end = Math.min(start + MAX_BLOCK_RANGE - 1, latest);
   const [available, completed] = await Promise.all([
     getEvents(`${STOREFRONT_TYPE}.ListingAvailable`, start, end),
-    getEvents(`${STOREFRONT_TYPE}.ListingCompleted`, start, end),
+    getEvents(`${STOREFRONT_TYPE}.ListingCompleted`, start, end)
   ]);
-
   let processed = 0;
-  const identityCache = {}; // nftID -> {setID, playID, serialNumber}, this run only (KV is the durable cache)
-  const editionCache = {}; // `${setID}_${playID}` -> edition record, this run only (avoids repeat KV reads/writes within one pass)
-
+  const identityCache = {};
+  const editionCache = {};
   async function getIdentity(nftID, ownerAddress) {
     if (identityCache[nftID]) return identityCache[nftID];
     const kvHit = await kv.get(`moment:${nftID}`);
@@ -407,13 +337,11 @@ async function runIndexPass(env) {
     }
     return resolved;
   }
-
   async function getEditionCached(setID, playID, imageURL) {
     const key = `${setID}_${playID}`;
     if (!editionCache[key]) editionCache[key] = await loadEdition(kv, setID, playID, imageURL);
     return editionCache[key];
   }
-
   for (const ev of available) {
     if (processed >= MAX_EVENTS_PER_RUN) break;
     if (!isTopShotEvent(ev.fields)) continue;
@@ -422,12 +350,11 @@ async function runIndexPass(env) {
     const price = parseFloat(fieldStr(ev.fields, "salePrice"));
     if (!nftID || price == null || isNaN(price)) continue;
     const identity = await getIdentity(nftID, sellerAddress);
-    if (!identity) continue; // already resold before we could resolve it - fine, skip
+    if (!identity) continue;
     const edition = await getEditionCached(identity.setID, identity.playID, identity.imageURL);
-    edition.activeListings[nftID] = { price, sellerAddress, blockTimestamp: ev.blockTimestamp };
+    edition.activeListings[nftID] = { price, sellerAddress, blockTimestamp: ev.blockTimestamp, serial: identity.serialNumber };
     processed++;
   }
-
   for (const ev of completed) {
     if (processed >= MAX_EVENTS_PER_RUN) break;
     if (!isTopShotEvent(ev.fields)) continue;
@@ -437,9 +364,9 @@ async function runIndexPass(env) {
     if (!nftID) continue;
     const kvHit = await kv.get(`moment:${nftID}`);
     const identity = kvHit ? JSON.parse(kvHit) : identityCache[nftID];
-    if (!identity) continue; // never resolved a listing for this one - nothing to update
+    if (!identity) continue;
     const edition = await getEditionCached(identity.setID, identity.playID);
-    delete edition.activeListings[nftID]; // listing is resolved either way (bought, cancelled, or expired)
+    delete edition.activeListings[nftID];
     if (purchased) {
       const price = parseFloat(fieldStr(ev.fields, "salePrice"));
       if (price != null && !isNaN(price)) {
@@ -450,7 +377,15 @@ async function runIndexPass(env) {
     }
     processed++;
   }
-
+  const inventoryRaw = await kv.get("sets:inventory");
+  const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
+  const playerIndexRaw = await kv.get("players:index");
+  const playerIndex = playerIndexRaw ? JSON.parse(playerIndexRaw) : {};
+  for (const e of Object.values(editionCache)) {
+    e.circulation = inventory[e.setID]?.circulationByPlay?.[String(e.playID)] ?? null;
+    e.isSuperstar = playerIndex[e.playerName]?.isSuperstar ?? false;
+    e.isRookieDebut = isRookieDebutSet(e.setName);
+  }
   await Promise.all(Object.values(editionCache).map((e) => saveEdition(kv, e)));
   await kv.put("checkpoint:events", String(end));
   return {
@@ -461,41 +396,68 @@ async function runIndexPass(env) {
     eventsCompleted: completed.length,
     processed,
     editionsTouched: Object.keys(editionCache).length,
+    touched: Object.values(editionCache)
   };
 }
-
-// ---- Set inventory + tier sweep (run on demand, not every cron tick) ------
-
+var SUPERSTAR_MIN_COMMONS = 2;
+var SUPERSTAR_PERCENTILE = 0.9;
+async function buildPlayerIndex(env) {
+  const kv = env.TOPSHOT_KV;
+  const editions = await loadAllEditions(kv);
+  const inventoryRaw = await kv.get("sets:inventory");
+  const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
+  const byPlayer = {};
+  for (const e of editions) {
+    const tier = inventory[e.setID]?.tier;
+    if (tier !== "Common" || !e.playerName) continue;
+    const value = e.marketValue ?? e.lowAsk;
+    if (value == null) continue;
+    if (!byPlayer[e.playerName]) byPlayer[e.playerName] = [];
+    byPlayer[e.playerName].push(value);
+  }
+  const playerMedians = [];
+  for (const [playerName, values] of Object.entries(byPlayer)) {
+    if (values.length < SUPERSTAR_MIN_COMMONS) continue;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    playerMedians.push({ playerName, median, sampleSize: values.length });
+  }
+  playerMedians.sort((a, b) => a.median - b.median);
+  const thresholdIndex = Math.floor(playerMedians.length * SUPERSTAR_PERCENTILE);
+  const thresholdValue = playerMedians[thresholdIndex]?.median ?? Infinity;
+  const playerIndex = {};
+  for (const p of playerMedians) {
+    playerIndex[p.playerName] = {
+      commonMedianValue: p.median,
+      sampleSize: p.sampleSize,
+      isSuperstar: p.median >= thresholdValue
+    };
+  }
+  await kv.put("players:index", JSON.stringify(playerIndex));
+  return {
+    playersRanked: playerMedians.length,
+    superstarCount: Object.values(playerIndex).filter((p) => p.isSuperstar).length,
+    thresholdValue
+  };
+}
 async function runSetSweep(env, maxSetID) {
   const kv = env.TOPSHOT_KV;
   const inventory = {};
   for (let setID = 1; setID <= maxSetID; setID++) {
     const name = await getSetName(setID);
-    if (!name) continue; // no set at this ID
+    if (!name) continue;
     const stats = await getSetCirculationStats(setID);
-    // Priority: individual setID override > confirmed name pattern > numeric
-    // band inference. Name patterns beat circulation bands because they're
-    // sourced from Top Shot's own descriptions of what each release TYPE is
-    // designed to be, not inferred from numbers that drift across eras.
-    const tier = TIER_OVERRIDES[setID]
-      || classifyByNamePattern(name)
-      || (stats ? classifyTier(stats.minCirc, stats.maxCirc) : "Unknown");
+    const tier = TIER_OVERRIDES[setID] || classifyByNamePattern(name) || (stats ? classifyTier(Object.values(stats.circulationByPlay)) : "Unknown");
     inventory[setID] = { name, tier, ...stats };
   }
   await kv.put("sets:inventory", JSON.stringify(inventory));
   return { setsFound: Object.keys(inventory).length };
 }
-
-// ---- Subscriber gating (Tome Edge) -----------------------------------------
-// Mirrors the X-Tome-Sub / X-Tome-Key pattern from tome-fastbreak and
-// tome-tcg: resolve via tome-proxy's /auth/subscription over a service
-// binding, shared key as fallback. Requires the "edge" tier or above.
-
 async function checkEdgeAccess(request, env) {
   const sharedKeys = (env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
   const providedKey = request.headers.get("X-Tome-Key") || new URL(request.url).searchParams.get("key");
   if (providedKey && sharedKeys.includes(providedKey)) return true;
-
   const sid = request.headers.get("X-Tome-Sub") || new URL(request.url).searchParams.get("sid");
   if (!sid || !env.AUTH) return false;
   try {
@@ -510,157 +472,406 @@ async function checkEdgeAccess(request, env) {
     return false;
   }
 }
-
-// KV list() caps at 1000 keys per call - Top Shot easily has more distinct
-// editions than that once this has run a while, so every listing read must
-// page through the cursor or results silently truncate.
+function checkAdminAuth(request, env) {
+  if (!env.TOME_ADMIN_TOKEN) return false;
+  const token = request.headers.get("X-Admin-Token") || new URL(request.url).searchParams.get("adminToken");
+  return !!token && token === env.TOME_ADMIN_TOKEN;
+}
 async function listAllKeys(kv, prefix) {
   let keys = [];
   let cursor;
   do {
     const page = await kv.list({ prefix, cursor });
     keys = keys.concat(page.keys);
-    cursor = page.list_complete ? undefined : page.cursor;
+    cursor = page.list_complete ? void 0 : page.cursor;
   } while (cursor);
   return keys;
 }
-
 async function loadAllEditions(kv) {
   const keys = await listAllKeys(kv, "edition:");
   const editions = [];
-  for (const key of keys) {
-    const raw = await kv.get(key.name);
-    if (raw) editions.push(JSON.parse(raw));
+  for (let i = 0; i < keys.length; i += SNAPSHOT_READ_CONCURRENCY) {
+    const batch = keys.slice(i, i + SNAPSHOT_READ_CONCURRENCY);
+    const raws = await Promise.all(batch.map((key) => kv.get(key.name)));
+    for (const raw of raws) {
+      if (raw) editions.push(JSON.parse(raw));
+    }
   }
   return editions;
 }
+// NEW: patch only the touched editions into the stored snapshot (a few KV reads per run).
+async function updateEditionsSnapshot(env, touched) {
+  const kv = env.TOPSHOT_KV;
+  if (!touched || !touched.length) return { skipped: true, reason: "no editions touched" };
+  const [raw, inventoryRaw] = await Promise.all([
+    kv.get(EDITIONS_SNAPSHOT_KEY),
+    kv.get("sets:inventory")
+  ]);
+  const snapshot = raw ? JSON.parse(raw) : { editions: [] };
+  const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
+  const byKey = new Map(snapshot.editions.map((e) => [e.setID + "_" + e.playID, e]));
+  for (const e of touched) {
+    byKey.set(e.setID + "_" + e.playID, {
+      ...e,
+      tier: inventory[e.setID]?.tier || "Unknown",
+      circulation: inventory[e.setID]?.circulationByPlay?.[String(e.playID)] ?? null
+    });
+  }
+  snapshot.editions = [...byKey.values()];
+  snapshot.builtAt = new Date().toISOString();
+  await kv.put(EDITIONS_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  return { editionsSnapshotted: snapshot.editions.length, patched: touched.length };
+}
+// Full rebuild: admin routes only.
+async function rebuildEditionsSnapshot(env) {
+  const kv = env.TOPSHOT_KV;
+  const editions = await loadAllEditions(kv);
+  const inventoryRaw = await kv.get("sets:inventory");
+  const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
+  for (const e of editions) {
+    e.tier = inventory[e.setID]?.tier || "Unknown";
+    e.circulation = inventory[e.setID]?.circulationByPlay?.[String(e.playID)] ?? null;
+  }
+  await kv.put(EDITIONS_SNAPSHOT_KEY, JSON.stringify({ builtAt: new Date().toISOString(), editions }));
+  return { editionsSnapshotted: editions.length };
+}
+// ---- Pro-night set eligibility (internal) ------------------------------------
+// GET /api/topshot/eligible?sets=A,B&season=2026-27[&league=NBA]
+// GET /api/topshot/eligible?badge=rookie_debut|rookie_year&season=2026-27[&league=NBA]
+// Internal only: X-Tome-Internal must equal TOME_INTERNAL_TOKEN.
+//
+// Coverage: the editions snapshot only knows editions that have been LISTED
+// since the indexer started, so it can't answer "does a Moment exist". The set
+// sweep (sets:inventory) knows every playID minted into every set, straight
+// from Flow. So: set name -> setIDs (inventory) -> playIDs -> play identity.
+// Identities come from the editions snapshot when present, then a permanent
+// play:<playID> cache, then Flow (getPlayIdentity), at most
+// ELIG_PLAY_BUDGET Flow calls per request. Until every candidate play is
+// resolved the answer is complete:false (not cached) and the caller treats the
+// night as unverified; repeated calls finish the job.
+var ELIG_CACHE_PREFIX = "elig:";
+var ELIG_CACHE_TTL_S = 6 * 60 * 60;
+var ELIG_PLAY_BUDGET = 40; // Flow script calls per request (stays under the Free plan's 50 subrequests)
+var PLAY_CACHE_PREFIX = "play:";
+var RESOLVABLE_BADGES = new Set(["rookie_debut", "rookie_year"]);
 
-// ---- HTTP surface -----------------------------------------------------------
+function eligJson(body, status = 200) {
+  return Response.json(body, { status });
+}
 
+function parseEligibleQuery(url) {
+  const sets = (url.searchParams.get("sets") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const season = (url.searchParams.get("season") || "").trim() || null;
+  const badge = (url.searchParams.get("badge") || "").trim().toLowerCase() || null;
+  const leagueRaw = (url.searchParams.get("league") || "").trim().toUpperCase();
+  const league = leagueRaw === "NBA" || leagueRaw === "WNBA" ? leagueRaw : null;
+  return { sets, season, badge, league };
+}
+
+function eligCacheKey(q) {
+  const sets = q.sets.map((s) => s.toLowerCase()).sort().join("|");
+  return `${ELIG_CACHE_PREFIX}${sets}#${q.season || ""}#${q.badge || ""}#${q.league || ""}`;
+}
+
+async function handleEligible(request, env, url) {
+  const token = request.headers.get("X-Tome-Internal");
+  if (!env.TOME_INTERNAL_TOKEN || !token || token !== env.TOME_INTERNAL_TOKEN) {
+    return eligJson({ error: "unauthorized" }, 401);
+  }
+  const q = parseEligibleQuery(url);
+  if (!q.sets.length && !q.badge) return eligJson({ error: "pass sets= or badge=" }, 400);
+  if (q.badge && !RESOLVABLE_BADGES.has(q.badge)) {
+    // Challenge / Leaderboard / Crafting reward badges aren't in the index.
+    return eligJson({ resolvable: false, badge: q.badge, reason: "badge is not resolvable from the Top Shot index" });
+  }
+  if (q.badge === "rookie_year" && !q.season) {
+    return eligJson({ error: "badge=rookie_year needs season=" }, 400);
+  }
+
+  const kv = env.TOPSHOT_KV;
+  const cacheKey = eligCacheKey(q);
+  const cached = await kv.get(cacheKey);
+  if (cached && url.searchParams.get("fresh") !== "1") return new Response(cached, { headers: { "Content-Type": "application/json" } });
+
+  const inventoryRaw = await kv.get("sets:inventory");
+  const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
+  const snapshotRaw = await kv.get(EDITIONS_SNAPSHOT_KEY);
+  const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+
+  // Known play identities from the editions snapshot (keyed by playID).
+  const known = new Map();
+  for (const e of snapshot?.editions || []) {
+    if (e.playID != null && e.playerName && !known.has(String(e.playID))) {
+      known.set(String(e.playID), { playerName: e.playerName, team: e.team || null, nbaSeason: e.nbaSeason || null, isRookieYear: !!e.isRookieYear });
+    }
+  }
+
+  // Candidate sets.
+  const wanted = new Set(q.sets.map((s) => s.toLowerCase()));
+  const candidateSets = [];
+  const matchedNames = new Set();
+  for (const [setID, s] of Object.entries(inventory)) {
+    const name = String(s.name || "").trim();
+    let take = false;
+    if (q.sets.length && wanted.has(name.toLowerCase())) take = true;
+    if (q.badge === "rookie_debut" && isRookieDebutSet(name)) take = true;
+    if (q.badge === "rookie_year") {
+      // Sets that contain at least one known play from the requested season.
+      take = Object.keys(s.circulationByPlay || {}).some((pid) => known.get(pid)?.nbaSeason === q.season);
+    }
+    if (q.league && take && deriveLeague(name, null) === "WNBA" && q.league === "NBA") take = false;
+    if (take) {
+      candidateSets.push({ setID: Number(setID), name, playIDs: Object.keys(s.circulationByPlay || {}) });
+      matchedNames.add(name.toLowerCase());
+    }
+  }
+  const unknownSets = q.sets.filter((s) => !matchedNames.has(s.toLowerCase()));
+
+  // Resolve every candidate play's identity (snapshot -> play: cache -> Flow).
+  let flowCalls = 0;
+  let pending = 0;
+  const identities = new Map();
+  for (const cs of candidateSets) {
+    for (const pid of cs.playIDs) {
+      if (identities.has(pid)) continue;
+      let id = known.get(pid) || null;
+      if (!id) {
+        const raw = await kv.get(PLAY_CACHE_PREFIX + pid);
+        if (raw) id = JSON.parse(raw);
+      }
+      if (!id && flowCalls < ELIG_PLAY_BUDGET) {
+        try {
+          flowCalls++;
+          const p = await getPlayIdentity(Number(pid));
+          id = { playerName: p.playerName, team: p.team, nbaSeason: p.nbaSeason, isRookieYear: !!p.isRookieYear };
+          await kv.put(PLAY_CACHE_PREFIX + pid, JSON.stringify(id));
+        } catch (err) {
+          id = null;
+        }
+      }
+      if (id) identities.set(pid, id);
+      else pending++;
+    }
+  }
+
+  // Join.
+  const byName = new Map();
+  for (const cs of candidateSets) {
+    for (const pid of cs.playIDs) {
+      const id = identities.get(pid);
+      if (!id || !id.playerName) continue;
+      if (q.season && id.nbaSeason !== q.season) continue;
+      if (q.badge === "rookie_year" && !id.isRookieYear) continue;
+      if (q.league && deriveLeague(cs.name, id.team) !== q.league) continue;
+      const key = normalizeName(id.playerName);
+      if (!key) continue;
+      if (!byName.has(key)) byName.set(key, { name: id.playerName, team: id.team || null, sets: [] });
+      const rec = byName.get(key);
+      if (!rec.sets.includes(cs.name)) rec.sets.push(cs.name);
+    }
+  }
+  const players = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const complete = pending === 0;
+  // Players found per requested set name (after season/league filters), so a
+  // caller can tell "set exists but has no Moments for this season yet".
+  const setCounts = {};
+  for (const name of q.sets) setCounts[name] = 0;
+  for (const rec of players) {
+    for (const sn of rec.sets) {
+      const req = q.sets.find((n) => n.toLowerCase() === sn.toLowerCase());
+      if (req) setCounts[req]++;
+    }
+  }
+  const body = {
+    resolvable: true,
+    complete,
+    pending,
+    sets: q.sets,
+    badge: q.badge,
+    season: q.season,
+    league: q.league,
+    matchedSets: candidateSets.map((c) => ({ setID: c.setID, name: c.name, plays: c.playIDs.length })),
+    unknownSets,
+    setCounts,
+    players,
+    count: players.length,
+    indexedAt: snapshot?.builtAt || null,
+    inventorySets: Object.keys(inventory).length,
+    generatedAt: new Date().toISOString(),
+  };
+  const text = JSON.stringify(body);
+  if (complete) await kv.put(cacheKey, text, { expirationTtl: ELIG_CACHE_TTL_S });
+  return new Response(text, { headers: { "Content-Type": "application/json" } });
+}
+
+// Incremental set sweep: adds/refreshes setIDs [from, to] in sets:inventory
+// without re-reading every older set (new seasons' sets land at the top).
+// POST /admin/sweep-sets-range?from=280&to=320   (X-Admin-Token)
+async function runSetSweepRange(env, fromID, toID) {
+  const kv = env.TOPSHOT_KV;
+  const raw = await kv.get("sets:inventory");
+  const inventory = raw ? JSON.parse(raw) : {};
+  let added = 0;
+  let calls = 0;
+  for (let setID = fromID; setID <= toID && calls < 44; setID++) {
+    calls++;
+    const name = await getSetName(setID);
+    if (!name) continue;
+    calls++;
+    const stats = await getSetCirculationStats(setID);
+    const tier = TIER_OVERRIDES[setID] || classifyByNamePattern(name) || (stats ? classifyTier(Object.values(stats.circulationByPlay)) : "Unknown");
+    inventory[setID] = { name, tier, ...stats };
+    added++;
+  }
+  await kv.put("sets:inventory", JSON.stringify(inventory));
+  return { from: fromID, to: toID, setsAdded: added, flowCalls: calls, inventorySets: Object.keys(inventory).length, stoppedEarly: calls >= 44 };
+}
+
+function withCors(response) {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, X-Tome-Key, X-Tome-Sub, X-Admin-Token");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runIndexPass(env));
-  },
-
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/health") {
-      const checkpoint = await env.TOPSHOT_KV.get("checkpoint:events");
-      return Response.json({ ok: true, checkpoint });
-    }
-
-    if (url.pathname === "/admin/run-index" && request.method === "POST") {
+    ctx.waitUntil((async () => {
       const result = await runIndexPass(env);
-      return Response.json(result);
-    }
-
-    if (url.pathname === "/admin/sweep-sets" && request.method === "POST") {
-      const maxSetID = parseInt(url.searchParams.get("maxSetID") || "400", 10);
-      const result = await runSetSweep(env, maxSetID);
-      return Response.json(result);
-    }
-
-    if (url.pathname === "/admin/reset-editions" && request.method === "POST") {
-      // Wipes edition: and moment: records only (never sets:inventory or the
-      // event checkpoint) so they rebuild fresh with the current schema.
-      // Safe pre-launch; do NOT run this after real usage/history matters,
-      // since it discards accumulated sales history and low-ask state.
-      const kv = env.TOPSHOT_KV;
-      const [editionKeys, momentKeys] = await Promise.all([
-        listAllKeys(kv, "edition:"),
-        listAllKeys(kv, "moment:"),
-      ]);
-      await Promise.all([...editionKeys, ...momentKeys].map((k) => kv.delete(k.name)));
-      return Response.json({ editionsCleared: editionKeys.length, momentsCleared: momentKeys.length });
-    }
-
-    if (url.pathname === "/api/topshot/sets") {
-      const raw = await env.TOPSHOT_KV.get("sets:inventory");
-      const inventory = raw ? JSON.parse(raw) : {};
-      const tierFilter = url.searchParams.get("tier");
-      let sets = Object.entries(inventory).map(([setID, data]) => ({ setID: parseInt(setID, 10), ...data }));
-      if (tierFilter) sets = sets.filter((s) => s.tier?.toLowerCase() === tierFilter.toLowerCase());
-      return Response.json({ count: sets.length, sets });
-    }
-
-    if (url.pathname === "/api/topshot/editions") {
-      const hasEdgeAccess = await checkEdgeAccess(request, env);
-      let editions = await loadAllEditions(env.TOPSHOT_KV);
-
-      // Tier lives on the SET (from the separate sets:inventory sweep), not
-      // on individual edition records - join it in here at read time. This
-      // is cheap (one KV read total) and, importantly, fixes tier for every
-      // edition regardless of when it was created, not just new ones.
-      const inventoryRaw = await env.TOPSHOT_KV.get("sets:inventory");
-      const inventory = inventoryRaw ? JSON.parse(inventoryRaw) : {};
-      for (const e of editions) {
-        e.tier = inventory[e.setID]?.tier || "Unknown";
-        e.circulation = inventory[e.setID]?.circulationByPlay?.[String(e.playID)] ?? null;
-      }
-
-      // filters - available to everyone, gating happens on which fields/rows come back
-      const seasonFilter = url.searchParams.get("season");
-      const tierFilter = url.searchParams.get("tier"); // comma-separated, e.g. tier=Common,Rare
-      const leagueFilter = url.searchParams.get("league"); // "NBA" or "WNBA"
-      const minPrice = url.searchParams.get("minPrice");
-      const maxPrice = url.searchParams.get("maxPrice");
-      const setFilter = url.searchParams.get("set"); // substring match, case-insensitive
-      if (seasonFilter) editions = editions.filter((e) => e.nbaSeason === seasonFilter);
-      if (tierFilter) {
-        const tiers = tierFilter.split(",").map((t) => t.trim().toLowerCase());
-        editions = editions.filter((e) => tiers.includes((e.tier || "").toLowerCase()));
-      }
-      if (leagueFilter) editions = editions.filter((e) => e.league?.toLowerCase() === leagueFilter.toLowerCase());
-      if (minPrice) {
-        const min = parseFloat(minPrice);
-        editions = editions.filter((e) => e.lowAsk == null || e.lowAsk >= min);
-      }
-      if (maxPrice) {
-        const max = parseFloat(maxPrice);
-        editions = editions.filter((e) => e.lowAsk == null || e.lowAsk <= max);
-      }
-      if (setFilter) {
-        const needle = setFilter.trim().toLowerCase();
-        editions = editions.filter((e) => (e.setName || "").toLowerCase().includes(needle));
-      }
-
-      const sortBy = url.searchParams.get("sort") || "lowAsk";
-      if (sortBy === "discount") {
-        // biggest bargains first - the whole point of tracking discount-to-market.
-        // Requires Edge access below; ungated requests fall back to lowAsk sort
-        // since the teaser strips discountToMarket entirely anyway.
-        editions = editions
-          .filter((e) => e.discountToMarket != null)
-          .sort((a, b) => b.discountToMarket - a.discountToMarket);
-      } else if (sortBy === "tomeScore") {
-        // the refined "best deals" view - confidence- and liquidity-adjusted,
-        // not just raw discount percentage
-        editions = editions
-          .filter((e) => e.tomeScore != null)
-          .sort((a, b) => b.tomeScore - a.tomeScore);
-      } else {
-        editions.sort((a, b) => (b.lowAsk || 0) - (a.lowAsk || 0));
-      }
-
-      if (!hasEdgeAccess) {
-        const teaser = editions.slice(0, FREE_TEASER_LIMIT).map((e) => ({
-          setName: e.setName,
-          playerName: e.playerName,
-          team: e.team,
-          league: e.league,
-          nbaSeason: e.nbaSeason,
-          tier: e.tier,
-          isRookieYear: e.isRookieYear,
-          imageURL: e.imageURL,
-          lowAsk: e.lowAsk,
-        }));
-        return Response.json({ locked: true, count: teaser.length, editions: teaser });
-      }
-
-      return Response.json({ locked: false, count: editions.length, editions });
-    }
-
-    return new Response("tome-topshot indexer", { status: 200 });
+      await updateEditionsSnapshot(env, result.touched);
+    })());
   },
+  async fetch(request, env) {
+    if (request.method === "OPTIONS") {
+      return withCors(new Response(null, { status: 204 }));
+    }
+    const response = await handleRequest(request, env);
+    return withCors(response);
+  }
 };
+async function handleRequest(request, env) {
+  const url = new URL(request.url);
+  if (url.pathname === "/health") {
+    const checkpoint = await env.TOPSHOT_KV.get("checkpoint:events");
+    const snapshotRaw = await env.TOPSHOT_KV.get(EDITIONS_SNAPSHOT_KEY);
+    const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+    return Response.json({
+      ok: true,
+      checkpoint,
+      snapshotEditions: snapshot?.editions?.length ?? null,
+      snapshotBuiltAt: snapshot?.builtAt ?? null
+    });
+  }
+  if (url.pathname === "/admin/run-index" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const result = await runIndexPass(env);
+    const snap = await updateEditionsSnapshot(env, result.touched);
+    delete result.touched;
+    return Response.json({ ...result, snapshot: snap });
+  }
+  if (url.pathname === "/api/topshot/eligible" && request.method === "GET") {
+    return handleEligible(request, env, url);
+  }
+  if (url.pathname === "/admin/sweep-sets-range" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const fromID = parseInt(url.searchParams.get("from") || "0", 10);
+    const toID = parseInt(url.searchParams.get("to") || "0", 10);
+    if (!fromID || !toID || toID < fromID) return Response.json({ error: "pass from= and to= setIDs" }, { status: 400 });
+    const result = await runSetSweepRange(env, fromID, toID);
+    return Response.json(result);
+  }
+  if (url.pathname === "/admin/sweep-sets" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const maxSetID = parseInt(url.searchParams.get("maxSetID") || "400", 10);
+    const result = await runSetSweep(env, maxSetID);
+    await rebuildEditionsSnapshot(env);
+    return Response.json(result);
+  }
+  if (url.pathname === "/admin/build-player-index" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const result = await buildPlayerIndex(env);
+    return Response.json(result);
+  }
+  if (url.pathname === "/admin/reset-editions" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const kv = env.TOPSHOT_KV;
+    const [editionKeys, momentKeys] = await Promise.all([
+      listAllKeys(kv, "edition:"),
+      listAllKeys(kv, "moment:")
+    ]);
+    await Promise.all([...editionKeys, ...momentKeys].map((k) => kv.delete(k.name)));
+    await kv.delete(EDITIONS_SNAPSHOT_KEY);
+    return Response.json({ editionsCleared: editionKeys.length, momentsCleared: momentKeys.length });
+  }
+  if (url.pathname === "/admin/rebuild-snapshot" && request.method === "POST") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const result = await rebuildEditionsSnapshot(env);
+    return Response.json(result);
+  }
+  if (url.pathname === "/api/topshot/sets") {
+    const raw = await env.TOPSHOT_KV.get("sets:inventory");
+    const inventory = raw ? JSON.parse(raw) : {};
+    const tierFilter = url.searchParams.get("tier");
+    let sets = Object.entries(inventory).map(([setID, data]) => ({ setID: parseInt(setID, 10), ...data }));
+    if (tierFilter) sets = sets.filter((s) => s.tier?.toLowerCase() === tierFilter.toLowerCase());
+    return Response.json({ count: sets.length, sets });
+  }
+  if (url.pathname === "/api/topshot/editions") {
+    const hasEdgeAccess = await checkEdgeAccess(request, env);
+    const snapshotRaw = await env.TOPSHOT_KV.get(EDITIONS_SNAPSHOT_KEY);
+    const snapshot = snapshotRaw ? JSON.parse(snapshotRaw) : null;
+    let editions = snapshot?.editions || [];
+    const seasonFilter = url.searchParams.get("season");
+    const tierFilter = url.searchParams.get("tier");
+    const leagueFilter = url.searchParams.get("league");
+    const minPrice = url.searchParams.get("minPrice");
+    const maxPrice = url.searchParams.get("maxPrice");
+    const setFilter = url.searchParams.get("set");
+    if (seasonFilter) editions = editions.filter((e) => e.nbaSeason === seasonFilter);
+    if (tierFilter) {
+      const tiers = tierFilter.split(",").map((t) => t.trim().toLowerCase());
+      editions = editions.filter((e) => tiers.includes((e.tier || "").toLowerCase()));
+    }
+    if (leagueFilter) editions = editions.filter((e) => e.league?.toLowerCase() === leagueFilter.toLowerCase());
+    if (minPrice) {
+      const min = parseFloat(minPrice);
+      editions = editions.filter((e) => e.lowAsk == null || e.lowAsk >= min);
+    }
+    if (maxPrice) {
+      const max = parseFloat(maxPrice);
+      editions = editions.filter((e) => e.lowAsk == null || e.lowAsk <= max);
+    }
+    if (setFilter) {
+      const needle = setFilter.trim().toLowerCase();
+      editions = editions.filter((e) => (e.setName || "").toLowerCase().includes(needle));
+    }
+    const sortBy = url.searchParams.get("sort") || "lowAsk";
+    if (sortBy === "discount") {
+      editions = editions.filter((e) => e.discountToMarket != null).sort((a, b) => b.discountToMarket - a.discountToMarket);
+    } else if (sortBy === "tomeScore") {
+      editions = editions.filter((e) => e.tomeScore != null).sort((a, b) => b.tomeScore - a.tomeScore);
+    } else {
+      editions.sort((a, b) => (b.lowAsk || 0) - (a.lowAsk || 0));
+    }
+    if (!hasEdgeAccess) {
+      const teaser = editions.slice(0, FREE_TEASER_LIMIT).map((e) => ({
+        setName: e.setName,
+        playerName: e.playerName,
+        team: e.team,
+        league: e.league,
+        nbaSeason: e.nbaSeason,
+        tier: e.tier,
+        circulation: e.circulation,
+        isRookieYear: e.isRookieYear,
+        imageURL: e.imageURL,
+        lowAsk: e.lowAsk
+      }));
+      return Response.json({ locked: true, count: teaser.length, editions: teaser });
+    }
+    return Response.json({ locked: false, count: editions.length, editions });
+  }
+  return new Response("tome-topshot indexer", { status: 200 });
+}
