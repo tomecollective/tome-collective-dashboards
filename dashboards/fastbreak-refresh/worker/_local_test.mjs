@@ -160,7 +160,8 @@ assert.equal(T.dayNumberForDate("WNBA", "2026-10-18"), null, "off day has no day
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-29"), 6);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-20"), 1);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-26"), 7);
-assert.equal(T.isWithinRun("NBA", "2026-10-27"), false);
+assert.equal(T.dayNumberForDate("NBA", "2026-11-01"), 13);
+assert.equal(T.isWithinRun("NBA", "2026-11-02"), false);
 assert.equal(T.isSeasonActive("NBA", "2026-09-04"), false);
 assert.equal(T.isSeasonActive("WNBA", "2026-09-04"), true);
 assert.equal(T.LEAGUES.NBA.status({ status: "Final", status_state: "final" }), "post");
@@ -356,7 +357,7 @@ function countSince(mark) {
   assert.equal(body.NBA.runStart, "2026-10-20");
   assert.equal(body.WNBA.runEnd, "2026-10-29");
   assert.equal(body.WNBA.runLength, 6);
-  assert.equal(body.NBA.runLength, 7);
+  assert.equal(body.NBA.runLength, 13);
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);
   assert.equal(res.status, 401, "admin token required");

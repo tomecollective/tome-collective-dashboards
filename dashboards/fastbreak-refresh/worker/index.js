@@ -98,8 +98,8 @@ const LEAGUES = {
     statsPath: "/stats",
     // v2 advanced stats carries points_paint (flat, top-level). GOAT tier.
     advancedUrl: `${BDL_ROOT}/nba/v2/stats/advanced`,
-    // Run 1 (2026-27 season): opening night Tue Oct 20 through Mon Oct 26.
-    run: { label: "Run 1", start: "2026-10-20", end: "2026-10-26" },
+    // Run 1 (2026-27 season): opening night Tue Oct 20 through Sun Nov 1 (13 days).
+    run: { label: "Run 1", start: "2026-10-20", end: "2026-11-01" },
     seasonActive: { start: "2026-10-15", end: "2027-06-30" },
     // At season start there are no current-season games yet, so L10 has to
     // reach back into last season (which ended in June). 240 days covers it.
