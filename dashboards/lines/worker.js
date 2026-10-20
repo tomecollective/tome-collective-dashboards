@@ -471,7 +471,9 @@ async function loadPicks(env, league) {
 async function loadFinals(env, league, ids) {
   const cached = (await Promise.all(ids.map((id) => env.LINES_KV.get(`final:${league}:${id}`, "json")))).filter(Boolean);
   const have = new Set(cached.map((g) => String(g.id)));
-  const need = ids.filter((id) => !have.has(String(id)));
+  // Only numeric ids are BALLDONTLIE game ids. Identity ids ("2026-10-17-ATL-GS", from log_picks / the backfill) grade from
+  // the cached market page; sending them here makes BALLDONTLIE ignore the filter and page through the whole schedule.
+  const need = ids.filter((id) => !have.has(String(id)) && /^\d+$/.test(String(id)));
   let fresh = [];
   if (need.length) { try { fresh = await bdl(env, league, "games", { ids: need }); } catch (e) { fresh = []; } } // a 429 degrades to "not yet graded", never to an error page
   for (const g of fresh) if (isFinal(g)) await env.LINES_KV.put(`final:${league}:${g.id}`, JSON.stringify(g));
