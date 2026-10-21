@@ -66,12 +66,12 @@ const LEAGUES = {
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
     // Finals: only game days get a tab; Day N = index in runDates (the off days
     // between games are skipped). Dates per the 2026 WNBA Finals schedule:
-    // G1 Oct 17, G2 Oct 19, G3 Oct 22, G4 Oct 24, G5 Oct 26, G6 Oct 29 (G7 Oct 31 not included).
+    // G1 Oct 17, G2 Oct 19, G3 Oct 21 (moved up from Oct 22), G4 Oct 24, G5 Oct 26, G6 Oct 29 (G7 Oct 31 not included).
     run: {
       label: "Finals",
       start: "2026-10-17",
       end: "2026-10-29",
-      runDates: ["2026-10-17", "2026-10-19", "2026-10-22", "2026-10-24", "2026-10-26", "2026-10-29"],
+      runDates: ["2026-10-17", "2026-10-19", "2026-10-21", "2026-10-24", "2026-10-26", "2026-10-29"],
     },
     // Cron refreshes only run while a league is in season (playoffs included).
     seasonActive: { start: "2026-05-01", end: "2026-10-31" },
@@ -1522,6 +1522,7 @@ function proEligibilityQuery(league, pro) {
   if (pro.badge) qs.set("badge", pro.badge);
   if (pro.season) qs.set("season", pro.season);
   qs.set("league", league);
+  qs.set("nv", "2"); // name-normalizer version: bump to refetch every cached answer after a matching change
   return qs.toString();
 }
 
@@ -1581,7 +1582,9 @@ async function loadProEligibility(env, league, date, schedule, { allowFetch = tr
 function stampProEligibility(players, proElig) {
   if (!proElig) return null;
   if (proElig.status !== "verified") return "unverified";
-  const ok = new Set(proElig.names || []);
+  // Normalize at stamp time from the raw index names, so a normalizer change
+  // applies to cached answers too.
+  const ok = new Set(proElig.index ? proElig.index.map((p) => normalizeName(p.name)) : proElig.names || []);
   for (const p of players) p.proEligible = ok.has(normalizeName(p.name));
   return "verified";
 }
