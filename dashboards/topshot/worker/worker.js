@@ -537,7 +537,8 @@ async function rebuildEditionsSnapshot(env) {
 }
 // ---- Pro-night set eligibility (internal) ------------------------------------
 // GET /api/topshot/eligible?sets=A,B&season=2026-27[&league=NBA]
-// GET /api/topshot/eligible?badge=rookie_debut|rookie_year&season=2026-27[&league=NBA]
+// GET /api/topshot/eligible?badge=rookie_debut|rookie_year[&season=2026-27][&league=NBA]
+// season is optional everywhere: omit it when any year's Moment qualifies.
 // Internal only: X-Tome-Internal must equal TOME_INTERNAL_TOKEN.
 //
 // Coverage: the editions snapshot only knows editions that have been LISTED
@@ -545,14 +546,14 @@ async function rebuildEditionsSnapshot(env) {
 // sweep (sets:inventory) knows every playID minted into every set, straight
 // from Flow. So: set name -> setIDs (inventory) -> playIDs -> play identity.
 // Identities come from the editions snapshot when present, then a permanent
-// play:<playID> cache, then Flow (getPlayIdentity), at most
+// plays:index map (one KV value), then Flow (getPlayIdentity), at most
 // ELIG_PLAY_BUDGET Flow calls per request. Until every candidate play is
 // resolved the answer is complete:false (not cached) and the caller treats the
 // night as unverified; repeated calls finish the job.
 var ELIG_CACHE_PREFIX = "elig:";
 var ELIG_CACHE_TTL_S = 6 * 60 * 60;
 var ELIG_PLAY_BUDGET = 40; // Flow script calls per request (stays under the Free plan's 50 subrequests)
-var PLAY_CACHE_PREFIX = "play:";
+var PLAYS_INDEX_KEY = "plays:index"; // { playID: {playerName, team, nbaSeason, isRookieYear} } -- one KV value, so a full-catalog lookup stays far under the per-invocation KV operation limit
 var RESOLVABLE_BADGES = new Set(["rookie_debut", "rookie_year"]);
 
 function eligJson(body, status = 200) {
@@ -587,9 +588,6 @@ async function handleEligible(request, env, url) {
     // Challenge / Leaderboard / Crafting reward badges aren't in the index.
     return eligJson({ resolvable: false, badge: q.badge, reason: "badge is not resolvable from the Top Shot index" });
   }
-  if (q.badge === "rookie_year" && !q.season) {
-    return eligJson({ error: "badge=rookie_year needs season=" }, 400);
-  }
 
   const kv = env.TOPSHOT_KV;
   const cacheKey = eligCacheKey(q);
@@ -619,8 +617,9 @@ async function handleEligible(request, env, url) {
     if (q.sets.length && wanted.has(name.toLowerCase())) take = true;
     if (q.badge === "rookie_debut" && isRookieDebutSet(name)) take = true;
     if (q.badge === "rookie_year") {
-      // Sets that contain at least one known play from the requested season.
-      take = Object.keys(s.circulationByPlay || {}).some((pid) => known.get(pid)?.nbaSeason === q.season);
+      // Any season: every set. With season=, only sets holding at least one
+      // known play from that season (keeps the lookup small).
+      take = q.season ? Object.keys(s.circulationByPlay || {}).some((pid) => known.get(pid)?.nbaSeason === q.season) : true;
     }
     if (q.league && take && deriveLeague(name, null) === "WNBA" && q.league === "NBA") take = false;
     if (take) {
@@ -630,24 +629,24 @@ async function handleEligible(request, env, url) {
   }
   const unknownSets = q.sets.filter((s) => !matchedNames.has(s.toLowerCase()));
 
-  // Resolve every candidate play's identity (snapshot -> play: cache -> Flow).
+  // Resolve every candidate play's identity (snapshot -> plays:index -> Flow).
   let flowCalls = 0;
   let pending = 0;
+  let indexChanged = false;
+  const playsIndexRaw = await kv.get(PLAYS_INDEX_KEY);
+  const playsIndex = playsIndexRaw ? JSON.parse(playsIndexRaw) : {};
   const identities = new Map();
   for (const cs of candidateSets) {
     for (const pid of cs.playIDs) {
       if (identities.has(pid)) continue;
-      let id = known.get(pid) || null;
-      if (!id) {
-        const raw = await kv.get(PLAY_CACHE_PREFIX + pid);
-        if (raw) id = JSON.parse(raw);
-      }
+      let id = known.get(pid) || playsIndex[pid] || null;
       if (!id && flowCalls < ELIG_PLAY_BUDGET) {
         try {
           flowCalls++;
           const p = await getPlayIdentity(Number(pid));
           id = { playerName: p.playerName, team: p.team, nbaSeason: p.nbaSeason, isRookieYear: !!p.isRookieYear };
-          await kv.put(PLAY_CACHE_PREFIX + pid, JSON.stringify(id));
+          playsIndex[pid] = id;
+          indexChanged = true;
         } catch (err) {
           id = null;
         }
@@ -656,6 +655,8 @@ async function handleEligible(request, env, url) {
       else pending++;
     }
   }
+
+  if (indexChanged) await kv.put(PLAYS_INDEX_KEY, JSON.stringify(playsIndex));
 
   // Join.
   const byName = new Map();
