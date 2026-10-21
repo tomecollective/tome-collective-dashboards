@@ -41,3 +41,10 @@ crons = ["*/30 * * * *", "7-59/15 * * * *"]
 [[services]]
 binding = "AUTH"
 service = "tome-proxy"
+
+# Pro-night set eligibility: asks tome-topshot (service binding, never public)
+# which players have a Moment in the night's Top Shot sets. Authenticated with
+# the same TOME_INTERNAL_TOKEN secret (set on both Workers).
+[[services]]
+binding = "TOPSHOT"
+service = "tome-topshot"

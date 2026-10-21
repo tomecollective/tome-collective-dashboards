@@ -36,6 +36,7 @@ import {
   upsertHistoricObjectivesDay,
   getHistoricStatus,
 } from "./historic.js";
+import { normalizeName } from "../../shared/names.js";
 
 const BDL_ROOT = "https://api.balldontlie.io";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -887,7 +888,7 @@ function projectionsForDate(schedule, league, date, stat) {
   return schedule?.[league]?.[date]?.projections?.[stat] || null;
 }
 
-async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeSetName }) {
+async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeSetName, proSets, proSeason, proBadge }) {
   validateLeague(league);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("date must be YYYY-MM-DD");
   if (!SUPPORTED_MODES.includes(mode)) throw new Error(`mode must be one of ${SUPPORTED_MODES.join(", ")}`);
@@ -907,6 +908,17 @@ async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeS
     objectives: { ...existingObjectives, [mode]: cleanObjectives },
     badgeSetName: mode === "Pro" && badgeSetName ? badgeSetName : existing.badgeSetName || null,
   };
+  // Pro-night eligibility inputs (Pro saves only; a Classic save leaves them alone).
+  // Sent as undefined = keep, "" / [] = clear.
+  if (mode === "Pro") {
+    if (proSets !== undefined) schedule[league][date].proSets = parseProSets(proSets);
+    if (proSeason !== undefined) {
+      const season = String(proSeason || "").trim();
+      if (season && !/^\d{4}(-\d{2})?$/.test(season)) throw new Error("proSeason must look like 2026-27 (NBA) or 2026 (WNBA)");
+      schedule[league][date].proSeason = season || null;
+    }
+    if (proBadge !== undefined) schedule[league][date].proBadge = String(proBadge || "").trim().toLowerCase() || null;
+  }
   await saveJSON(env, OBJECTIVES_KV_KEY, schedule);
   return schedule;
 }
@@ -1276,11 +1288,13 @@ async function advanceDayBuild(cfg, env, state, budget) {
 
 // Pure: turns a snapshot (finished or partial) plus the requested mode's
 // objectives into the dashboard payload the frontend renders.
-function renderDayPayload(cfg, snapshot, { mode, schedule }) {
+function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   const league = cfg.key;
   const date = snapshot.date;
   const objectives = objectivesForDate(schedule, league, date, mode);
   const badgeSetName = mode === "Pro" ? badgeSetNameForDate(schedule, league, date) : null;
+  const proDay = mode === "Pro" ? proConfigForDate(schedule, league, date) : null;
+  const proEligibility = proDay ? (proElig?.status === "verified" ? "verified" : "unverified") : null;
   const building = snapshot.status !== "done";
   const loadedPlayers = snapshot.totalPlayers - snapshot.pendingChunks.reduce((n, c) => n + c.length, 0);
 
@@ -1295,6 +1309,11 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     last_updated: todayStr(),
     objectives,
     badgeSetName,
+    proSets: proDay?.sets || null,
+    proSeason: proDay?.season || null,
+    proBadge: proDay?.badge || null,
+    proEligibility,
+    proEligibilityReason: proDay && proEligibility !== "verified" ? proElig?.reason || "eligibility not fetched yet" : null,
     games: buildScheduleTiles(snapshot.games),
     building,
     progress: { loaded: loadedPlayers, total: snapshot.totalPlayers },
@@ -1391,7 +1410,11 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     const st = String(p.injuryStatus || "").toLowerCase();
     p.availability = st === "out" ? "out" : st ? "dtd" : null;
   }
-  const rankable = playerBase.filter((p) => p.availability !== "out");
+  // Pro nights with a verified set list: players with no Moment in tonight's
+  // sets get proEligible:false and are never ranked (they stay in the payload
+  // so the page can reveal them behind "Show ineligible").
+  if (proEligibility === "verified") stampProEligibility(playerBase, proElig);
+  const rankable = playerBase.filter((p) => p.availability !== "out" && p.proEligible !== false);
 
   const weightedObjectives = computeAutoWeights(objectives, rankable);
   for (const p of playerBase) {
@@ -1410,7 +1433,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     return { id: p.id, value: -score };
   });
   const ovrRankMap = rankDescending(combinedScores);
-  const players = playerBase.map((p) => ({ ...p, ovrRank: p.availability === "out" ? null : ovrRankMap.get(p.id) }));
+  const players = playerBase.map((p) => ({ ...p, ovrRank: p.availability === "out" || p.proEligible === false ? null : ovrRankMap.get(p.id) }));
   // Ranked players first (by rank), Out players at the bottom.
   players.sort((a, b) => (a.ovrRank ?? Infinity) - (b.ovrRank ?? Infinity));
 
@@ -1428,6 +1451,18 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
     } else if (obj.stat !== "PITP") {
       notes.push(`${obj.stat}: no Rotowire projections uploaded yet for this date -- Proj shows TBD.`);
     }
+  }
+  if (proEligibility === "verified") {
+    const eligibleOnSlate = playerBase.filter((p) => p.proEligible).length;
+    notes.push(`PRO ELIGIBILITY: verified against the Top Shot index (${(proDay.sets.length ? proDay.sets.join(", ") : proDay.badge)}${proDay.season ? `, ${proDay.season}` : ""}). ${eligibleOnSlate} of ${playerBase.length} players on this slate have a Moment in tonight's sets; the rest are excluded from the ranking.`);
+    // Index players on tonight's teams that we couldn't match to the slate
+    // (name spelling, a trade, or not on the active roster) -- admin review.
+    const slateNames = new Set(playerBase.map((p) => normalizeName(p.name)));
+    const teamsTonight = new Set(snapshot.games.flatMap((g) => [g.homeName, g.awayName]).filter(Boolean).map((t) => t.toLowerCase()));
+    const misses = (proElig.index || []).filter((p) => p.team && teamsTonight.has(p.team.toLowerCase()) && !slateNames.has(normalizeName(p.name))).map((p) => p.name);
+    if (misses.length) notes.push(`PRO ELIGIBILITY MISSES (in the index on tonight's teams, not matched on the slate): ${misses.slice(0, 25).join(", ")}${misses.length > 25 ? ` (+${misses.length - 25} more)` : ""}.`);
+  } else if (proEligibility === "unverified") {
+    notes.push(`PRO ELIGIBILITY: not verified (${proElig?.reason || "eligibility not fetched yet"}). No player is excluded on that basis.`);
   }
   if (snapshot.advancedError) {
     notes.push(`NOTE: advanced stats (PITP) could not be fetched for this league (${snapshot.advancedError.slice(0, 80)}); PITP shows "--".`);
@@ -1453,6 +1488,104 @@ function renderDayPayload(cfg, snapshot, { mode, schedule }) {
   };
 }
 
+// -- Pro-night set eligibility -------------------------------------------------
+// Pro nights are themed to Top Shot sets. The day carries proSets (list of set
+// names), proSeason ("2026-27", optional) and proBadge (rookie_debut /
+// rookie_year / any other keyword, optional). tome-topshot resolves which
+// players have at least one Moment in those sets (/api/topshot/eligible, over
+// the TOPSHOT service binding, authenticated with TOME_INTERNAL_TOKEN). The
+// answer is cached per league/date here; a verified answer is reused for 6h,
+// an unverified one is retried after 15 min. Anything short of a clean,
+// complete, non-empty answer is "unverified" and excludes nobody.
+const PRO_ELIG_PREFIX = "fastbreak:proelig:";
+const PRO_ELIG_FRESH_MS = 6 * 60 * 60 * 1000;
+const PRO_ELIG_RETRY_MS = 15 * 60 * 1000;
+const PRO_ELIG_KEEP_VERIFIED_MS = 24 * 60 * 60 * 1000; // a failed refresh never downgrades a verified answer younger than this
+
+function parseProSets(v) {
+  const list = Array.isArray(v) ? v : String(v || "").split(",");
+  return [...new Set(list.map((s) => String(s || "").trim()).filter(Boolean))];
+}
+
+function proConfigForDate(schedule, league, date) {
+  const e = schedule?.[league]?.[date];
+  if (!e) return null;
+  const sets = parseProSets(e.proSets);
+  const badge = String(e.proBadge || "").trim().toLowerCase() || null;
+  if (!sets.length && !badge) return null;
+  return { sets, season: String(e.proSeason || "").trim() || null, badge };
+}
+
+function proEligibilityQuery(league, pro) {
+  const qs = new URLSearchParams();
+  if (pro.sets.length) qs.set("sets", pro.sets.join(","));
+  if (pro.badge) qs.set("badge", pro.badge);
+  if (pro.season) qs.set("season", pro.season);
+  qs.set("league", league);
+  return qs.toString();
+}
+
+async function fetchProEligibility(env, qs, pro) {
+  if (!env.TOME_INTERNAL_TOKEN) return { status: "unverified", reason: "TOME_INTERNAL_TOKEN is not set on this Worker" };
+  const init = { headers: { "X-Tome-Internal": env.TOME_INTERNAL_TOKEN } };
+  try {
+    let res = null;
+    if (env.TOPSHOT) res = await env.TOPSHOT.fetch(`https://internal/api/topshot/eligible?${qs}`, init);
+    else if (env.TOPSHOT_URL) res = await fetch(`${String(env.TOPSHOT_URL).replace(/\/$/, "")}/api/topshot/eligible?${qs}`, init);
+    if (!res) return { status: "unverified", reason: "no TOPSHOT service binding" };
+    if (!res.ok) return { status: "unverified", reason: `Top Shot index answered HTTP ${res.status}` };
+    const b = await res.json();
+    if (b.resolvable === false) return { status: "unverified", reason: b.reason || "badge is not resolvable from the Top Shot index" };
+    if (b.complete === false) return { status: "unverified", reason: `Top Shot index is still resolving ${b.pending} Moment(s); retrying shortly` };
+    const players = (b.players || []).filter((p) => p && p.name).map((p) => ({ name: p.name, team: p.team || null, sets: p.sets || [] }));
+    if (!players.length) return { status: "unverified", reason: `no ${pro.season || ""} Moments found in ${pro.sets.join(", ") || pro.badge} yet`.replace(/\s+/g, " ") };
+    // A listed set with zero Moments for the season means the index hasn't
+    // swept that set yet (or it doesn't exist yet) -- don't half-filter.
+    const emptySets = Object.entries(b.setCounts || {}).filter(([, n]) => n === 0).map(([name]) => name);
+    if (emptySets.length) return { status: "unverified", reason: `no ${pro.season || ""} Moments indexed for ${emptySets.join(", ")} -- remove it from tonight's sets or re-sweep the index`.replace(/\s+/g, " ") };
+    return {
+      status: "verified",
+      names: [...new Set(players.map((p) => normalizeName(p.name)))],
+      index: players,
+      count: players.length,
+      indexedAt: b.indexedAt || null,
+    };
+  } catch (err) {
+    return { status: "unverified", reason: `Top Shot index call failed: ${err.message}`.slice(0, 160) };
+  }
+}
+
+// Returns null when the day has no Pro sets/badge configured, otherwise
+// { status: "verified"|"unverified", names?, index?, reason?, ... }.
+async function loadProEligibility(env, league, date, schedule, { allowFetch = true } = {}) {
+  const pro = proConfigForDate(schedule, league, date);
+  if (!pro) return null;
+  const qs = proEligibilityQuery(league, pro);
+  const key = `${PRO_ELIG_PREFIX}${league}:${date}`;
+  const cached = await loadJSON(env, key);
+  const sameQuery = cached && cached.query === qs;
+  const age = sameQuery ? Date.now() - (cached.fetchedAt || 0) : Infinity;
+  if (sameQuery && age < (cached.status === "verified" ? PRO_ELIG_FRESH_MS : PRO_ELIG_RETRY_MS)) return { ...cached, pro };
+  if (!allowFetch) return sameQuery ? { ...cached, pro } : { status: "unverified", reason: "eligibility not fetched yet", pro };
+  const rec = await fetchProEligibility(env, qs, pro);
+  if (rec.status !== "verified" && sameQuery && cached.status === "verified" && age < PRO_ELIG_KEEP_VERIFIED_MS) {
+    return { ...cached, pro };
+  }
+  const stored = { ...rec, query: qs, fetchedAt: Date.now() };
+  await saveJSON(env, key, stored);
+  return { ...stored, pro };
+}
+
+// Stamps proEligible on each player row when the answer is verified.
+// Returns the day-level label ("verified" | "unverified").
+function stampProEligibility(players, proElig) {
+  if (!proElig) return null;
+  if (proElig.status !== "verified") return "unverified";
+  const ok = new Set(proElig.names || []);
+  for (const p of players) p.proEligible = ok.has(normalizeName(p.name));
+  return "verified";
+}
+
 // Serve-or-advance: returns the best available payload for (league, date,
 // mode), spending up to `budget` BALLDONTLIE calls to start/continue the
 // day's build when the published snapshot is missing or stale.
@@ -1465,23 +1598,32 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
   const schedule = await loadObjectivesSchedule(env);
+  // Pro nights: one call to tome-topshot at most every 6h (cached in KV).
+  let proElig = null;
+  if (targetMode === "Pro") {
+    try {
+      proElig = await loadProEligibility(env, cfg.key, targetDate, schedule);
+    } catch (err) {
+      proElig = { status: "unverified", reason: `eligibility lookup failed: ${err.message}`.slice(0, 160) };
+    }
+  }
 
   const published = await loadJSON(env, dayKey(cfg, targetDate));
   const publishedOk = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, targetDate);
   if (publishedOk && snapshotIsFresh(published, targetDate)) {
-    return renderDayPayload(cfg, published, { mode: targetMode, schedule });
+    return renderDayPayload(cfg, published, { mode: targetMode, schedule, proElig });
   }
 
   if (serveOnly) {
     if (published && published.status === "done") {
-      const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule });
+      const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule, proElig });
       payload.refreshing = true;
       payload.note += " Refreshing on the next scheduled update.";
       return payload;
     }
     const inflight = await loadJSON(env, dayBuildKey(cfg, targetDate));
     if (inflight && inflight.status === "building") {
-      const payload = renderDayPayload(cfg, inflight, { mode: targetMode, schedule });
+      const payload = renderDayPayload(cfg, inflight, { mode: targetMode, schedule, proElig });
       payload.note += " Building on the scheduled updater; check back in a few minutes.";
       return payload;
     }
@@ -1522,7 +1664,7 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   if (state.status === "done") {
     await saveJSON(env, dayKey(cfg, targetDate), state);
     await env.FASTBREAK_KV.delete(dayBuildKey(cfg, targetDate));
-    return renderDayPayload(cfg, state, { mode: targetMode, schedule });
+    return renderDayPayload(cfg, state, { mode: targetMode, schedule, proElig });
   }
 
   await saveJSON(env, dayBuildKey(cfg, targetDate), state);
@@ -1531,12 +1673,12 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   // it predates a PITP objective change (PITP shows "--" until the rebuild
   // lands, which beats showing a third of the slate).
   if (published && published.status === "done") {
-    const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule });
+    const payload = renderDayPayload(cfg, published, { mode: targetMode, schedule, proElig });
     payload.refreshing = true;
     payload.note += " Refreshing in the background.";
     return payload;
   }
-  return renderDayPayload(cfg, state, { mode: targetMode, schedule });
+  return renderDayPayload(cfg, state, { mode: targetMode, schedule, proElig });
 }
 
 async function refreshAndStore(env, league) {
@@ -1917,6 +2059,9 @@ export default {
           mode: body.mode || "Classic",
           objectives: body.objectives,
           badgeSetName: body.badgeSetName,
+          proSets: body.proSets,
+          proSeason: body.proSeason,
+          proBadge: body.proBadge,
         });
         return json({ ok: true, schedule });
       } catch (err) {
@@ -1966,6 +2111,25 @@ export default {
       const cached = await env.FASTBREAK_KV.get(cfg.keys.fulldata);
       if (!cached) {
         return json({ error: `${cfg.key} Full Data hasn't finished its first build yet -- check back shortly.` }, 503);
+      }
+      // Pro Eligible column: stamped from the requested (or today's) Pro day.
+      // Everyone stays in Full Data; this only adds the flag.
+      try {
+        const proDate = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("date") || "") ? url.searchParams.get("date") : todayStr();
+        const schedule = await loadObjectivesSchedule(env);
+        const proElig = await loadProEligibility(env, cfg.key, proDate, schedule);
+        if (proElig) {
+          const payload = JSON.parse(cached);
+          payload.proDate = proDate;
+          payload.proSets = proElig.pro?.sets || null;
+          payload.proSeason = proElig.pro?.season || null;
+          payload.proBadge = proElig.pro?.badge || null;
+          payload.proEligibility = stampProEligibility(payload.players || [], proElig);
+          payload.proEligibilityReason = payload.proEligibility === "verified" ? null : proElig.reason || null;
+          return json(payload);
+        }
+      } catch (err) {
+        console.error("fulldata pro-eligibility stamp failed (serving unstamped):", err.message);
       }
       return new Response(cached, { headers: corsHeaders });
     }
@@ -2135,6 +2299,15 @@ export default {
     await saveJSON(env, cronKey, cronState);
 
     let used = dashboard?._subrequests_used || 0;
+
+    // Keep today's Pro-night eligibility warm (one tome-topshot call at most
+    // every 6h; a no-op on days without Pro sets).
+    try {
+      const proElig = await loadProEligibility(env, league, today, await loadObjectivesSchedule(env));
+      if (proElig) used += 1;
+    } catch (err) {
+      console.error(`${league} pro-eligibility refresh failed (continuing):`, err.message);
+    }
 
     // Pre-build the next stale run date so public (serve-only) reads never
     // wait on a build. Only when today's slate isn't itself mid-build.
