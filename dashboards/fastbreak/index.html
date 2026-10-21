@@ -1262,10 +1262,10 @@ function hxRender() {
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shownSlate = list;
-    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Games", k: "gp" }, { t: "Discount" }, { t: "Skip" }], st);
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10" }, { t: "Discount" }, { t: "Skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
-      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${p.n_games}</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
+      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td title="Last 10 arrives once enough 2026-27 games are logged">-</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
     const r = document.getElementById("hx-result");
     if (hx.result && hx.result.best.length) {
       const L = [...hx.result.best].sort((a, b) => hxVal(b) - hxVal(a));
@@ -1294,8 +1294,8 @@ function hxDownloadCSV() {
   let headers, rows, view;
   if (hx.sub === "slate") {
     view = "slate";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Games", "Skipped"];
-    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.n_games, hx.excluded.has(p.n) ? "Yes" : ""]);
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Skipped"];
+    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), "", hx.excluded.has(p.n) ? "Yes" : ""]);
   } else {
     view = "players";
     headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend"];
