@@ -1359,7 +1359,7 @@ function buildHistoricFullData(D) {
   return {
     players, teams: {}, teamsDetail: {}, statCodes: codes, metaCols: FD_HX_META,
     generated_at: D.updated ? D.updated + "T12:00:00Z" : null,
-    note: "NBA Historic: FBP = Fast Break Points (estimated from the box score; PTS + REB + 2 AST + 2 STL + 3 BLK + 5 per double-double, less a 1.5 calibration). L10 = last 10 Historic games, YTD = all Historic games on record (beta and Season 3). Base RP is Top Shot's public price before any collector discount.",
+    note: D.scoring === "2026-27" ? "NBA Historic: FBP = Fast Break Points with 2026-27 scoring (PTS + REB + 2 AST + 3 STL + 3 BLK + 0.5 3PM, +5 double-double, +10 more for a triple-double, -1 per turnover; games logged without turnovers are charged the player's season turnover average). L10 = last 10 Historic games, YTD = all Historic games on record. Base RP is Top Shot's public price before any collector discount." : "NBA Historic: FBP = Fast Break Points (estimated from the box score; PTS + REB + 2 AST + 2 STL + 3 BLK + 5 per double-double, less a 1.5 calibration). L10 = last 10 Historic games, YTD = all Historic games on record (beta and Season 3). Base RP is Top Shot's public price before any collector discount.",
   };
 }
 async function loadHistoricFullData({ silent } = {}) {
