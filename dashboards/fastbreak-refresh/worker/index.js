@@ -49,7 +49,7 @@ const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only 
 // Bump when a build-time fix (e.g. the All-Star game filter) must invalidate
 // every snapshot already in KV: snapshots carrying an older schema are
 // treated as stale and rebuilt by the cron / next admin read.
-const SNAPSHOT_SCHEMA = 2;
+const SNAPSHOT_SCHEMA = 3; // 3: postseason PITP (advanced rows for playoff games)
 const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
@@ -62,6 +62,9 @@ const LEAGUES = {
     base: `${BDL_ROOT}/wnba/v1`,
     statsPath: "/player_stats",
     advancedUrl: `${BDL_ROOT}/wnba/v1/player_game_advanced_stats`,
+    // The advanced endpoint returns regular-season rows unless asked for the
+    // playoffs, so postseason game ids are queried separately with this.
+    advancedPostseasonQs: "season_type=playoffs",
     // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
     // Finals: only game days get a tab; Day N = index in runDates (the off days
@@ -99,6 +102,7 @@ const LEAGUES = {
     statsPath: "/stats",
     // v2 advanced stats carries points_paint (flat, top-level). GOAT tier.
     advancedUrl: `${BDL_ROOT}/nba/v2/stats/advanced`,
+    advancedPostseasonQs: "postseason=true",
     // Run 1 (2026-27 season): opening night Tue Oct 20 through Sun Nov 1 (13 days).
     run: { label: "Run 1", start: "2026-10-20", end: "2026-11-01" },
     seasonActive: { start: "2026-10-15", end: "2027-06-30" },
@@ -327,6 +331,7 @@ function slimGame(cfg, g) {
     awayName: g.visitor_team?.full_name || "",
     homeScore: cfg.homeScore(g),
     awayScore: cfg.awayScore(g),
+    postseason: g.postseason === true,
   };
 }
 
@@ -477,11 +482,11 @@ function getStatsForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages = 1 
   return fetchStatPages(`${cfg.base}${cfg.statsPath}?${qs}`, env, { maxPages });
 }
 
-function getAdvancedForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages = 1 } = {}) {
+function getAdvancedForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages = 1, postseason = false } = {}) {
   const playerQs = playerIds.map((id) => `player_ids[]=${id}`).join("&");
   const gameQs = [...gameIds].map((id) => `game_ids[]=${id}`).join("&");
   // period=0 = full game, avoids duplicate rows from quarter-level breakdowns.
-  const qs = buildQs([playerQs, seasonsQs(seasons), gameQs, "period=0", "per_page=100"]);
+  const qs = buildQs([playerQs, seasonsQs(seasons), gameQs, "period=0", "per_page=100", postseason ? cfg.advancedPostseasonQs || "" : ""]);
   return fetchStatPages(`${cfg.advancedUrl}?${qs}`, env, { maxPages });
 }
 
@@ -1216,6 +1221,9 @@ async function startDayBuild(cfg, env, { date, schedule }) {
 
   state.last10GameIds = [...last10GameIds];
   state.ytdGameIds = [...ytdGameIds];
+  // Playoff game ids in either window: their advanced (PITP) rows need a
+  // separate postseason query.
+  state.postseasonGameIds = [...new Set([...recentResult.games, ...ytdResult.games].filter((g) => g.postseason).map((g) => g.id))];
   state.seasons = [...new Set([season, ...recentResult.games.map((g) => g.season), ...ytdResult.games.map((g) => g.season)].filter((s) => s != null))];
   state.recentGames = recentResult.games.filter((g) => last10GameIds.has(g.id));
   state.truncatedRecent = recentResult.truncated;
@@ -1240,7 +1248,11 @@ async function advanceDayBuild(cfg, env, state, budget) {
   // Worst-case calls per chunk: L10 page + YTD pages, doubled when PITP needs
   // the advanced endpoint too. Early in a season YTD is a subset of L10, so
   // the YTD queries are skipped entirely.
-  const perChunk = (ytdIsSubset ? 1 : 1 + YTD_STAT_PAGES_PER_CHUNK) * (state.needsAdvanced ? 2 : 1);
+  const postSet = new Set(state.postseasonGameIds || []);
+  // Advanced calls per scope: one regular-season query, plus one postseason
+  // query when the window holds playoff games.
+  const advFactor = state.needsAdvanced ? (postSet.size ? 3 : 2) : 1;
+  const perChunk = (ytdIsSubset ? 1 : 1 + YTD_STAT_PAGES_PER_CHUNK) * advFactor;
 
   while (state.pendingChunks.length > 0 && used + perChunk <= budget) {
     const c = state.pendingChunks[0];
@@ -1257,22 +1269,34 @@ async function advanceDayBuild(cfg, env, state, budget) {
         state.stats[pid][slim.gid] = slim;
       }
       if (state.needsAdvanced) {
-        try {
-          const advRes = await getAdvancedForChunk(cfg, c, state.seasons, scope, env, { maxPages });
-          used += advRes.requestsUsed - 1;
-          for (const r of advRes.rows) {
-            const pid = r.player?.id ?? r.player_id;
-            if (pid == null) continue;
-            if (!state.adv[pid]) state.adv[pid] = {};
-            const slim = slimAdvRow(r);
-            state.adv[pid][slim.gid] = slim;
+        // Regular-season and playoff game ids are queried separately: the
+        // advanced endpoint leaves playoff rows out unless asked for them,
+        // which is why PITP L10/Proj went blank once the last 10 games were
+        // all playoff games.
+        const ids = [...scope];
+        const parts = [
+          { ids: ids.filter((id) => !postSet.has(id)), postseason: false },
+          { ids: ids.filter((id) => postSet.has(id)), postseason: true },
+        ];
+        for (const part of parts) {
+          if (!part.ids.length) continue;
+          try {
+            const advRes = await getAdvancedForChunk(cfg, c, state.seasons, new Set(part.ids), env, { maxPages, postseason: part.postseason });
+            used += advRes.requestsUsed;
+            for (const r of advRes.rows) {
+              const pid = r.player?.id ?? r.player_id;
+              if (pid == null) continue;
+              if (!state.adv[pid]) state.adv[pid] = {};
+              const slim = slimAdvRow(r);
+              state.adv[pid][slim.gid] = slim;
+            }
+          } catch (err) {
+            // PITP needs a higher BALLDONTLIE tier on the NBA side; fail soft
+            // (PITP shows "--") rather than sinking the whole build.
+            state.advancedError = `${part.postseason ? "postseason " : ""}${err.message}`;
+            used += 1;
           }
-        } catch (err) {
-          // PITP needs a higher BALLDONTLIE tier on the NBA side; fail soft
-          // (PITP shows "--") rather than sinking the whole build.
-          state.advancedError = err.message;
         }
-        used += 1;
       }
     }
     state.pendingChunks.shift();
