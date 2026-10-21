@@ -49,7 +49,7 @@ const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only 
 // Bump when a build-time fix (e.g. the All-Star game filter) must invalidate
 // every snapshot already in KV: snapshots carrying an older schema are
 // treated as stale and rebuilt by the cron / next admin read.
-const SNAPSHOT_SCHEMA = 3; // 3: postseason PITP (advanced rows for playoff games)
+const SNAPSHOT_SCHEMA = 4; // 3: postseason PITP query; 4: playoff PITP from shot zones
 const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
@@ -65,6 +65,11 @@ const LEAGUES = {
     // The advanced endpoint returns regular-season rows unless asked for the
     // playoffs, so postseason game ids are queried separately with this.
     advancedPostseasonQs: "season_type=playoffs",
+    // Per-game advanced rows (PITP) don't exist for WNBA playoff games (probe,
+    // Oct 21 2026: zero rows under every filter; playoff games also use a
+    // different id range). Season shot zones DO have a playoffs split, so a
+    // playoff night falls back to per-game paint scoring from there.
+    shotLocationsUrl: `${BDL_ROOT}/wnba/v1/player_shot_locations`,
     // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
     // Finals: only game days get a tab; Day N = index in runDates (the off days
@@ -488,6 +493,28 @@ function getAdvancedForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages =
   // period=0 = full game, avoids duplicate rows from quarter-level breakdowns.
   const qs = buildQs([playerQs, seasonsQs(seasons), gameQs, "period=0", "per_page=100", postseason ? cfg.advancedPostseasonQs || "" : ""]);
   return fetchStatPages(`${cfg.advancedUrl}?${qs}`, env, { maxPages });
+}
+
+// Playoff points in the paint per game, per player, from season shot zones
+// (restricted area + in-the-paint non-RA field goals made x 2). Approximate:
+// shot zones count field goals only, which is also what PITP counts.
+async function getPlayoffPaintPerGame(cfg, teamIds, season, env) {
+  const teamQs = teamIds.map((id) => `team_ids[]=${id}`).join("&");
+  const url = `${cfg.shotLocationsUrl}?season=${season}&season_type=playoffs&per_mode=per_game&per_page=100&${teamQs}`;
+  const res = await fetchStatPages(url, env, { maxPages: 2 });
+  const byPlayer = {};
+  for (const row of res.rows) {
+    const pid = row.player?.id ?? row.player_id;
+    const zones = row.stats?.shot_zones || row.shot_zones || {};
+    let fgm = 0;
+    let found = false;
+    for (const [zone, z] of Object.entries(zones)) {
+      if (!/restricted|paint/i.test(zone) || /non_?paint|outside/i.test(zone)) continue;
+      if (typeof z?.fgm === "number") { fgm += z.fgm; found = true; }
+    }
+    if (pid != null && found) byPlayer[pid] = round1(fgm * 2);
+  }
+  return { byPlayer, requestsUsed: res.requestsUsed, rows: res.rows.length };
 }
 
 // Pages allowed per YTD-scoped stats query per 10-player chunk: 3 pages = 300
@@ -1224,6 +1251,17 @@ async function startDayBuild(cfg, env, { date, schedule }) {
   // Playoff game ids in either window: their advanced (PITP) rows need a
   // separate postseason query.
   state.postseasonGameIds = [...new Set([...recentResult.games, ...ytdResult.games].filter((g) => g.postseason).map((g) => g.id))];
+  if (state.needsAdvanced && state.postseasonGameIds.length && cfg.shotLocationsUrl) {
+    try {
+      const pz = await getPlayoffPaintPerGame(cfg, teamIds, season, env);
+      subrequests += pz.requestsUsed;
+      state.playoffPitp = pz.byPlayer;
+      state.playoffPitpRows = pz.rows;
+    } catch (err) {
+      subrequests += 1;
+      state.playoffPitpError = err.message.slice(0, 160);
+    }
+  }
   state.seasons = [...new Set([season, ...recentResult.games.map((g) => g.season), ...ytdResult.games.map((g) => g.season)].filter((s) => s != null))];
   state.recentGames = recentResult.games.filter((g) => last10GameIds.has(g.id));
   state.truncatedRecent = recentResult.truncated;
@@ -1379,8 +1417,15 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
           const v = def.field(line);
           return typeof v === "number" ? v : null;
         };
-        const l10 = round1(average(l10Lines.map(statValue)));
+        let l10 = round1(average(l10Lines.map(statValue)));
         const ytd = round1(average(ytdLines.map(statValue)));
+        // Playoff night with no per-game PITP rows: use playoff per-game paint
+        // scoring from shot zones as the L10 stand-in.
+        let l10Source = null;
+        if (obj.stat === "PITP" && l10 == null && snapshot.playoffPitp && snapshot.playoffPitp[p.id] != null) {
+          l10 = snapshot.playoffPitp[p.id];
+          l10Source = "playoff-shot-zones";
+        }
 
         const override = projectionOverrides[obj.stat]?.[nameKey];
         let proj;
@@ -1390,7 +1435,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
           projSource = "rotowire";
         } else if (obj.stat === "PITP") {
           proj = l10;
-          projSource = "l10-fallback";
+          projSource = l10Source || "l10-fallback";
         } else {
           proj = null;
           projSource = "tbd";
@@ -1487,6 +1532,13 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
     if (misses.length) notes.push(`PRO ELIGIBILITY MISSES (in the index on tonight's teams, not matched on the slate): ${misses.slice(0, 25).join(", ")}${misses.length > 25 ? ` (+${misses.length - 25} more)` : ""}.`);
   } else if (proEligibility === "unverified") {
     notes.push(`PRO ELIGIBILITY: not verified (${proElig?.reason || "eligibility not fetched yet"}). No player is excluded on that basis.`);
+  }
+  if (snapshot.playoffPitp && Object.keys(snapshot.playoffPitp).length) {
+    notes.push(`PITP L10/Proj: BALLDONTLIE has no per-game playoff PITP, so L10 here is each player's playoff points in the paint per game from shot zones (restricted area + paint field goals x 2; ${Object.keys(snapshot.playoffPitp).length} players). YTD is regular season.`);
+  } else if (snapshot.playoffPitpError) {
+    notes.push(`NOTE: playoff shot zones unavailable (${snapshot.playoffPitpError.slice(0, 80)}); PITP L10/Proj show "--" for playoff games.`);
+  } else if ((snapshot.postseasonGameIds || []).length && snapshot.needsAdvanced) {
+    notes.push(`NOTE: BALLDONTLIE returned no playoff paint data (${snapshot.playoffPitpRows ?? 0} shot-zone rows); PITP L10/Proj show "--" for playoff games.`);
   }
   if (snapshot.advancedError) {
     notes.push(`NOTE: advanced stats (PITP) could not be fetched for this league (${snapshot.advancedError.slice(0, 80)}); PITP shows "--".`);
@@ -2086,6 +2138,9 @@ export default {
           "season_type=3": `${base}&season_type=3`,
           "dates_only": `${cfg.advancedUrl}?player_ids[]=${player.id}&start_date=${addDaysStr(date, -30)}&end_date=${date}&period=0&per_page=100`,
         };
+        if (cfg.shotLocationsUrl) {
+          variants.shot_zones_playoffs = `${cfg.shotLocationsUrl}?player_ids[]=${player.id}&season=${cfg.seasonFor(date)}&season_type=playoffs&per_mode=per_game&per_page=100`;
+        }
         const results = {};
         for (const [name, u] of Object.entries(variants)) {
           try {
@@ -2097,6 +2152,7 @@ export default {
               gameIds: rows.map((r) => r.game?.id ?? r.game_id).slice(0, 12),
               pitp: rows.map((r) => slimAdvRow(r).pitp).slice(0, 12),
               statsKeys: first ? Object.keys(first.stats || first).slice(0, 12) : [],
+              zones: first?.stats?.shot_zones ? first.stats.shot_zones : undefined,
             };
           } catch (err) {
             results[name] = { error: err.message.slice(0, 200) };
