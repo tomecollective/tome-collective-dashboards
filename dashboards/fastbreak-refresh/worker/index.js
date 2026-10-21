@@ -1426,6 +1426,9 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
           l10 = snapshot.playoffPitp[p.id];
           l10Source = "playoff-shot-zones";
         }
+        // Last resort on a playoff night: Proj falls back to the regular-season
+        // PITP average (YTD) so the objective still ranks; L10 stays "--".
+        const pitpYtdFallback = obj.stat === "PITP" && l10 == null && ytd != null && (snapshot.postseasonGameIds || []).length > 0;
 
         const override = projectionOverrides[obj.stat]?.[nameKey];
         let proj;
@@ -1434,8 +1437,8 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
           proj = round1(override.value);
           projSource = "rotowire";
         } else if (obj.stat === "PITP") {
-          proj = l10;
-          projSource = l10Source || "l10-fallback";
+          proj = pitpYtdFallback ? ytd : l10;
+          projSource = pitpYtdFallback ? "ytd-regular-fallback" : l10Source || "l10-fallback";
         } else {
           proj = null;
           projSource = "tbd";
@@ -1538,7 +1541,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   } else if (snapshot.playoffPitpError) {
     notes.push(`NOTE: playoff shot zones unavailable (${snapshot.playoffPitpError.slice(0, 80)}); PITP L10/Proj show "--" for playoff games.`);
   } else if ((snapshot.postseasonGameIds || []).length && snapshot.needsAdvanced) {
-    notes.push(`NOTE: BALLDONTLIE returned no playoff paint data (${snapshot.playoffPitpRows ?? 0} shot-zone rows); PITP L10/Proj show "--" for playoff games.`);
+    notes.push(`PITP: BALLDONTLIE has no playoff points-in-the-paint data (per game or by shot zone), so PITP Proj uses each player's regular-season average (same as YTD) and PITP L10 shows "--".`);
   }
   if (snapshot.advancedError) {
     notes.push(`NOTE: advanced stats (PITP) could not be fetched for this league (${snapshot.advancedError.slice(0, 80)}); PITP shows "--".`);
@@ -2130,7 +2133,10 @@ export default {
         const gameIds = l10.filter((id) => post.has(id)).slice(0, 5);
         const player = snap.roster.find((p) => Object.keys(snap.stats[p.id] || {}).some((g) => gameIds.includes(Number(g)))) || snap.roster[0];
         const base = `${cfg.advancedUrl}?player_ids[]=${player.id}&${gameIds.map((g) => `game_ids[]=${g}`).join("&")}&period=0&per_page=100`;
+        const regIds = l10.filter((id) => !post.has(id)).slice(0, 5);
         const variants = {
+          // Regular-season games from the same L10 window (the normal path).
+          regular_games: regIds.length ? `${cfg.advancedUrl}?player_ids[]=${player.id}&${regIds.map((g) => `game_ids[]=${g}`).join("&")}&period=0&per_page=100` : null,
           none: base,
           seasons: `${base}&${seasonsQs(snap.seasons)}`,
           "season_type=playoffs": `${base}&season_type=playoffs`,
@@ -2143,6 +2149,7 @@ export default {
         }
         const results = {};
         for (const [name, u] of Object.entries(variants)) {
+          if (!u) { results[name] = { skipped: "no games of this kind in the window" }; continue; }
           try {
             const d = await bdlFetch(u, env);
             const rows = d.data || [];
@@ -2156,6 +2163,25 @@ export default {
             };
           } catch (err) {
             results[name] = { error: err.message.slice(0, 200) };
+          }
+        }
+        // Play-by-play sample for one playoff game: shows whether shot text
+        // carries enough (shot type / distance) to compute PITP per game.
+        if (gameIds.length) {
+          try {
+            const d = await bdlFetch(`${cfg.base}/plays?game_id=${gameIds[0]}`, env);
+            const plays = d.data || [];
+            const made = plays.filter((pl) => pl.scoring_play && pl.score_value === 2);
+            results.pbp = {
+              gameId: gameIds[0],
+              plays: plays.length,
+              made2: made.length,
+              nextCursor: d.meta?.next_cursor ?? null,
+              sampleMade2: made.slice(0, 12).map((pl) => ({ type: pl.type, text: pl.text, team: pl.team?.abbreviation })),
+              keys: plays[0] ? Object.keys(plays[0]) : [],
+            };
+          } catch (err) {
+            results.pbp = { error: err.message.slice(0, 200) };
           }
         }
         return json({
