@@ -2160,6 +2160,20 @@ export default {
               pitp: rows.map((r) => slimAdvRow(r).pitp).slice(0, 12),
               statsKeys: first ? Object.keys(first.stats || first).slice(0, 12) : [],
               zones: first?.stats?.shot_zones ? first.stats.shot_zones : undefined,
+              // Every field (up to three levels down) whose name mentions
+              // "paint", with its values across the rows -- finds the real
+              // PITP field name if it isn't points_paint.
+              paintFields: (() => {
+                const out = {};
+                const scan = (obj, prefix) => {
+                  for (const [k, v] of Object.entries(obj || {})) {
+                    if (v && typeof v === "object" && !Array.isArray(v)) { if (prefix.split(".").length < 4) scan(v, `${prefix}${k}.`); }
+                    else if (/paint/i.test(k)) (out[prefix + k] = out[prefix + k] || []).push(v);
+                  }
+                };
+                rows.forEach((r) => scan(r, ""));
+                return out;
+              })(),
             };
           } catch (err) {
             results[name] = { error: err.message.slice(0, 200) };
