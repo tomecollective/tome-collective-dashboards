@@ -2062,6 +2062,56 @@ export default {
     // Admin password check for the frontend's unlock gate. The page never
     // holds the password itself -- it sends what the admin typed and we
     // compare against the FASTBREAK_ADMIN_TOKEN secret. Nothing is stored.
+    // Admin diagnostic: asks BALLDONTLIE's advanced endpoint for one player's
+    // PITP in that day's playoff games with each candidate filter, and reports
+    // how many rows each returns. Read-only; ~6 BALLDONTLIE calls.
+    // GET /api/fastbreak/admin/advanced-probe?league=WNBA&date=YYYY-MM-DD
+    if (url.pathname === "/api/fastbreak/admin/advanced-probe" && request.method === "GET") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const cfg = leagueConfig(leagueParam(url));
+        const date = url.searchParams.get("date") || todayStr();
+        const snap = await loadJSON(env, dayKey(cfg, date));
+        if (!snap) return json({ error: `no snapshot for ${cfg.key} ${date}` }, 404);
+        const post = new Set(snap.postseasonGameIds || []);
+        const l10 = snap.last10GameIds || [];
+        const gameIds = l10.filter((id) => post.has(id)).slice(0, 5);
+        const player = snap.roster.find((p) => Object.keys(snap.stats[p.id] || {}).some((g) => gameIds.includes(Number(g)))) || snap.roster[0];
+        const base = `${cfg.advancedUrl}?player_ids[]=${player.id}&${gameIds.map((g) => `game_ids[]=${g}`).join("&")}&period=0&per_page=100`;
+        const variants = {
+          none: base,
+          seasons: `${base}&${seasonsQs(snap.seasons)}`,
+          "season_type=playoffs": `${base}&season_type=playoffs`,
+          "postseason=true": `${base}&postseason=true`,
+          "season_type=3": `${base}&season_type=3`,
+          "dates_only": `${cfg.advancedUrl}?player_ids[]=${player.id}&start_date=${addDaysStr(date, -30)}&end_date=${date}&period=0&per_page=100`,
+        };
+        const results = {};
+        for (const [name, u] of Object.entries(variants)) {
+          try {
+            const d = await bdlFetch(u, env);
+            const rows = d.data || [];
+            const first = rows[0];
+            results[name] = {
+              rows: rows.length,
+              gameIds: rows.map((r) => r.game?.id ?? r.game_id).slice(0, 12),
+              pitp: rows.map((r) => slimAdvRow(r).pitp).slice(0, 12),
+              statsKeys: first ? Object.keys(first.stats || first).slice(0, 12) : [],
+            };
+          } catch (err) {
+            results[name] = { error: err.message.slice(0, 200) };
+          }
+        }
+        return json({
+          league: cfg.key, date, schema: snap.schema, player: player.name, playerId: player.id,
+          last10GameIds: l10, postseasonGameIds: [...post].slice(0, 30), probedGameIds: gameIds,
+          advancedError: snap.advancedError || null, results,
+        });
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
     if (url.pathname === "/api/fastbreak/admin/verify" && request.method === "POST") {
       if (!checkAdminToken(request, env)) return unauthorized();
       return json({ ok: true });
