@@ -1522,6 +1522,7 @@ function proEligibilityQuery(league, pro) {
   if (pro.badge) qs.set("badge", pro.badge);
   if (pro.season) qs.set("season", pro.season);
   qs.set("league", league);
+  qs.set("nv", "2"); // name-normalizer version: bump to refetch every cached answer after a matching change
   return qs.toString();
 }
 
@@ -1581,7 +1582,9 @@ async function loadProEligibility(env, league, date, schedule, { allowFetch = tr
 function stampProEligibility(players, proElig) {
   if (!proElig) return null;
   if (proElig.status !== "verified") return "unverified";
-  const ok = new Set(proElig.names || []);
+  // Normalize at stamp time from the raw index names, so a normalizer change
+  // applies to cached answers too.
+  const ok = new Set(proElig.index ? proElig.index.map((p) => normalizeName(p.name)) : proElig.names || []);
   for (const p of players) p.proEligible = ok.has(normalizeName(p.name));
   return "verified";
 }
