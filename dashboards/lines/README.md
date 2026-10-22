@@ -83,3 +83,11 @@ A pick on every game, most of them Coin flip or Lean; roughly a third of WNBA ga
 ## Tunables
 
 All in `wrangler.toml [vars]`: home court, half-lives, edge thresholds, playoff weight and total adjustments. Change, redeploy.
+
+## Ingest: the ledger fills itself
+
+Logging no longer depends on running `log_picks.py`. An hourly cron (`20 * * * *`) lists posts published to the web in the last 48 hours, keeps the ones carrying THE CARD blocks, parses each card's `Lean TEAM number (Tier) · Over/Under number (Tier)` line, places the game on a date from the cached sportsbookreview page, and logs it. A card is free if it appears in the free web content and Intel otherwise. A game already on the ledger is never overwritten, so the lean printed at publish time is the one graded, and an updated post changes nothing. Grading stays as before: the nightly 06:10 UTC market cache plus grading on read.
+
+Secrets: `BEEHIIV_API_KEY` and `BEEHIIV_PUBLICATION_ID` (the same values tome-proxy holds). `POST /api/lines/ingest?hours=72` (admin) runs a pass by hand; `GET /api/lines/ingest/status` shows the last run, including any card that did not parse; `/health` lists ingest problems for the healthcheck.
+
+The card line is a contract. Keep it exactly `Lean TEAM +N.N (Tier) · Over/Under N.N (Tier)` with the tier as Strong, Lean, or Toss-up, and the header exactly `THE CARD · AWAY @ HOME`. Anything else lands in `unparsed` on the status endpoint and never reaches the ledger. `log_picks.py` still works for a slate without a published card (it logs numeric BALLDONTLIE ids; ingest dedupes on date and teams, not id, so run it before the preview publishes or not at all).

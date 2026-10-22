@@ -16,6 +16,14 @@
 //   GET  /api/lines/market?league=wnba&date=YYYY-MM-DD      open/current lines, public %, finals (sportsbookreview, cached in KV)
 //   GET  /api/lines/trends?league=wnba&date=YYYY-MM-DD&n=10 last-N ATS and O/U per team against the closing number
 //   POST /api/lines/market/backfill?league=wnba&from=&to=   (admin) cache up to 20 past market days per call
+//   POST /api/lines/ingest[?hours=48]   (admin) read published previews from Beehiiv and log any card not yet on the ledger
+//   GET  /api/lines/ingest/status       last ingest run: posts read, cards logged, cards that did not parse (metadata only)
+//
+// Ingest (the automated half of logging): an hourly cron lists posts published in the last 48 hours, keeps the ones whose
+// web content carries THE CARD blocks, parses each "Lean TEAM number (Tier) · Over/Under number (Tier)" line, places the game
+// on a date from the cached sportsbookreview page, and logs it with access free|intel by whether the card appears in the
+// free web content. A card already on the ledger (same date, teams) is never overwritten: the printed lean at publish
+// time is the one that gets graded. Needs secrets BEEHIIV_API_KEY and BEEHIIV_PUBLICATION_ID (same values as tome-proxy).
 //
 // Conventions: spreads are quoted for the HOME team (home -6.5 means home favored by 6.5).
 // Every game gets a pick. Confidence comes from |projection - market| against the league's edge threshold:
@@ -430,6 +438,109 @@ async function handleClose(request, env) {
   return json({ ok: true, pick: rec });
 }
 
+
+// ---------- INGEST (previews -> ledger) ----------
+// Abbreviations as the previews print them -> SBR nickname (last word of the full team name, lowercased).
+const NICK = {
+  nfl: { ARI:"cardinals",ATL:"falcons",BAL:"ravens",BUF:"bills",CAR:"panthers",CHI:"bears",CIN:"bengals",CLE:"browns",DAL:"cowboys",DEN:"broncos",DET:"lions",GB:"packers",HOU:"texans",IND:"colts",JAX:"jaguars",KC:"chiefs",LV:"raiders",LAC:"chargers",LAR:"rams",MIA:"dolphins",MIN:"vikings",NE:"patriots",NO:"saints",NYG:"giants",NYJ:"jets",PHI:"eagles",PIT:"steelers",SF:"49ers",SEA:"seahawks",TB:"buccaneers",TEN:"titans",WAS:"commanders" },
+  nba: { ATL:"hawks",BOS:"celtics",BKN:"nets",CHA:"hornets",CHI:"bulls",CLE:"cavaliers",DAL:"mavericks",DEN:"nuggets",DET:"pistons",GSW:"warriors",HOU:"rockets",IND:"pacers",LAC:"clippers",LAL:"lakers",MEM:"grizzlies",MIA:"heat",MIL:"bucks",MIN:"timberwolves",NOP:"pelicans",NYK:"knicks",OKC:"thunder",ORL:"magic",PHI:"76ers",PHX:"suns",POR:"blazers",SAC:"kings",SAS:"spurs",TOR:"raptors",UTA:"jazz",WAS:"wizards" },
+  wnba: { ATL:"dream",CHI:"sky",CON:"sun",DAL:"wings",GS:"valkyries",IND:"fever",LV:"aces",LA:"sparks",MIN:"lynx",NY:"liberty",PHX:"mercury",POR:"fire",SEA:"storm",TOR:"tempo",WAS:"mystics" },
+};
+const ALIAS = {
+  nfl: { WSH:"WAS",JAC:"JAX",GNB:"GB",KAN:"KC",LVR:"LV",NOR:"NO",NWE:"NE",SFO:"SF",TAM:"TB",LA:"LAR" },
+  nba: { GS:"GSW",NY:"NYK",NO:"NOP",SA:"SAS",PHO:"PHX",UTAH:"UTA",BRK:"BKN",WSH:"WAS",CHO:"CHA",NOR:"NOP" },
+  wnba: { GSV:"GS",LVA:"LV",LAS:"LA",NYL:"NY",PHO:"PHX",CONN:"CON",WSH:"WAS" },
+};
+const TIER_IN = { "toss-up":"COIN FLIP","toss up":"COIN FLIP",tossup:"COIN FLIP","coin flip":"COIN FLIP",lean:"LEAN",strong:"STRONG" };
+function normAbbr(league, a) { a = String(a || "").toUpperCase(); return ALIAS[league]?.[a] || a; }
+function htmlToText(h) {
+  return String(h || "").replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ")
+    .replace(/&middot;|&#183;|&#xB7;/gi, "·").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/−/g, "-").replace(/\s+/g, " ");
+}
+// Which league a preview belongs to: title and tags first (WNBA before NBA, since one contains the other), then the
+// abbreviations on its cards.
+function leagueOfPost(post, cardsText) {
+  const hay = `${post.title || ""} ${post.subtitle || ""} ${(post.content_tags || []).join(" ")}`;
+  if (/\bWNBA\b/i.test(hay)) return "wnba";
+  if (/\bNFL\b/i.test(hay)) return "nfl";
+  if (/\bNBA\b|THE READ/i.test(hay)) return "nba";
+  const ab = [...cardsText.matchAll(/THE CARD\s*·\s*([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/g)].flatMap((m) => [m[1], m[2]]);
+  for (const L of ["nfl", "nba", "wnba"]) if (ab.length && ab.every((a) => NICK[L][normAbbr(L, a)])) return L;
+  return null;
+}
+// Every THE CARD block in a blob of web content -> {away, home, team, spread, side_tier, total_side, total, total_tier}.
+function parseCards(league, text) {
+  const out = [], bad = [];
+  const parts = text.split(/(?=THE CARD\s*·)/).filter((x) => /^THE CARD\s*·/.test(x));
+  for (const part of parts) {
+    const g = part.match(/^THE CARD\s*·\s*([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/);
+    const l = part.match(/Lean\s*:?\s*([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?|PK)\s*\(([A-Za-z -]+)\)\s*·\s*(Over|Under)\s*[↑↓]?\s*(\d+(?:\.\d+)?)\s*\(([A-Za-z -]+)\)/i);
+    if (!g || !l) { bad.push(part.slice(0, 90)); continue; }
+    const away = normAbbr(league, g[1]), home = normAbbr(league, g[2]), team = normAbbr(league, l[1]);
+    const st = TIER_IN[l[3].trim().toLowerCase()], tt = TIER_IN[l[6].trim().toLowerCase()];
+    if (!NICK[league][away] || !NICK[league][home] || (team !== home && team !== away) || !st || !tt) { bad.push(part.slice(0, 90)); continue; }
+    const spr = l[2].toUpperCase() === "PK" ? 0 : parseFloat(l[2]);
+    out.push({ away, home, side: team === home ? "HOME" : "AWAY", spread_home_at_pick: team === home ? spr : -spr, side_tier: st,
+      total_side: l[4].toUpperCase(), total_at_pick: parseFloat(l[5]), total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}` });
+  }
+  return { cards: out, bad };
+}
+async function beehiivPosts(env, hours) {
+  const since = Math.floor(Date.now() / 1000) - hours * 3600;
+  const base = `https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts`;
+  const q = `status=confirmed&order_by=publish_date&direction=desc&limit=25&expand[]=free_web_content&expand[]=premium_web_content`;
+  const res = await fetch(`${base}?${q}`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}` } });
+  if (!res.ok) throw new Error(`beehiiv ${res.status}`);
+  const data = (await res.json()).data || [];
+  return data.filter((p) => (p.publish_date || 0) >= since && (p.platform === "both" || p.platform === "web" || !p.platform));
+}
+// Place a card on a date: the first day from publish day forward (7 max) whose cached market page has that matchup.
+// Cached days are checked first; only then are missing days fetched, in order, until every card is placed.
+async function placeCards(env, league, pubDate, cards) {
+  const days = []; for (let i = 0; i < 7; i++) days.push(new Date(new Date(pubDate + "T00:00:00Z").getTime() + i * 864e5).toISOString().slice(0, 10));
+  const pending = new Set(cards.map((_, i) => i));
+  const tryDay = (mk, d) => { for (const i of [...pending]) { const c = cards[i]; if (mk?.games?.some((x) => x.home_nick === NICK[league][c.home] && x.away_nick === NICK[league][c.away])) { c.date = d; pending.delete(i); } } };
+  for (const d of days) { if (!pending.size) break; tryDay(await env.LINES_KV.get(`market:${league}:${d}`, "json"), d); }
+  for (const d of days) { if (!pending.size) break; try { tryDay(await fetchMarket(env, league, d), d); } catch (e) { /* SBR gap: fall through */ } }
+  // Unplaced: a daily league plays the day the preview ran; an NFL preview is a Sunday slate unless it says otherwise.
+  for (const i of pending) { const c = cards[i]; c.date = league === "nfl" ? days.find((d) => new Date(d + "T00:00:00Z").getUTCDay() === 0) || pubDate : pubDate; c.date_unplaced = true; }
+}
+async function runIngest(env, hours = 48) {
+  const run = { at: new Date().toISOString(), hours, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
+  if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID) { run.error = "BEEHIIV_API_KEY / BEEHIIV_PUBLICATION_ID not set"; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
+  let posts = [];
+  try { posts = await beehiivPosts(env, hours); } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
+  const existing = {};
+  for (const post of posts) {
+    const premium = htmlToText(post.content?.premium?.web || ""), free = htmlToText(post.content?.free?.web || "");
+    const all = premium.includes("THE CARD") ? premium : free;
+    if (!all.includes("THE CARD")) continue;
+    const league = leagueOfPost(post, all);
+    const entry = { id: post.id, title: post.title, league, cards: 0, logged: [], already: [], unparsed: [] };
+    run.posts.push(entry);
+    if (!league) { entry.unparsed.push("league not identified"); run.unparsed++; continue; }
+    const { cards, bad } = parseCards(league, all);
+    const freeKeys = new Set(parseCards(league, free).cards.map((c) => `${c.away}@${c.home}`));
+    entry.cards = cards.length; entry.unparsed = bad; run.unparsed += bad.length;
+    if (!cards.length) continue;
+    existing[league] ||= await loadPicks(env, league);
+    await placeCards(env, league, etDate(new Date(post.publish_date * 1000).toISOString()), cards);
+    for (const c of cards) {
+      const dup = existing[league].find((p) => (p.date === c.date && p.home === c.home && p.away === c.away) || p.game_id === `${c.date}-${c.away}-${c.home}`);
+      if (dup) { entry.already.push(`${c.away}@${c.home}`); run.already++; continue; }
+      const rec = { league, game_id: `${c.date}-${c.away}-${c.home}`, date: c.date, home: c.home, away: c.away, home_nick: NICK[league][c.home], away_nick: NICK[league][c.away], postseason: false,
+        side: c.side, spread_home_at_pick: c.spread_home_at_pick, total_side: c.total_side, total_at_pick: c.total_at_pick, side_tier: c.side_tier, total_tier: c.total_tier,
+        access: freeKeys.has(`${c.away}@${c.home}`) ? "free" : "intel", override: false, source_post_id: post.id, source: "ingest", lean_text: c.lean_text,
+        note: c.date_unplaced ? "date assumed: matchup not found on the market page at ingest" : null, void: false, void_reason: null, picked_at: new Date().toISOString() };
+      await env.LINES_KV.put(`pick:${league}:${rec.game_id}`, JSON.stringify(rec));
+      existing[league].push(rec); entry.logged.push(`${c.away}@${c.home} ${c.date}`); run.logged++;
+    }
+  }
+  await env.LINES_KV.put("ingest:last", JSON.stringify(run));
+  return run;
+}
+
 // ---------- THE RECORD ----------
 // One graded ledger feeds the recap block, the Monday social rows and the record page.
 // Storage stays one KV record per game (pick:<league>:<game_id>); the ledger is emitted one row
@@ -645,15 +756,28 @@ async function handleVoid(request, env) {
 export default {
   // Nightly: cache yesterday's and today's market pages for every league so closes and trends fill themselves.
   async scheduled(event, env) {
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-    for (const league of Object.keys(SBR)) for (const d of [yesterday, today]) { try { await fetchMarket(env, league, d); } catch (e) { /* SBR hiccup; the next run catches up */ } }
+    if (event.cron === "10 6 * * *") {
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      for (const league of Object.keys(SBR)) for (const d of [yesterday, today]) { try { await fetchMarket(env, league, d); } catch (e) { /* SBR hiccup; the next run catches up */ } }
+    }
+    // Every cron, including the nightly one: pick up previews published since the last pass.
+    try { await runIngest(env, 48); } catch (e) { await env.LINES_KV.put("ingest:last", JSON.stringify({ at: new Date().toISOString(), error: e.message })); }
   },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return json({});
     try {
-      if (url.pathname === "/health") return json({ ok: true, leagues: Object.keys(LEAGUE), configured: !!env.BALLDONTLIE_API_KEY });
+      if (url.pathname === "/health") {
+        const ing = await env.LINES_KV.get("ingest:last", "json");
+        const problems = [];
+        if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID) problems.push("ingest: Beehiiv secrets not set");
+        else if (!ing) problems.push("ingest: never ran");
+        else { if (ing.error) problems.push(`ingest: ${ing.error}`); if (ing.unparsed) problems.push(`ingest: ${ing.unparsed} card(s) did not parse`); if (Date.now() - new Date(ing.at).getTime() > 3 * 36e5) problems.push("ingest: last run more than 3h ago"); }
+        return json({ ok: !problems.length, leagues: Object.keys(LEAGUE), configured: !!env.BALLDONTLIE_API_KEY, ingest: ing ? { at: ing.at, posts: ing.posts?.length || 0, logged: ing.logged, unparsed: ing.unparsed, error: ing.error } : null, problems });
+      }
+      if (url.pathname === "/api/lines/ingest/status") return json((await env.LINES_KV.get("ingest:last", "json")) || { never: true });
+      if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10))) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/ratings") return await handleRatings(url, env);
       if (url.pathname === "/api/lines/projection") return await handleProjection(url, env);
       if (url.pathname === "/api/lines/record") return await handleRecord(url, env);
