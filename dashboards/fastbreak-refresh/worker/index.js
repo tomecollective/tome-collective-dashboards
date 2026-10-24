@@ -49,7 +49,11 @@ const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only 
 // Bump when a build-time fix (e.g. the All-Star game filter) must invalidate
 // every snapshot already in KV: snapshots carrying an older schema are
 // treated as stale and rebuilt by the cron / next admin read.
-const SNAPSHOT_SCHEMA = 4; // 3: postseason PITP query; 4: playoff PITP from shot zones
+const SNAPSHOT_SCHEMA = 5; // 3: postseason PITP query; 4: shot zones; 5: playoff PITP from play-by-play (L10 rule is render-time, no bump needed)
+// Early season: until a player has this many games THIS season, his L10 is
+// exactly his YTD (current-season games only). Reaching back into last season
+// mixed in other teams' games for traded players and stale form for everyone.
+const L10_MIN_SEASON_GAMES = 10;
 const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
@@ -70,6 +74,11 @@ const LEAGUES = {
     // different id range). Season shot zones DO have a playoffs split, so a
     // playoff night falls back to per-game paint scoring from there.
     shotLocationsUrl: `${BDL_ROOT}/wnba/v1/player_shot_locations`,
+    // ...and the shot-zone playoffs split is empty too (probe, Oct 21). What
+    // DOES cover playoff games is play-by-play: every made shot has a type
+    // ("Driving Layup Shot", "Layup Shot Putback") and often a distance, so
+    // PITP per playoff game is computed from it (see pbpPaintPoints).
+    pbpPitp: true,
     // Run 11: the post-World-Cup regular-season finish, Day 1 = Sept 17 through
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
     // Finals: only game days get a tab; Day N = index in runDates (the off days
@@ -495,6 +504,45 @@ function getAdvancedForChunk(cfg, playerIds, seasons, gameIds, env, { maxPages =
   return fetchStatPages(`${cfg.advancedUrl}?${qs}`, env, { maxPages });
 }
 
+// -- Playoff PITP from play-by-play ---------------------------------------------
+// A made 2 counts as a paint basket when its play type is an at-rim shot
+// (layup, dunk, tip, putback, hook, finger roll, alley-oop) or its text puts
+// it within 8 feet. Jumpers past 8 feet don't count even when "driving".
+// Approximate: the API has no shot coordinates, so a 9-foot shot inside the
+// lane is missed and a 7-foot baseline jumper is counted.
+const PAINT_TYPE_RE = /layup|dunk|tip|putback|hook|finger roll|alley/i;
+const PBP_PITP_PREFIX = "fastbreak:pbppitp:";
+
+function pbpPaintPoints(plays) {
+  const byName = {};
+  for (const pl of plays) {
+    if (!pl.scoring_play || pl.score_value !== 2) continue;
+    const text = String(pl.text || "");
+    const at = text.indexOf(" makes ");
+    if (at <= 0) continue;
+    const name = normalizeName(text.slice(0, at));
+    const dist = text.match(/(\d+)-foot/);
+    const feet = dist ? Number(dist[1]) : null;
+    const atRim = PAINT_TYPE_RE.test(pl.type || "") || PAINT_TYPE_RE.test(text);
+    const inPaint = feet != null ? feet <= 8 : atRim;
+    if (!inPaint) continue;
+    byName[name] = (byName[name] || 0) + 2;
+  }
+  return byName;
+}
+
+// Per-game paint points, cached in KV forever (a final game never changes).
+async function loadPbpPitp(cfg, env, gameId) {
+  const key = `${PBP_PITP_PREFIX}${cfg.key}:${gameId}`;
+  const cached = await loadJSON(env, key);
+  if (cached) return { data: cached, fetched: false };
+  const d = await leagueFetch(cfg, `/plays?game_id=${gameId}`, env);
+  const plays = d.data || [];
+  const data = { byName: pbpPaintPoints(plays), plays: plays.length };
+  if (plays.length) await saveJSON(env, key, data);
+  return { data, fetched: true };
+}
+
 // Playoff points in the paint per game, per player, from season shot zones
 // (restricted area + in-the-paint non-RA field goals made x 2). Approximate:
 // shot zones count field goals only, which is also what PITP counts.
@@ -737,8 +785,8 @@ async function advanceFullDataBuild(env, league, budget) {
       const player = state.rosterById[pid];
       if (!player) continue;
       const rows = [...(byPlayer.get(pid)?.values() || [])];
-      const l10Rows = lastNByDate(rows.filter((r) => last10Set.has(r.gid)), 10);
       const ytdRows = rows.filter((r) => ytdSet.has(r.gid));
+      const l10Rows = ytdRows.length < L10_MIN_SEASON_GAMES ? ytdRows : lastNByDate(rows.filter((r) => last10Set.has(r.gid)), 10);
       const stats = {};
       for (const code of FULLDATA_STAT_CODES) {
         const def = STAT_FIELD_MAP[code];
@@ -811,7 +859,7 @@ async function advanceFullDataBuild(env, league, budget) {
       teamsDetail,
       players,
       note:
-        `Leaguewide L10/YTD for every active ${league} player across all Fast Break-relevant box-score stats. PITP is intentionally excluded here (it lives under a separate advanced-stats endpoint) to stay within the BALLDONTLIE subrequest budget across the full roster. L10 reaches back into the prior season when the current one has fewer than 10 games played; YTD is the current season only. Team PPG/PAPG are computed directly from this season's final scores.` +
+        `Leaguewide L10/YTD for every active ${league} player across all Fast Break-relevant box-score stats. PITP is intentionally excluded here (it lives under a separate advanced-stats endpoint) to stay within the BALLDONTLIE subrequest budget across the full roster. Until a player has 10 games this season, L10 equals YTD; YTD is the current season only. Team PPG/PAPG are computed directly from this season's final scores.` +
         (state.truncatedRoster ? " NOTE: roster pagination hit its safety cap; some players may be missing." : "") +
         (state.truncatedRecent || state.truncatedYtd ? " NOTE: league game-window pagination hit its safety cap; some players' windows may be incomplete." : "") +
         (state.truncatedYtdStats ? " NOTE: YTD for some players is based on the earliest games of the season only (stat pagination cap)." : ""),
@@ -1251,6 +1299,13 @@ async function startDayBuild(cfg, env, { date, schedule }) {
   // Playoff game ids in either window: their advanced (PITP) rows need a
   // separate postseason query.
   state.postseasonGameIds = [...new Set([...recentResult.games, ...ytdResult.games].filter((g) => g.postseason).map((g) => g.id))];
+  // Play-by-play PITP for every playoff game in the L10 window (fetched in
+  // advanceDayBuild, one call per game, cached across days).
+  if (state.needsAdvanced && cfg.pbpPitp) {
+    const post = new Set(state.postseasonGameIds);
+    state.pbpPending = state.last10GameIds.filter((id) => post.has(id));
+    state.pbpPitp = {};
+  }
   if (state.needsAdvanced && state.postseasonGameIds.length && cfg.shotLocationsUrl) {
     try {
       const pz = await getPlayoffPaintPerGame(cfg, teamIds, season, env);
@@ -1291,6 +1346,20 @@ async function advanceDayBuild(cfg, env, state, budget) {
   // query when the window holds playoff games.
   const advFactor = state.needsAdvanced ? (postSet.size ? 3 : 2) : 1;
   const perChunk = (ytdIsSubset ? 1 : 1 + YTD_STAT_PAGES_PER_CHUNK) * advFactor;
+
+  // Playoff play-by-play first (cached games cost nothing).
+  while ((state.pbpPending || []).length && used + 1 <= budget) {
+    const gid = state.pbpPending[0];
+    try {
+      const { data, fetched } = await loadPbpPitp(cfg, env, gid);
+      if (fetched) used += 1;
+      state.pbpPitp[gid] = data.byName;
+    } catch (err) {
+      used += 1;
+      state.pbpError = err.message.slice(0, 160);
+    }
+    state.pbpPending.shift();
+  }
 
   while (state.pendingChunks.length > 0 && used + perChunk <= budget) {
     const c = state.pendingChunks[0];
@@ -1341,7 +1410,7 @@ async function advanceDayBuild(cfg, env, state, budget) {
   }
 
   state.subrequestsUsed = (state.subrequestsUsed || 0) + used;
-  if (state.pendingChunks.length === 0) {
+  if (state.pendingChunks.length === 0 && !(state.pbpPending || []).length) {
     state.status = "done";
     state.finishedAt = Date.now();
   }
@@ -1410,9 +1479,22 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
       for (const obj of objectives) {
         const def = STAT_FIELD_MAP[obj.stat];
         const rowsByGame = (def.source === "advanced" ? snapshot.adv[p.id] : snapshot.stats[p.id]) || {};
-        const lines = Object.values(rowsByGame);
-        const l10Lines = lastNByDate(lines.filter((l) => last10Set.has(l.gid)), 10);
+        let lines = Object.values(rowsByGame);
+        // PITP for playoff games the player appeared in, from play-by-play.
+        if (obj.stat === "PITP" && snapshot.pbpPitp) {
+          const have = new Set(lines.map((l) => l.gid));
+          const nameKey = normalizeName(p.name);
+          for (const [gidStr, byName] of Object.entries(snapshot.pbpPitp)) {
+            const gid = Number(gidStr);
+            if (have.has(gid)) continue;
+            const box = snapshot.stats[p.id]?.[gid];
+            const played = box && BOX_STAT_KEYS.some((k) => typeof box[k] === "number" && box[k] > 0);
+            if (!played) continue;
+            lines = lines.concat({ gid, date: box.date, pitp: byName[nameKey] || 0, src: "pbp" });
+          }
+        }
         const ytdLines = lines.filter((l) => ytdSet.has(l.gid));
+        const l10Lines = ytdLines.length < L10_MIN_SEASON_GAMES ? ytdLines : lastNByDate(lines.filter((l) => last10Set.has(l.gid)), 10);
         const statValue = (line) => {
           const v = def.field(line);
           return typeof v === "number" ? v : null;
@@ -1512,7 +1594,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   const teamAdvanced = computeTeamAdvancedMetrics(snapshot.teamIds, snapshot.roster, snapshot.stats, snapshot.recentGames, last10Set);
 
   const notes = [
-    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; L10 reaches back into last season when fewer than 10 games have been played this season. PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight. Players listed Out on the injury report are shown but not ranked (Ovr Rank "OUT"); day-to-day players keep their rank and are flagged.`,
+    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; until a player has 10 games this season, L10 equals his YTD (this season only). PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight. Players listed Out on the injury report are shown but not ranked (Ovr Rank "OUT"); day-to-day players keep their rank and are flagged.`,
   ];
   for (const obj of weightedObjectives) {
     const overrides = projectionOverrides[obj.stat] || {};
@@ -1536,11 +1618,16 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   } else if (proEligibility === "unverified") {
     notes.push(`PRO ELIGIBILITY: not verified (${proElig?.reason || "eligibility not fetched yet"}). No player is excluded on that basis.`);
   }
+  if (snapshot.pbpPitp && Object.keys(snapshot.pbpPitp).length) {
+    notes.push(`PITP L10/Proj: BALLDONTLIE has no box-score PITP for playoff games, so playoff PITP is counted from play-by-play (made layups, dunks, tips, putbacks, hooks and other twos within 8 feet; ${Object.keys(snapshot.pbpPitp).length} playoff games). Close to official PITP, not exact. YTD covers regular season and playoffs, like the other stats.`);
+  } else if (snapshot.pbpError) {
+    notes.push(`NOTE: playoff play-by-play unavailable (${snapshot.pbpError.slice(0, 80)}).`);
+  }
   if (snapshot.playoffPitp && Object.keys(snapshot.playoffPitp).length) {
     notes.push(`PITP L10/Proj: BALLDONTLIE has no per-game playoff PITP, so L10 here is each player's playoff points in the paint per game from shot zones (restricted area + paint field goals x 2; ${Object.keys(snapshot.playoffPitp).length} players). YTD is regular season.`);
   } else if (snapshot.playoffPitpError) {
     notes.push(`NOTE: playoff shot zones unavailable (${snapshot.playoffPitpError.slice(0, 80)}); PITP L10/Proj show "--" for playoff games.`);
-  } else if ((snapshot.postseasonGameIds || []).length && snapshot.needsAdvanced) {
+  } else if ((snapshot.postseasonGameIds || []).length && snapshot.needsAdvanced && !(snapshot.pbpPitp && Object.keys(snapshot.pbpPitp).length)) {
     notes.push(`PITP: BALLDONTLIE has no playoff points-in-the-paint data (per game or by shot zone), so PITP Proj uses each player's regular-season average (same as YTD) and PITP L10 shows "--".`);
   }
   if (snapshot.advancedError) {
@@ -1734,7 +1821,7 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   if (!buildUsable) {
     state = await startDayBuild(cfg, env, { date: targetDate, schedule });
     used += state.subrequestsUsed;
-    if (state.pendingChunks.length === 0) {
+    if (state.pendingChunks.length === 0 && !(state.pbpPending || []).length) {
       state.status = "done";
       state.finishedAt = Date.now();
     }
