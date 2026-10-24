@@ -49,7 +49,7 @@ const FUTURE_DAY_CACHE_FRESH_MS = 3 * 60 * 60 * 1000; // a future run date only 
 // Bump when a build-time fix (e.g. the All-Star game filter) must invalidate
 // every snapshot already in KV: snapshots carrying an older schema are
 // treated as stale and rebuilt by the cron / next admin read.
-const SNAPSHOT_SCHEMA = 5; // 3: postseason PITP query; 4: shot zones; 5: playoff PITP from play-by-play (L10 rule is render-time, no bump needed)
+const SNAPSHOT_SCHEMA = 6; // 3: postseason PITP query; 4: shot zones; 5: playoff PITP from play-by-play; 6: current-season-only L10 window
 // Early season: until a player has this many games THIS season, his L10 is
 // exactly his YTD (current-season games only). Reaching back into last season
 // mixed in other teams' games for traded players and stale form for everyone.
@@ -120,9 +120,9 @@ const LEAGUES = {
     // Run 1 (2026-27 season): opening night Tue Oct 20 through Sun Nov 1 (13 days).
     run: { label: "Run 1", start: "2026-10-20", end: "2026-11-01" },
     seasonActive: { start: "2026-10-15", end: "2027-06-30" },
-    // At season start there are no current-season games yet, so L10 has to
-    // reach back into last season (which ended in June). 240 days covers it.
-    recentLookbackDays: 240,
+    // L10 never reaches back into last season (see L10_MIN_SEASON_GAMES), so
+    // the recent window only needs to hold 10 games: 45 days is plenty.
+    recentLookbackDays: 45,
     // BALLDONTLIE numbers an NBA season by its starting year: 2026 = 2026-27.
     seasonFor: (dateStr) => {
       const y = Number(dateStr.slice(0, 4));
@@ -442,6 +442,13 @@ function gameSortDate(g) {
 
 // Group by team, sort each team's completed games by date descending, take the
 // most recent `n` per team.
+// Recent-games window: never earlier than the current season's start.
+function recentWindowStart(cfg, today, season) {
+  const back = addDaysStr(today, -cfg.recentLookbackDays);
+  const start = seasonStartStr(cfg, season);
+  return back > start ? back : start;
+}
+
 function pickLastNGameIdsPerTeam(games, teamIds, n) {
   const byTeam = new Map(teamIds.map((id) => [id, []]));
   for (const g of games) {
@@ -708,7 +715,7 @@ async function advanceFullDataBuild(env, league, budget) {
     const today = todayStr();
     const season = cfg.seasonFor(today);
     const recentResult = await getGamesInWindow(cfg, [], env, {
-      startStr: addDaysStr(today, -cfg.recentLookbackDays),
+      startStr: recentWindowStart(cfg, today, season),
       endStr: today,
       maxPages: RECENT_GAMES_MAX_PAGES,
     });
@@ -722,7 +729,7 @@ async function advanceFullDataBuild(env, league, budget) {
     used += ytdResult.requestsUsed;
 
     const teamIds = [...new Set(rosterResult.players.map((p) => p.team?.id).filter((id) => id != null))];
-    const last10GameIds = [...pickLastNGameIdsPerTeam(recentResult.games, teamIds, 10)];
+    const last10GameIds = [...pickLastNGameIdsPerTeam(recentResult.games.filter((g) => g.season == null || g.season === season), teamIds, 10)];
     const ytdGameIds = [...new Set(ytdResult.games.filter((g) => g.status === "post").map((g) => g.id))];
     const teamScoring = computeTeamScoring(ytdResult.games);
     const seasons = [...new Set([...recentResult.games, ...ytdResult.games].map((g) => g.season).filter((s) => s != null))];
@@ -1277,15 +1284,18 @@ async function startDayBuild(cfg, env, { date, schedule }) {
 
   // Last-10 / YTD windows are always computed relative to the REAL today
   // (current known form), regardless of which run date is being viewed.
+  const season = cfg.seasonFor(today);
+  // Current season only: oldest-first pagination over a window that reached
+  // into last season filled the page with old games and cut off this
+  // season's, which left YTD blank for many players.
   const recentResult = await getGamesInWindow(cfg, teamIds, env, {
-    startStr: addDaysStr(today, -cfg.recentLookbackDays),
+    startStr: recentWindowStart(cfg, today, season),
     endStr: today,
     maxPages: RECENT_GAMES_MAX_PAGES,
   });
   subrequests += recentResult.requestsUsed;
-  const last10GameIds = pickLastNGameIdsPerTeam(recentResult.games, teamIds, 10);
+  const last10GameIds = pickLastNGameIdsPerTeam(recentResult.games.filter((g) => g.season == null || g.season === season), teamIds, 10);
 
-  const season = cfg.seasonFor(today);
   const ytdResult = await getGamesInWindow(cfg, teamIds, env, {
     startStr: seasonStartStr(cfg, season),
     endStr: today,
