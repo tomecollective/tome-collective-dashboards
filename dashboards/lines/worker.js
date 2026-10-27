@@ -488,11 +488,11 @@ function parseCards(league, text) {
   }
   return { cards: out, bad };
 }
-async function beehiivPosts(env, hours) {
+async function beehiivPosts(env, hours, limit = 12) {
   const since = Math.floor(Date.now() / 1000) - hours * 3600;
   const base = `https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts`;
   // `expand` must be sent as an array (expand[]=a&expand[]=b): a comma list returns no content, a repeated plain key keeps only the last. status=confirmed means published.
-  const q = `status=confirmed&platform=all&order_by=publish_date&direction=desc&limit=12&expand[]=free_web_content&expand[]=premium_web_content`;
+  const q = `status=confirmed&platform=all&order_by=publish_date&direction=desc&limit=${Math.min(100, Math.max(1, limit))}&expand[]=free_web_content&expand[]=premium_web_content`;
   let res;
   for (let attempt = 0; attempt < 5; attempt++) {
     res = await fetch(`${base}?${q}`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: "application/json" } });
@@ -527,11 +527,11 @@ async function placeCards(env, league, pubDate, cards) {
   // Unplaced: a daily league plays the day the preview ran; an NFL preview is a Sunday slate unless it says otherwise.
   for (const i of pending) { const c = cards[i]; c.date = league === "nfl" ? days.find((d) => new Date(d + "T00:00:00Z").getUTCDay() === 0) || pubDate : pubDate; c.date_unplaced = true; }
 }
-async function runIngest(env, hours = 48) {
-  const run = { at: new Date().toISOString(), hours, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
+async function runIngest(env, hours = 48, limit = 12) {
+  const run = { at: new Date().toISOString(), hours, limit, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
   if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID) { run.error = "BEEHIIV_API_KEY / BEEHIIV_PUBLICATION_ID not set"; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   let posts = [];
-  try { posts = await beehiivPosts(env, hours); run.beehiiv = posts.diag || null; } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
+  try { posts = await beehiivPosts(env, hours, limit); run.beehiiv = posts.diag || null; } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   const existing = {};
   let entry_free_source = "none";
   for (const post of posts) {
@@ -834,7 +834,7 @@ export default {
         return json({ ok: !problems.length, leagues: Object.keys(LEAGUE), configured: !!env.BALLDONTLIE_API_KEY, ingest: ing ? { at: ing.at, posts: ing.posts?.length || 0, logged: ing.logged, unparsed: ing.unparsed, error: ing.error } : null, problems });
       }
       if (url.pathname === "/api/lines/ingest/status") return json((await env.LINES_KV.get("ingest:last", "json")) || { never: true });
-      if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10))) : json({ error: "unauthorized" }, 401);
+      if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10), parseInt(url.searchParams.get("limit") || "12", 10))) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/ratings") return await handleRatings(url, env);
       if (url.pathname === "/api/lines/projection") return await handleProjection(url, env);
       if (url.pathname === "/api/lines/record") return await handleRecord(url, env);
