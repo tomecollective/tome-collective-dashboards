@@ -465,7 +465,7 @@ function leagueOfPost(post, cardsText) {
   if (/\bWNBA\b/i.test(hay)) return "wnba";
   if (/\bNFL\b/i.test(hay)) return "nfl";
   if (/\bNBA\b|THE READ/i.test(hay)) return "nba";
-  const ab = [...cardsText.matchAll(/THE CARD\s*·\s*([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/g)].flatMap((m) => [m[1], m[2]]);
+  const ab = [...cardsText.matchAll(/THE CARD\s*·\s*([A-Z]{2,4})\s*(?:@|vs\.?)\s*([A-Z]{2,4})/gi)].flatMap((m) => [m[1], m[2]]);
   for (const L of ["nfl", "nba", "wnba"]) if (ab.length && ab.every((a) => NICK[L][normAbbr(L, a)])) return L;
   return null;
 }
@@ -474,7 +474,9 @@ function parseCards(league, text) {
   const out = [], bad = [];
   const parts = text.split(/(?=THE CARD\s*·)/).filter((x) => /^THE CARD\s*·/.test(x));
   for (const part of parts) {
-    const g = part.match(/^THE CARD\s*·\s*([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/);
+    // "AWAY @ HOME" normally; a neutral-site game is printed "A vs. B" and its home side is settled against the market page.
+    const g = part.match(/^THE CARD\s*·\s*([A-Z]{2,4})\s*(?:@|vs\.?)\s*([A-Z]{2,4})/i);
+    const neutral = !!g && !/@/.test(g[0]);
     // Side lean with an optional total: "Lean MIA -1.5 (Toss-up)" or "Lean MIA -1.5 (Toss-up) · Under 242.5 (Lean)".
     // The free-text "Lean Miami -1.5 (Toss-up)." sentence in the write-up never matches because it uses the full name.
     const l = part.match(/Lean\s*:?\s*([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?|PK)\s*\(([A-Za-z -]+)\)(?:\s*·\s*(Over|Under)\s*[↑↓]?\s*(\d+(?:\.\d+)?)\s*\(([A-Za-z -]+)\))?/i);
@@ -484,7 +486,7 @@ function parseCards(league, text) {
     if (!NICK[league][away] || !NICK[league][home] || (team !== home && team !== away) || !st || (l[4] && !tt)) { bad.push(part.slice(0, 90)); continue; }
     const spr = l[2].toUpperCase() === "PK" ? 0 : parseFloat(l[2]);
     out.push({ away, home, side: team === home ? "HOME" : "AWAY", spread_home_at_pick: team === home ? spr : -spr, side_tier: st,
-      total_side: l[4] ? l[4].toUpperCase() : null, total_at_pick: l[4] ? parseFloat(l[5]) : null, total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}` });
+      neutral, total_side: l[4] ? l[4].toUpperCase() : null, total_at_pick: l[4] ? parseFloat(l[5]) : null, total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}` });
   }
   return { cards: out, bad };
 }
@@ -521,7 +523,14 @@ async function beehiivFreeWeb(env, postId) {
 async function placeCards(env, league, pubDate, cards) {
   const days = []; for (let i = 0; i < 7; i++) days.push(new Date(new Date(pubDate + "T00:00:00Z").getTime() + i * 864e5).toISOString().slice(0, 10));
   const pending = new Set(cards.map((_, i) => i));
-  const tryDay = (mk, d) => { for (const i of [...pending]) { const c = cards[i]; if (mk?.games?.some((x) => x.home_nick === NICK[league][c.home] && x.away_nick === NICK[league][c.away])) { c.date = d; pending.delete(i); } } };
+  const tryDay = (mk, d) => { for (const i of [...pending]) {
+    const c = cards[i];
+    const hit = (h, a) => mk?.games?.some((x) => x.home_nick === NICK[league][h] && x.away_nick === NICK[league][a]);
+    if (hit(c.home, c.away)) { c.date = d; pending.delete(i); }
+    else if (c.neutral && hit(c.away, c.home)) { // printed the other way round: swap teams and the side/spread that go with them
+      [c.home, c.away] = [c.away, c.home]; c.side = c.side === "HOME" ? "AWAY" : "HOME"; c.spread_home_at_pick = -c.spread_home_at_pick; c.date = d; pending.delete(i);
+    }
+  } };
   for (const d of days) { if (!pending.size) break; tryDay(await env.LINES_KV.get(`market:${league}:${d}`, "json"), d); }
   for (const d of days) { if (!pending.size) break; try { tryDay(await fetchMarket(env, league, d), d); } catch (e) { /* SBR gap: fall through */ } }
   // Unplaced: a daily league plays the day the preview ran; an NFL preview is a Sunday slate unless it says otherwise.
