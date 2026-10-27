@@ -947,6 +947,25 @@ function normalizePlayerName(name) {
     .replace(/\s+/g, " ");
 }
 
+// Matching key between an uploaded projection and a slate player. Rotowire and
+// BALLDONTLIE disagree on accents ("Nikola Jokić" / "Nikola Jokic"), periods
+// ("P.J." / "PJ") and suffixes ("Jaren Jackson Jr." / "Jaren Jackson"), so
+// the key folds all three. Dropping the suffix is safe here: a projection is
+// for tonight's slate, and no father/son pair is active on the same night.
+const PROJ_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
+function projectionKey(name) {
+  const parts = normalizeName(name).split(" ").filter(Boolean);
+  while (parts.length > 1 && PROJ_SUFFIXES.has(parts[parts.length - 1])) parts.pop();
+  return parts.join(" ");
+}
+// Re-keys a stored projection map (stored under the old lowercase key) by
+// projectionKey, so uploads made before this fix match too.
+function rekeyProjections(values) {
+  const out = {};
+  for (const [k, v] of Object.entries(values || {})) out[projectionKey(v?.name || k)] = v;
+  return out;
+}
+
 async function upsertProjections(env, { league, date, stat, projections }) {
   validateLeague(league);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("date must be YYYY-MM-DD");
@@ -1476,7 +1495,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
 
   const projectionOverrides = {};
   for (const obj of objectives) {
-    projectionOverrides[obj.stat] = projectionsForDate(schedule, league, date, obj.stat) || {};
+    projectionOverrides[obj.stat] = rekeyProjections(projectionsForDate(schedule, league, date, obj.stat) || {});
   }
 
   // IMPORTANT: pending players are still shown. The roster is fetched up
@@ -1484,7 +1503,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   // (pendingStats: true) instead of vanishing from the dashboard mid-build.
   const playerBase = snapshot.roster
     .map((p) => {
-      const nameKey = normalizePlayerName(p.name);
+      const nameKey = projectionKey(p.name);
       const objectiveValues = {};
       for (const obj of objectives) {
         const def = STAT_FIELD_MAP[obj.stat];
@@ -1612,6 +1631,9 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
     if (overrideCount > 0) {
       const matched = playerBase.filter((p) => p.objectives[obj.stat]?.projSource === "rotowire").length;
       notes.push(`${obj.stat}: ${overrideCount} uploaded Rotowire projection(s), ${matched} matched a player on this slate.`);
+      const slateKeys = new Set(playerBase.map((p) => projectionKey(p.name)));
+      const unmatched = Object.entries(overrides).filter(([k]) => !slateKeys.has(k)).map(([, v]) => v?.name).filter(Boolean);
+      if (unmatched.length) notes.push(`${obj.stat} projections with no player on this slate (check spelling): ${unmatched.slice(0, 15).join(", ")}${unmatched.length > 15 ? ` (+${unmatched.length - 15} more)` : ""}.`);
     } else if (obj.stat !== "PITP") {
       notes.push(`${obj.stat}: no Rotowire projections uploaded yet for this date -- Proj shows TBD.`);
     }
