@@ -475,25 +475,46 @@ function parseCards(league, text) {
   const parts = text.split(/(?=THE CARD\s*·)/).filter((x) => /^THE CARD\s*·/.test(x));
   for (const part of parts) {
     const g = part.match(/^THE CARD\s*·\s*([A-Z]{2,4})\s*@\s*([A-Z]{2,4})/);
-    const l = part.match(/Lean\s*:?\s*([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?|PK)\s*\(([A-Za-z -]+)\)\s*·\s*(Over|Under)\s*[↑↓]?\s*(\d+(?:\.\d+)?)\s*\(([A-Za-z -]+)\)/i);
+    // Side lean with an optional total: "Lean MIA -1.5 (Toss-up)" or "Lean MIA -1.5 (Toss-up) · Under 242.5 (Lean)".
+    // The free-text "Lean Miami -1.5 (Toss-up)." sentence in the write-up never matches because it uses the full name.
+    const l = part.match(/Lean\s*:?\s*([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?|PK)\s*\(([A-Za-z -]+)\)(?:\s*·\s*(Over|Under)\s*[↑↓]?\s*(\d+(?:\.\d+)?)\s*\(([A-Za-z -]+)\))?/i);
     if (!g || !l) { bad.push(part.slice(0, 90)); continue; }
     const away = normAbbr(league, g[1]), home = normAbbr(league, g[2]), team = normAbbr(league, l[1]);
-    const st = TIER_IN[l[3].trim().toLowerCase()], tt = TIER_IN[l[6].trim().toLowerCase()];
-    if (!NICK[league][away] || !NICK[league][home] || (team !== home && team !== away) || !st || !tt) { bad.push(part.slice(0, 90)); continue; }
+    const st = TIER_IN[l[3].trim().toLowerCase()], tt = l[4] ? TIER_IN[l[6].trim().toLowerCase()] : null;
+    if (!NICK[league][away] || !NICK[league][home] || (team !== home && team !== away) || !st || (l[4] && !tt)) { bad.push(part.slice(0, 90)); continue; }
     const spr = l[2].toUpperCase() === "PK" ? 0 : parseFloat(l[2]);
     out.push({ away, home, side: team === home ? "HOME" : "AWAY", spread_home_at_pick: team === home ? spr : -spr, side_tier: st,
-      total_side: l[4].toUpperCase(), total_at_pick: parseFloat(l[5]), total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}` });
+      total_side: l[4] ? l[4].toUpperCase() : null, total_at_pick: l[4] ? parseFloat(l[5]) : null, total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}` });
   }
   return { cards: out, bad };
 }
 async function beehiivPosts(env, hours) {
   const since = Math.floor(Date.now() / 1000) - hours * 3600;
   const base = `https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts`;
-  const q = `status=confirmed&order_by=publish_date&direction=desc&limit=25&expand[]=free_web_content&expand[]=premium_web_content`;
-  const res = await fetch(`${base}?${q}`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}` } });
-  if (!res.ok) throw new Error(`beehiiv ${res.status}`);
-  const data = (await res.json()).data || [];
-  return data.filter((p) => (p.publish_date || 0) >= since && (p.platform === "both" || p.platform === "web" || !p.platform));
+  // `expand` must be sent as an array (expand[]=a&expand[]=b): a comma list returns no content, a repeated plain key keeps only the last. status=confirmed means published.
+  const q = `status=confirmed&platform=all&order_by=publish_date&direction=desc&limit=12&expand[]=free_web_content&expand[]=premium_web_content`;
+  let res;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    res = await fetch(`${base}?${q}`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: "application/json" } });
+    if (res.status !== 202) break; // 202 = content still rendering; wait Retry-After (capped) and try again
+    await new Promise((r) => setTimeout(r, Math.min(8, parseInt(res.headers.get("Retry-After") || "3", 10)) * 1000));
+  }
+  // A 202 that never settles must surface as an error, not as "no posts": the next hourly pass retries.
+  if (res.status === 202) throw new Error("beehiiv 202: content still rendering after 5 tries");
+  if (!res.ok) throw new Error(`beehiiv ${res.status}: ${(await res.text().catch(() => "")).slice(0, 160)}`);
+  const body = await res.json();
+  const data = body.data || [];
+  const kept = data.filter((p) => (p.publish_date || 0) >= since && (p.platform === "both" || p.platform === "web" || !p.platform));
+  // Diagnostics for the status endpoint: what Beehiiv returned before the window filter.
+  kept.diag = { status: res.status, returned: data.length, newest: data[0] ? { title: data[0].title, publish_date: data[0].publish_date, platform: data[0].platform, status: data[0].status, has_premium: !!data[0].content?.premium?.web, has_free: !!data[0].content?.free?.web } : null, since, keys: Object.keys(body).slice(0, 8) };
+  return kept;
+}
+// The list call has returned only the premium render in practice; fetch the free render per post when it is missing.
+async function beehiivFreeWeb(env, postId) {
+  const res = await fetch(`https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts/${postId}?expand[]=free_web_content`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: "application/json" } });
+  if (!res.ok) return "";
+  const d = (await res.json()).data || {};
+  return d.content?.free?.web || "";
 }
 // Place a card on a date: the first day from publish day forward (7 max) whose cached market page has that matchup.
 // Cached days are checked first; only then are missing days fetched, in order, until every card is placed.
@@ -510,25 +531,38 @@ async function runIngest(env, hours = 48) {
   const run = { at: new Date().toISOString(), hours, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
   if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID) { run.error = "BEEHIIV_API_KEY / BEEHIIV_PUBLICATION_ID not set"; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   let posts = [];
-  try { posts = await beehiivPosts(env, hours); } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
+  try { posts = await beehiivPosts(env, hours); run.beehiiv = posts.diag || null; } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   const existing = {};
+  let entry_free_source = "none";
   for (const post of posts) {
-    const premium = htmlToText(post.content?.premium?.web || ""), free = htmlToText(post.content?.free?.web || "");
+    const premium = htmlToText(post.content?.premium?.web || "");
+    let free = htmlToText(post.content?.free?.web || "");
     const all = premium.includes("THE CARD") ? premium : free;
     if (!all.includes("THE CARD")) continue;
+    // Only previews are a source of leans. Newsletters and recaps quote the cards and would otherwise count as unparsed.
+    if (!/preview/i.test(`${post.title || ""} ${(post.content_tags || []).join(" ")}`)) continue;
+    if (!free) { try { free = htmlToText(await beehiivFreeWeb(env, post.id)); } catch (e) { free = ""; } }
+    entry_free_source = post.content?.free?.web ? "list" : free ? "post" : "none";
     const league = leagueOfPost(post, all);
-    const entry = { id: post.id, title: post.title, league, cards: 0, logged: [], already: [], unparsed: [] };
+    const entry = { id: post.id, title: post.title, league, cards: 0, logged: [], already: [], unparsed: [], free_chars: free.length, premium_chars: premium.length, free_cards: 0, free_source: entry_free_source };
     run.posts.push(entry);
     if (!league) { entry.unparsed.push("league not identified"); run.unparsed++; continue; }
     const { cards, bad } = parseCards(league, all);
     const freeKeys = new Set(parseCards(league, free).cards.map((c) => `${c.away}@${c.home}`));
+    entry.free_cards = freeKeys.size;
     entry.cards = cards.length; entry.unparsed = bad; run.unparsed += bad.length;
     if (!cards.length) continue;
     existing[league] ||= await loadPicks(env, league);
     await placeCards(env, league, etDate(new Date(post.publish_date * 1000).toISOString()), cards);
     for (const c of cards) {
       const dup = existing[league].find((p) => (p.date === c.date && p.home === c.home && p.away === c.away) || p.game_id === `${c.date}-${c.away}-${c.home}`);
-      if (dup) { entry.already.push(`${c.away}@${c.home}`); run.already++; continue; }
+      if (dup) {
+        // Never rewrite a lean, but an ingest-sourced card may have been logged before the free render was readable.
+        const acc = freeKeys.has(`${c.away}@${c.home}`) ? "free" : "intel";
+        if (dup.source === "ingest" && free && dup.access !== acc) { dup.access = acc; await env.LINES_KV.put(`pick:${league}:${dup.game_id}`, JSON.stringify(dup)); entry.already.push(`${c.away}@${c.home} (access -> ${acc})`); }
+        else entry.already.push(`${c.away}@${c.home}`);
+        run.already++; continue;
+      }
       const rec = { league, game_id: `${c.date}-${c.away}-${c.home}`, date: c.date, home: c.home, away: c.away, home_nick: NICK[league][c.home], away_nick: NICK[league][c.away], postseason: false,
         side: c.side, spread_home_at_pick: c.spread_home_at_pick, total_side: c.total_side, total_at_pick: c.total_at_pick, side_tier: c.side_tier, total_tier: c.total_tier,
         access: freeKeys.has(`${c.away}@${c.home}`) ? "free" : "intel", override: false, source_post_id: post.id, source: "ingest", lean_text: c.lean_text,
@@ -590,11 +624,34 @@ async function loadFinals(env, league, ids) {
   for (const g of fresh) if (isFinal(g)) await env.LINES_KV.put(`final:${league}:${g.id}`, JSON.stringify(g));
   return Object.fromEntries([...cached, ...fresh].map((g) => [String(g.id), g]));
 }
+// Identity-id picks (ingest, backfill): find their BALLDONTLIE game by date and team nicknames. The sportsbookreview page
+// often never fills in a score, so this is the primary source of finals for those picks; one fetch per league-day, cached
+// 10 minutes while games are pending and a week once the day is all final.
+async function loadFinalsByDate(env, league, picks) {
+  const out = {};
+  const need = picks.filter((p) => !/^\d+$/.test(String(p.game_id)) && p.date && p.home_nick && p.away_nick);
+  const dates = [...new Set(need.map((p) => p.date))].filter((d) => d <= new Date().toISOString().slice(0, 10));
+  for (const d of dates) {
+    const key = `bdlday:${league}:${d}`;
+    let games = await env.LINES_KV.get(key, "json");
+    if (!games) {
+      try { games = await bdl(env, league, "games", { dates: [d] }); } catch (e) { continue; }
+      const done = games.length > 0 && games.every((g) => isFinal(g));
+      await env.LINES_KV.put(key, JSON.stringify(games), { expirationTtl: done ? 7 * 86400 : 600 });
+    }
+    for (const p of need) {
+      if (p.date !== d) continue;
+      const g = games.find((x) => nick(x.home_team?.full_name || x.home_team?.name) === p.home_nick && nick(x.visitor_team?.full_name || x.visitor_team?.name) === p.away_nick);
+      if (g) out[String(p.game_id)] = g;
+    }
+  }
+  return out;
+}
 
 // Grade every logged card for a league. Returns ledger rows, one per market.
 async function gradeLeague(env, league) {
   const picks = await loadPicks(env, league);
-  const byId = await loadFinals(env, league, picks.map((p) => p.game_id));
+  const byId = { ...(await loadFinalsByDate(env, league, picks)), ...(await loadFinals(env, league, picks.map((p) => p.game_id))) };
   const rows = [];
   for (const p of picks) {
     let g = byId[String(p.game_id)];
