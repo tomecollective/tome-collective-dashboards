@@ -1144,6 +1144,22 @@ function hxSaveDisc() { try { localStorage.setItem(HX_LS, JSON.stringify(hx.disc
 // Adds mean / blend / games to each player once (idempotent). Blend = season AVG
 // (offset-corrected by the average gap between observed scores and the site AVG)
 // shrunk toward the player's observed mean, with AVG weighted like kPrior games.
+// Historic day picker mirrors the live leagues: open on today's slate (ET)
+// and only list today and later. Slates without a date (older data files)
+// keep the old behaviour: every slate listed, last one selected.
+function hxTodayET() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+function hxVisibleSlates(slates) {
+  const today = hxTodayET();
+  if (!slates.every((s) => s.date)) return slates.map((s, i) => i);
+  const upcoming = slates.map((s, i) => i).filter((i) => slates[i].date >= today);
+  return upcoming.length ? upcoming : [slates.length - 1]; // run over: show its last day
+}
+function hxDefaultSlateIdx(slates) {
+  return hxVisibleSlates(slates)[0] ?? slates.length - 1;
+}
+
 function hxPrepare(D) {
   if (D._prepared) return D;
   // Oct 29 2026: AVG weighted like 4 games (was 8) and Historic games
@@ -1190,7 +1206,7 @@ async function initHistoric() {
     hx.players = hx.data.players;
     hx.shift = hx.data.shift;
     hx.byName = Object.fromEntries(hx.players.map((p) => [p.n, p]));
-    hx.slateIdx = hx.data.slates.length - 1;
+    hx.slateIdx = hxDefaultSlateIdx(hx.data.slates);
     const sel = document.getElementById("hx-team");
     [...new Set(hx.players.map((p) => p.t).filter(Boolean))].sort().forEach((t) => {
       const o = document.createElement("option"); o.value = o.textContent = t; sel.appendChild(o);
@@ -1260,7 +1276,7 @@ function hxRender() {
   document.getElementById("hx-players").style.display = hx.sub === "players" ? "" : "none";
   document.querySelectorAll("#hx-sub-toggle button").forEach((b) => b.classList.toggle("active", b.dataset.hxsub === hx.sub));
   const days = document.getElementById("hx-days");
-  days.innerHTML = D.slates.map((s, i) => `<button class="run-day-btn${i === hx.slateIdx ? " active" : ""}" data-i="${i}">${hxEsc(s.label)}</button>`).join("");
+  days.innerHTML = hxVisibleSlates(D.slates).map((i) => { const s = D.slates[i]; return `<button class="run-day-btn${i === hx.slateIdx ? " active" : ""}" data-i="${i}">${hxEsc(s.label)}</button>`; }).join("");
   document.getElementById("hx-rating").value = hx.rating;
   if (hx.sub === "slate") {
     document.getElementById("hx-teams").innerHTML = slate.teams.map((t) => `<div class="game-tile"><div class="matchup">${hxEsc(t)}</div></div>`).join("");
