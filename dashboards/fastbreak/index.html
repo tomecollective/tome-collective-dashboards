@@ -402,7 +402,7 @@ header to sort.
     </table></div></div>
   </div>
 
-  <p class="note" id="hx-note">Everyone starts at 0%. Set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's observed Historic average, weighting AVG like 8 games. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
+  <p class="note" id="hx-note">Everyone starts at 0%. Set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
 </div>
 
 <div id="view-admin">
@@ -1146,13 +1146,19 @@ function hxSaveDisc() { try { localStorage.setItem(HX_LS, JSON.stringify(hx.disc
 // shrunk toward the player's observed mean, with AVG weighted like kPrior games.
 function hxPrepare(D) {
   if (D._prepared) return D;
-  const k = D.kPrior || 8, res = [];
+  // Oct 29 2026: AVG weighted like 4 games (was 8) and Historic games
+  // recency-weighted with a 5-game half-life -- the best of the settings
+  // backtested on the Oct 20 run (avg miss 7.79 FBP vs 7.84 before).
+  const k = D.kPrior ?? 4, hl = D.halfLife ?? 5, res = [];
   D.players.forEach((p) => { p.n_games = p.g.length; p.g.forEach((x) => res.push(x - p.avg)); });
   D.shift = res.length ? res.reduce((a, b) => a + b, 0) / res.length : 0;
   D.players.forEach((p) => {
     p.mean = p.n_games ? hxMean(p.g) : null;
+    p.l10 = p.n_games ? hxMean(p.g.slice(-10)) : null;
     const a = p.avg + D.shift;
-    p.blend = p.n_games ? (k * a + p.n_games * p.mean) / (k + p.n_games) : a;
+    let wSum = 0, wg = 0;
+    p.g.forEach((x, i) => { const w = hl ? Math.pow(0.5, (p.n_games - 1 - i) / hl) : 1; wSum += w; wg += w * x; });
+    p.blend = p.n_games ? (k * a + wg) / (k + wSum) : a;
   });
   D._prepared = true;
   return D;
@@ -1262,10 +1268,10 @@ function hxRender() {
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shownSlate = list;
-    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10" }, { t: "Discount" }, { t: "Skip" }], st);
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10", k: "l10" }, { t: "Discount" }, { t: "Skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
-      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td title="Last 10 arrives once enough 2026-27 games are logged">-</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
+      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${hxF1(p.l10)}</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
     const r = document.getElementById("hx-result");
     if (hx.result && hx.result.best.length) {
       const L = [...hx.result.best].sort((a, b) => hxVal(b) - hxVal(a));
@@ -1295,7 +1301,7 @@ function hxDownloadCSV() {
   if (hx.sub === "slate") {
     view = "slate";
     headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Skipped"];
-    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), "", hx.excluded.has(p.n) ? "Yes" : ""]);
+    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), hx.excluded.has(p.n) ? "Yes" : ""]);
   } else {
     view = "players";
     headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend"];
