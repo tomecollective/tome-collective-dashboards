@@ -83,15 +83,15 @@ const LEAGUES = {
     // Day 8 = Sept 24, 2026 (inclusive). Playoffs (Sept 27+) will be a new run.
     // Finals: only game days get a tab; Day N = index in runDates (the off days
     // between games are skipped). Dates per the 2026 WNBA Finals schedule:
-    // G1 Oct 17, G2 Oct 19, G3 Oct 21 (moved up from Oct 22), G4 Oct 24, G5 Oct 26, G6 Oct 29 (G7 Oct 31 not included).
+    // G1 Oct 17, G2 Oct 19, G3 Oct 21 (moved up from Oct 22), G4 Oct 24, G5 Oct 26, G6 Oct 29, G7 Oct 31 (if necessary).
     run: {
       label: "Finals",
       start: "2026-10-17",
-      end: "2026-10-29",
-      runDates: ["2026-10-17", "2026-10-19", "2026-10-21", "2026-10-24", "2026-10-26", "2026-10-29"],
+      end: "2026-10-31",
+      runDates: ["2026-10-17", "2026-10-19", "2026-10-21", "2026-10-24", "2026-10-26", "2026-10-29", "2026-10-31"],
     },
     // Cron refreshes only run while a league is in season (playoffs included).
-    seasonActive: { start: "2026-05-01", end: "2026-10-31" },
+    seasonActive: { start: "2026-05-01", end: "2026-11-03" },
     // How far back to look for a team's last 10 completed games. WNBA plays
     // roughly every other day, so 45 days comfortably covers 10 games + byes.
     recentLookbackDays: 45,

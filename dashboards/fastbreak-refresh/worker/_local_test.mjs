@@ -158,6 +158,7 @@ assert.equal(T.dayNumberForDate("WNBA", "2026-10-17"), 1);
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-19"), 2);
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-18"), null, "off day has no day number");
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-29"), 6);
+assert.equal(T.dayNumberForDate("WNBA", "2026-10-31"), 7);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-20"), 1);
 assert.equal(T.dayNumberForDate("NBA", "2026-10-26"), 7);
 assert.equal(T.dayNumberForDate("NBA", "2026-11-01"), 13);
@@ -355,8 +356,8 @@ function countSince(mark) {
   let res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
   let body = await res.json();
   assert.equal(body.NBA.runStart, "2026-10-20");
-  assert.equal(body.WNBA.runEnd, "2026-10-29");
-  assert.equal(body.WNBA.runLength, 6);
+  assert.equal(body.WNBA.runEnd, "2026-10-31");
+  assert.equal(body.WNBA.runLength, 7);
   assert.equal(body.NBA.runLength, 13);
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);
