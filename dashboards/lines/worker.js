@@ -490,6 +490,24 @@ function parseCards(league, text) {
   }
   return { cards: out, bad };
 }
+// The pre-October-29 WNBA layout: a "Away Full Name @ Home Full Name | ..." header, then a LEAN block
+// "LEAN GSV -1.5 O/U 149.5 Under ↓ CONFIDENCE: Spread — Toss-up · Total — Toss-up". Used only when no THE CARD block parses.
+function parseLegacyCards(league, text) {
+  const out = [], bad = [];
+  const byNick = Object.fromEntries(Object.entries(NICK[league]).map(([a, n]) => [n, a]));
+  const heads = [...text.matchAll(/([A-Z][A-Za-z.' ]{2,40}?)\s*@\s*([A-Z][A-Za-z.' ]{2,40}?)\s*\|/g)].map((m) => ({ i: m.index, away: byNick[nick(m[1])], home: byNick[nick(m[2])] })).filter((h) => h.away && h.home);
+  const re = /LEAN\s+([A-Z]{2,4})\s+([+-]?\d+(?:\.\d+)?|PK)\s+O\/U\s+(\d+(?:\.\d+)?)\s+(Over|Under)\s*[↑↓]?\s*CONFIDENCE:\s*Spread\s*[—–-]+\s*([A-Za-z -]+?)\s*·\s*Total\s*[—–-]+\s*([A-Za-z -]+?)(?=\s{2}|\s[A-Z][a-z]|$)/gi;
+  for (const m of text.matchAll(re)) {
+    const head = heads.filter((h) => h.i < m.index).pop();
+    const team = normAbbr(league, m[1]);
+    const st = TIER_IN[m[5].trim().toLowerCase()], tt = TIER_IN[m[6].trim().toLowerCase()];
+    if (!head || (team !== head.home && team !== head.away) || !st || !tt) { bad.push(m[0].slice(0, 90)); continue; }
+    const spr = m[2].toUpperCase() === "PK" ? 0 : parseFloat(m[2]);
+    out.push({ away: head.away, home: head.home, side: team === head.home ? "HOME" : "AWAY", spread_home_at_pick: team === head.home ? spr : -spr, side_tier: st,
+      neutral: false, total_side: m[4].toUpperCase(), total_at_pick: parseFloat(m[3]), total_tier: tt, lean_text: `${team} ${spr > 0 ? "+" : ""}${spr}`, legacy: true });
+  }
+  return { cards: out, bad };
+}
 async function beehiivPosts(env, hours, limit = 12) {
   const since = Math.floor(Date.now() / 1000) - hours * 3600;
   const base = `https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts`;
@@ -546,8 +564,9 @@ async function runIngest(env, hours = 48, limit = 12) {
   for (const post of posts) {
     const premium = htmlToText(post.content?.premium?.web || "");
     let free = htmlToText(post.content?.free?.web || "");
-    const all = premium.includes("THE CARD") ? premium : free;
-    if (!all.includes("THE CARD")) continue;
+    const hasCards = (t) => t.includes("THE CARD") || /CONFIDENCE:\s*Spread/i.test(t);
+    const all = hasCards(premium) ? premium : free;
+    if (!hasCards(all)) continue;
     // Only previews are a source of leans. Newsletters and recaps quote the cards and would otherwise count as unparsed.
     if (!/preview/i.test(`${post.title || ""} ${(post.content_tags || []).join(" ")}`)) continue;
     if (!free) { try { free = htmlToText(await beehiivFreeWeb(env, post.id)); } catch (e) { free = ""; } }
@@ -556,8 +575,9 @@ async function runIngest(env, hours = 48, limit = 12) {
     const entry = { id: post.id, title: post.title, league, cards: 0, logged: [], already: [], unparsed: [], free_chars: free.length, premium_chars: premium.length, free_cards: 0, free_source: entry_free_source };
     run.posts.push(entry);
     if (!league) { entry.unparsed.push("league not identified"); run.unparsed++; continue; }
-    const { cards, bad } = parseCards(league, all);
-    const freeKeys = new Set(parseCards(league, free).cards.map((c) => `${c.away}@${c.home}`));
+    const parse = (t) => { const r = parseCards(league, t); return r.cards.length || !/CONFIDENCE:\s*Spread/i.test(t) ? r : parseLegacyCards(league, t); };
+    const { cards, bad } = parse(all);
+    const freeKeys = new Set(parse(free).cards.map((c) => `${c.away}@${c.home}`));
     entry.free_cards = freeKeys.size;
     entry.cards = cards.length; entry.unparsed = bad; run.unparsed += bad.length;
     if (!cards.length) continue;
@@ -648,13 +668,41 @@ async function loadFinalsByDate(env, league, picks) {
       const done = games.length > 0 && games.every((g) => isFinal(g));
       await env.LINES_KV.put(key, JSON.stringify(games), { expirationTtl: done ? 7 * 86400 : 600 });
     }
-    for (const p of need) {
-      if (p.date !== d) continue;
-      const g = games.find((x) => nick(x.home_team?.full_name || x.home_team?.name) === p.home_nick && nick(x.visitor_team?.full_name || x.visitor_team?.name) === p.away_nick);
-      if (g) out[String(p.game_id)] = g;
+    const match = (list, p) => list.find((x) => nick(x.home_team?.full_name || x.home_team?.name) === p.home_nick && nick(x.visitor_team?.full_name || x.visitor_team?.name) === p.away_nick);
+    const todays = need.filter((p) => p.date === d);
+    for (const p of todays) { const g = match(games, p); if (g && isFinal(g)) out[String(p.game_id)] = g; }
+    // ESPN's public scoreboard as the fallback for anything still unfinished here: BALLDONTLIE can lag a final by a day
+    // and the sportsbook page rarely carries a score at all. Shaped like a BALLDONTLIE game so grading is unchanged.
+    if (todays.some((p) => !out[String(p.game_id)])) {
+      const espn = await espnDay(env, league, d);
+      for (const p of todays) { if (out[String(p.game_id)]) continue; const g = match(espn, p); if (g) out[String(p.game_id)] = g; }
     }
   }
   return out;
+}
+const ESPN_PATH = { nba: "basketball/nba", wnba: "basketball/wnba", nfl: "football/nfl" };
+async function espnDay(env, league, d) {
+  const key = `espnday:${league}:${d}`;
+  const cached = await env.LINES_KV.get(key, "json");
+  if (cached) return cached;
+  let games = [];
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH[league]}/scoreboard?dates=${d.replace(/-/g, "")}`, { headers: { "User-Agent": SBR_UA } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const post = data?.leagues?.[0]?.season?.type?.type === 3;
+    games = (data.events || []).map((e) => {
+      const c = e.competitions?.[0] || {}; const home = (c.competitors || []).find((t) => t.homeAway === "home"), away = (c.competitors || []).find((t) => t.homeAway === "away");
+      if (!home || !away) return null;
+      const done = !!e.status?.type?.completed;
+      return { id: `espn-${e.id}`, date: d, datetime: e.date, status: done ? "Final" : (e.status?.type?.name || "Scheduled"), postseason: post,
+        home_team: { abbreviation: home.team?.abbreviation, full_name: home.team?.displayName }, visitor_team: { abbreviation: away.team?.abbreviation, full_name: away.team?.displayName },
+        home_team_score: done ? +home.score : null, visitor_team_score: done ? +away.score : null };
+    }).filter(Boolean);
+  } catch (e) { return []; }
+  const done = games.length > 0 && games.every((g) => isFinal(g));
+  await env.LINES_KV.put(key, JSON.stringify(games), { expirationTtl: done ? 7 * 86400 : 600 });
+  return games;
 }
 
 // Grade every logged card for a league. Returns ledger rows, one per market.
