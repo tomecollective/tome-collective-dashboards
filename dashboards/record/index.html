@@ -81,9 +81,9 @@
   <p class="sub">Every lean we print is logged before tip with the line at the time, then graded on the final score and against where the line closed. Hits and misses in the same font size. "Cleared" means the number was cleared; nothing here is a suggestion about what to do with it.</p>
 
   <div class="tabs" role="group" aria-label="League">
-    <button data-league="wnba" aria-pressed="true">WNBA</button>
-    <button data-league="nba" aria-pressed="false">NBA</button>
+    <button data-league="nba" aria-pressed="true">NBA</button>
     <button data-league="nfl" aria-pressed="false">NFL</button>
+    <button data-league="wnba" aria-pressed="false">WNBA</button>
   </div>
 
   <div class="tiles" id="tiles"></div>
@@ -182,7 +182,7 @@
       <td class="final">${g.final || "—"}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">No leans logged yet for this league.</td></tr>`;
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => load(b.dataset.league)));
-  load("wnba");
+  load("nba");
 </script>
 </body>
 </html>
