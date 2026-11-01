@@ -529,6 +529,13 @@ async function beehiivPosts(env, hours, limit = 12) {
   kept.diag = { status: res.status, returned: data.length, newest: data[0] ? { title: data[0].title, publish_date: data[0].publish_date, platform: data[0].platform, status: data[0].status, has_premium: !!data[0].content?.premium?.web, has_free: !!data[0].content?.free?.web } : null, since, keys: Object.keys(body).slice(0, 8) };
   return kept;
 }
+// One post by id, both renders expanded, for targeted runs (?post=post_...) of previews the list window no longer reaches.
+async function beehiivPost(env, postId) {
+  const res = await fetch(`https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts/${postId}?expand[]=free_web_content&expand[]=premium_web_content`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: "application/json" } });
+  if (!res.ok) throw new Error(`beehiiv ${res.status} for ${postId}`);
+  const d = (await res.json()).data;
+  return d ? [d] : [];
+}
 // The list call has returned only the premium render in practice; fetch the free render per post when it is missing.
 async function beehiivFreeWeb(env, postId) {
   const res = await fetch(`https://api.beehiiv.com/v2/publications/${env.BEEHIIV_PUBLICATION_ID}/posts/${postId}?expand[]=free_web_content`, { headers: { Authorization: `Bearer ${env.BEEHIIV_API_KEY}`, Accept: "application/json" } });
@@ -554,11 +561,11 @@ async function placeCards(env, league, pubDate, cards) {
   // Unplaced: a daily league plays the day the preview ran; an NFL preview is a Sunday slate unless it says otherwise.
   for (const i of pending) { const c = cards[i]; c.date = league === "nfl" ? days.find((d) => new Date(d + "T00:00:00Z").getUTCDay() === 0) || pubDate : pubDate; c.date_unplaced = true; }
 }
-async function runIngest(env, hours = 48, limit = 12) {
-  const run = { at: new Date().toISOString(), hours, limit, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
+async function runIngest(env, hours = 48, limit = 12, postId = null) {
+  const run = { at: new Date().toISOString(), hours, limit, post: postId, posts: [], logged: 0, already: 0, unparsed: 0, error: null };
   if (!env.BEEHIIV_API_KEY || !env.BEEHIIV_PUBLICATION_ID) { run.error = "BEEHIIV_API_KEY / BEEHIIV_PUBLICATION_ID not set"; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   let posts = [];
-  try { posts = await beehiivPosts(env, hours, limit); run.beehiiv = posts.diag || null; } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
+  try { posts = postId ? await beehiivPost(env, postId) : await beehiivPosts(env, hours, limit); run.beehiiv = posts.diag || null; } catch (e) { run.error = e.message; await env.LINES_KV.put("ingest:last", JSON.stringify(run)); return run; }
   const existing = {};
   let entry_free_source = "none";
   for (const post of posts) {
@@ -891,7 +898,7 @@ export default {
         return json({ ok: !problems.length, leagues: Object.keys(LEAGUE), configured: !!env.BALLDONTLIE_API_KEY, ingest: ing ? { at: ing.at, posts: ing.posts?.length || 0, logged: ing.logged, unparsed: ing.unparsed, error: ing.error } : null, problems });
       }
       if (url.pathname === "/api/lines/ingest/status") return json((await env.LINES_KV.get("ingest:last", "json")) || { never: true });
-      if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10), parseInt(url.searchParams.get("limit") || "12", 10))) : json({ error: "unauthorized" }, 401);
+      if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10), parseInt(url.searchParams.get("limit") || "12", 10), url.searchParams.get("post") || null)) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/ratings") return await handleRatings(url, env);
       if (url.pathname === "/api/lines/projection") return await handleProjection(url, env);
       if (url.pathname === "/api/lines/record") return await handleRecord(url, env);
