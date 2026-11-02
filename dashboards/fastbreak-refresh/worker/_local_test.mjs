@@ -159,10 +159,12 @@ assert.equal(T.dayNumberForDate("WNBA", "2026-10-19"), 2);
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-18"), null, "off day has no day number");
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-29"), 6);
 assert.equal(T.dayNumberForDate("WNBA", "2026-10-31"), 7);
-assert.equal(T.dayNumberForDate("NBA", "2026-10-20"), 1);
-assert.equal(T.dayNumberForDate("NBA", "2026-10-26"), 7);
-assert.equal(T.dayNumberForDate("NBA", "2026-11-01"), 13);
-assert.equal(T.isWithinRun("NBA", "2026-11-02"), false);
+assert.equal(T.dayNumberForDate("NBA", "2026-11-02"), 1);
+assert.equal(T.dayNumberForDate("NBA", "2026-11-03"), null, "no games Nov 3: no day number");
+assert.equal(T.dayNumberForDate("NBA", "2026-11-04"), 2);
+assert.equal(T.dayNumberForDate("NBA", "2026-11-15"), 13);
+assert.equal(T.isWithinRun("NBA", "2026-11-03"), false);
+assert.equal(T.isWithinRun("NBA", "2026-11-16"), false);
 assert.equal(T.isSeasonActive("NBA", "2026-09-04"), false);
 assert.equal(T.isSeasonActive("WNBA", "2026-09-04"), true);
 assert.equal(T.LEAGUES.NBA.status({ status: "Final", status_state: "final" }), "post");
@@ -226,7 +228,7 @@ console.log("pure helpers ok");
 }
 
 // -- Full builds --------------------------------------------------------------------
-const NBA_DATE = "2026-10-21";
+const NBA_DATE = "2026-11-05";
 const WNBA_DATE = "2026-10-29";
 const fixtures = {
   // NBA prior games sit before this season's Sept 1 start (i.e. last season), like a real opening week.
@@ -255,8 +257,8 @@ function countSince(mark) {
   assert.equal(payload.players.length, 384, "full roster is shown even while stats are pending");
   assert.ok(payload.players.some((p) => p.pendingStats) && payload.players.some((p) => !p.pendingStats), "mix of pending and loaded players");
   assert.equal(payload.games.length, 12);
-  assert.equal(payload.runLabel, "Run 1");
-  assert.equal(payload.dayNumber, 2);
+  assert.equal(payload.runLabel, "Run 2");
+  assert.equal(payload.dayNumber, 3);
   assert.ok(env.FASTBREAK_KV.store.has(T.dayBuildKey(T.LEAGUES.NBA, NBA_DATE)), "build state persisted");
 
   let rounds = 1;
@@ -355,7 +357,7 @@ function countSince(mark) {
   const env = { FASTBREAK_KV: makeKV(), FASTBREAK_ADMIN_TOKEN: "t", BALLDONTLIE_API_KEY: "k", TOME_SUBSCRIBER_KEYS: "sub-old, sub-new" };
   let res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
   let body = await res.json();
-  assert.equal(body.NBA.runStart, "2026-10-20");
+  assert.equal(body.NBA.runStart, "2026-11-02");
   assert.equal(body.WNBA.runEnd, "2026-10-31");
   assert.equal(body.WNBA.runLength, 7);
   assert.equal(body.NBA.runLength, 13);

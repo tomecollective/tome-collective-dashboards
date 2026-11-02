@@ -117,8 +117,14 @@ const LEAGUES = {
     // v2 advanced stats carries points_paint (flat, top-level). GOAT tier.
     advancedUrl: `${BDL_ROOT}/nba/v2/stats/advanced`,
     advancedPostseasonQs: "postseason=true",
-    // Run 1 (2026-27 season): opening night Tue Oct 20 through Sun Nov 1 (13 days).
-    run: { label: "Run 1", start: "2026-10-20", end: "2026-11-01" },
+    // Run 2 (2026-27 season): Nov 2 through Nov 15; no games Nov 3, so that date
+    // gets no tab (Day N = index in runDates). Run 1 was Oct 20 - Nov 1.
+    run: {
+      label: "Run 2",
+      start: "2026-11-02",
+      end: "2026-11-15",
+      runDates: ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"],
+    },
     seasonActive: { start: "2026-10-15", end: "2027-06-30" },
     // L10 never reaches back into last season (see L10_MIN_SEASON_GAMES), so
     // the recent window only needs to hold 10 games: 45 days is plenty.
