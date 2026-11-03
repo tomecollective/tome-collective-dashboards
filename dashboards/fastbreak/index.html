@@ -514,16 +514,15 @@ carries more weight).
 </div>
 </div>
 
-<label id="admin-badge-label" style="display:none;">Required Top Shot Badge / Set (Pro only) -- display text for the tile</label>
-<input type="text" id="admin-badge-name" placeholder="e.g. Season Tip-Off + Fresh Threads" style="display:none;">
+<label id="admin-badge-label" style="display:none;">Required Top Shot Set / Badge (Pro only) -- check every one that qualifies tonight</label>
+<input type="hidden" id="admin-badge-name">
 <div id="admin-pro-elig" style="display:none;">
-<label>Eligible sets (comma-separated, exact Top Shot set names)</label>
-<input type="text" id="admin-pro-sets" placeholder="e.g. Season Tip-Off, Fresh Threads">
-<div class="admin-form-row" style="display:flex;gap:10px;">
-<div style="flex:1;"><label>Set season (optional)</label><input type="text" id="admin-pro-season" placeholder="e.g. 2026-27 (blank = any year)"></div>
-<div style="flex:1;"><label>Badge keyword (optional)</label><input type="text" id="admin-pro-badge" placeholder="rookie_debut / rookie_year"></div>
+<div style="display:flex;gap:24px;flex-wrap:wrap;margin:4px 0 6px;">
+<div><div style="font-size:0.7rem;color:var(--text-3);margin-bottom:4px;">Sets</div><div id="admin-pro-set-boxes"></div></div>
+<div><div style="font-size:0.7rem;color:var(--text-3);margin-bottom:4px;">Badges</div><div id="admin-pro-badge-boxes"></div></div>
 </div>
-<div style="font-size:0.7rem;color:var(--text-3);margin:4px 0 8px;">Players with no Moment in any listed set are hidden from the Pro ranking (verified against the Top Shot index). Leave sets and badge blank to skip the check. Badges from Challenges, Leaderboards or Crafting can't be verified; the board will say so.</div>
+<div id="admin-pro-preview" style="font-size:0.75rem;margin:2px 0 4px;"></div>
+<div style="font-size:0.7rem;color:var(--text-3);margin:4px 0 8px;">Any season counts. Players with no Moment in a checked set (or with the checked badge) are hidden from the Pro ranking, verified against the Top Shot index. Rookie Debut combines with sets; only one of Rookie Debut / Rookie Year / Top Shot Debut per night. Challenge, Leaderboard and Crafting rewards can't be verified, so the board says so and excludes nobody. Leave everything unchecked to skip the check.</div>
 </div>
 
 <button id="admin-save-btn">Save Day</button>
@@ -2250,6 +2249,8 @@ async function loadAdminSchedule() {
   try {
     const res = await apiGet(OBJECTIVES_URL);
     const data = await res.json();
+    adminScheduleCache = data.schedule || {};
+    prefillProChecks();
     const days = Object.entries(data.schedule?.[adminLeague] || {}).sort(([a], [b]) => a.localeCompare(b));
     if (!days.length) {
       tbody.innerHTML = `<tr><td colspan="6">No ${adminLeague} dates configured yet.</td></tr>`;
@@ -2276,6 +2277,77 @@ async function loadAdminSchedule() {
   }
 }
 
+// -- Admin: Pro set / badge checkboxes -----------------------------------------
+// Fixed lists so names always match the Top Shot index exactly. Values are
+// what the Worker stores: set names go to proSets, badges to proBadge.
+const PRO_SET_OPTIONS = ["Season Tip-Off", "Fresh Threads", "Holo Icon", "Metallic Gold LE", "Cosmic", "Top Shot 50"];
+const PRO_BADGE_OPTIONS = [
+  { key: "rookie_debut", label: "Rookie Debut", verify: true },
+  { key: "rookie_year", label: "Rookie Year", verify: true },
+  { key: "top_shot_debut", label: "Top Shot Debut", verify: true },
+  { key: "challenge_reward", label: "Challenge Reward", verify: false },
+  { key: "leaderboard_reward", label: "Leaderboard Reward", verify: false },
+  { key: "crafting_reward", label: "Crafting Reward", verify: false },
+];
+let adminScheduleCache = {};
+const proBoxHtml = (kind, value, label) =>
+  `<label style="display:flex;align-items:center;gap:6px;margin:3px 0;font-weight:500;"><input type="checkbox" class="pro-check" data-kind="${kind}" value="${value}" style="width:auto;margin:0;">${label}</label>`;
+document.getElementById("admin-pro-set-boxes").innerHTML = PRO_SET_OPTIONS.map((n) => proBoxHtml("set", n, n)).join("");
+document.getElementById("admin-pro-badge-boxes").innerHTML = PRO_BADGE_OPTIONS.map((b) => proBoxHtml("badge", b.key, b.label + (b.verify ? "" : ' <span style="font-size:0.66rem;color:var(--text-3);">(not verifiable)</span>'))).join("");
+
+function joinOr(list) {
+  if (list.length <= 1) return list.join("");
+  return `${list.slice(0, -1).join(", ")}${list.length > 2 ? "," : ""} or ${list[list.length - 1]}`;
+}
+function readProChecks() {
+  const boxes = [...document.querySelectorAll(".pro-check:checked")];
+  const sets = boxes.filter((b) => b.dataset.kind === "set").map((b) => b.value);
+  const badges = boxes.filter((b) => b.dataset.kind === "badge").map((b) => b.value);
+  const verifiable = badges.filter((k) => PRO_BADGE_OPTIONS.find((o) => o.key === k)?.verify);
+  const labels = [
+    ...badges.map((k) => PRO_BADGE_OPTIONS.find((o) => o.key === k).label).filter((l) => l === "Rookie Debut"),
+    ...sets,
+    ...badges.map((k) => PRO_BADGE_OPTIONS.find((o) => o.key === k).label).filter((l) => l !== "Rookie Debut"),
+  ];
+  let error = null;
+  if (verifiable.length > 1) error = "Pick only one of Rookie Debut / Rookie Year / Top Shot Debut for a night.";
+  else if (verifiable.includes("rookie_year") && sets.length) error = "Rookie Year can't be combined with sets.";
+  else if (verifiable.includes("top_shot_debut") && sets.length) error = "Top Shot Debut already covers every set; uncheck the sets.";
+  return { sets, badges, display: joinOr(labels), error };
+}
+function renderProPreview() {
+  const el = document.getElementById("admin-pro-preview");
+  if (!el) return;
+  const p = readProChecks();
+  el.innerHTML = p.error
+    ? `<span style="color:#f87171;">${p.error}</span>`
+    : p.display ? `Tile will read: <strong>${p.display}</strong>` : `<span style="color:var(--text-3);">No set check tonight.</span>`;
+}
+// Map a stored day (typed text from before the checkboxes) onto the boxes.
+function prefillProChecks() {
+  const date = document.getElementById("admin-date").value;
+  const e = adminScheduleCache?.[adminLeague]?.[date] || {};
+  const words = [
+    ...(Array.isArray(e.proSets) ? e.proSets : []),
+    ...String(e.proBadge || "").split(/[,;]/),
+    ...(!(e.proSets || []).length && !e.proBadge ? String(e.badgeSetName || "").split(/,|\s+or\s+/i) : []),
+  ].map((w) => w.trim().replace(/^(or|and|&)\s+/i, "").toLowerCase().replace(/[\s_-]+/g, " ").trim()).filter(Boolean);
+  const has = (w) => words.includes(w);
+  for (const box of document.querySelectorAll(".pro-check")) {
+    if (box.dataset.kind === "set") {
+      const v = box.value.toLowerCase().replace(/-/g, " ");
+      box.checked = has(v) || (v === "metallic gold le" && has("metallic gold"));
+    } else {
+      const label = PRO_BADGE_OPTIONS.find((o) => o.key === box.value).label.toLowerCase();
+      const word = label.split(" ")[0];
+      box.checked = has(box.value.replace(/_/g, " ")) || has(label) || (!box.dataset.verify && /reward/.test(label) && words.some((w) => w.startsWith(word)));
+    }
+  }
+  renderProPreview();
+}
+document.getElementById("admin-pro-elig").addEventListener("change", renderProPreview);
+document.getElementById("admin-date").addEventListener("change", prefillProChecks);
+
 // -- Admin: save a day (locked behind the password, never a direct DOM edit) ----
 document.getElementById("admin-save-btn").addEventListener("click", async () => {
   setStatus("admin-status", "Saving...");
@@ -2283,10 +2355,15 @@ document.getElementById("admin-save-btn").addEventListener("click", async () => 
   const stat1 = document.getElementById("admin-stat-1").value;
   const target1 = parseFloat(document.getElementById("admin-target-1").value);
   const hasSecond = document.getElementById("admin-has-second").checked;
-  const badgeSetName = document.getElementById("admin-badge-name").value.trim();
-  const proSets = document.getElementById("admin-pro-sets").value.trim();
-  const proSeason = document.getElementById("admin-pro-season").value.trim();
-  const proBadge = document.getElementById("admin-pro-badge").value.trim();
+  const proPick = readProChecks();
+  const badgeSetName = proPick.display;
+  const proSets = proPick.sets;
+  const proSeason = "";
+  const proBadge = proPick.badges.join(", ");
+  if (adminMode === "Pro" && proPick.error) {
+    setStatus("admin-status", proPick.error, false);
+    return;
+  }
 
   if (!date || !target1) {
     setStatus("admin-status", "Date and Objective 1 target are required.", false);
