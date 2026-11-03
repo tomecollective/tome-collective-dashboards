@@ -1707,15 +1707,51 @@ const PRO_ELIG_RETRY_MS = 15 * 60 * 1000;
 const PRO_ELIG_KEEP_VERIFIED_MS = 24 * 60 * 60 * 1000; // a failed refresh never downgrades a verified answer younger than this
 
 function parseProSets(v) {
-  const list = Array.isArray(v) ? v : String(v || "").split(",");
-  return [...new Set(list.map((s) => String(s || "").trim()).filter(Boolean))];
+  const list = Array.isArray(v) ? v : String(v || "").split(/,|\s+or\s+|\s+and\s+/i);
+  return [...new Set(list.map((s) => String(s || "").trim().replace(/^(or|and|&)\s+/i, "").trim()).filter(Boolean))];
+}
+
+// Admin entries mix Top Shot set names with badge names ("Rookie Debut,
+// Season Tip-Off, or Fresh Threads"; "Top Shot Debut"; "Holo Icon, Metallic
+// Gold, ..."). Normalize at read time so stored days work without re-entry:
+// badge names become the badge, display names map to the index's set names,
+// and reward badges (not in the index) make the night "unverified".
+const PRO_BADGE_NAMES = { "rookie debut": "rookie_debut", "rookie year": "rookie_year", "top shot debut": "top_shot_debut" };
+const PRO_SET_ALIASES = { "metallic gold": "Metallic Gold LE", "ts50": "Top Shot 50", "season tip off": "Season Tip-Off" };
+const PRO_REWARD_RE = /challenge|leaderboard|crafting|reward/i;
+const PRO_RESOLVABLE = new Set(["rookie_debut", "rookie_year", "top_shot_debut"]);
+
+function normalizeProConfig(rawSets, rawBadge) {
+  const sets = [];
+  const badges = [];
+  for (const item of parseProSets(rawSets)) {
+    const key = item.toLowerCase().replace(/\s+/g, " ");
+    if (PRO_BADGE_NAMES[key]) badges.push(PRO_BADGE_NAMES[key]);
+    else if (PRO_REWARD_RE.test(item)) badges.push("reward");
+    else sets.push(PRO_SET_ALIASES[key] || item);
+  }
+  for (const b of String(rawBadge || "").split(/[,;]/)) {
+    const k = b.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (!k) continue;
+    if (PRO_RESOLVABLE.has(k)) badges.push(k);
+    else if (PRO_BADGE_NAMES[k.replace(/_/g, " ")]) badges.push(PRO_BADGE_NAMES[k.replace(/_/g, " ")]);
+    else badges.push(PRO_REWARD_RE.test(k) ? "reward" : k);
+  }
+  const uniq = [...new Set(badges)];
+  // The index answers one badge per call. An unresolvable badge wins (the
+  // night must read "unverified"); two resolvable badges can't be combined.
+  let badge = uniq.find((b) => !PRO_RESOLVABLE.has(b)) || null;
+  if (!badge && uniq.length > 1) badge = "multiple_badges";
+  if (!badge) badge = uniq[0] || null;
+  return { sets: [...new Set(sets)], badge };
 }
 
 function proConfigForDate(schedule, league, date) {
   const e = schedule?.[league]?.[date];
   if (!e) return null;
-  const sets = parseProSets(e.proSets);
-  const badge = String(e.proBadge || "").trim().toLowerCase() || null;
+  let { sets, badge } = normalizeProConfig(e.proSets, e.proBadge);
+  // Days saved with only the display string (sets and badge left blank).
+  if (!sets.length && !badge && e.badgeSetName) ({ sets, badge } = normalizeProConfig(e.badgeSetName, null));
   if (!sets.length && !badge) return null;
   return { sets, season: String(e.proSeason || "").trim() || null, badge };
 }
@@ -2643,6 +2679,9 @@ const LEAGUE_CRONS = {
 
 // Exported for local/unit testing only (not used by the Worker runtime).
 export const __testables__ = {
+  normalizeProConfig,
+  proConfigForDate,
+  proEligibilityQuery,
   LEAGUES,
   SUPPORTED_LEAGUES,
   SUPPORTED_MODES,

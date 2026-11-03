@@ -537,7 +537,7 @@ async function rebuildEditionsSnapshot(env) {
 }
 // ---- Pro-night set eligibility (internal) ------------------------------------
 // GET /api/topshot/eligible?sets=A,B&season=2026-27[&league=NBA]
-// GET /api/topshot/eligible?badge=rookie_debut|rookie_year[&season=2026-27][&league=NBA]
+// GET /api/topshot/eligible?badge=rookie_debut|rookie_year|top_shot_debut[&season=2026-27][&league=NBA]
 // season is optional everywhere: omit it when any year's Moment qualifies.
 // Internal only: X-Tome-Internal must equal TOME_INTERNAL_TOKEN.
 //
@@ -554,7 +554,9 @@ var ELIG_CACHE_PREFIX = "elig:";
 var ELIG_CACHE_TTL_S = 6 * 60 * 60;
 var ELIG_PLAY_BUDGET = 40; // Flow script calls per request (stays under the Free plan's 50 subrequests)
 var PLAYS_INDEX_KEY = "plays:index"; // { playID: {playerName, team, nbaSeason, isRookieYear} } -- one KV value, so a full-catalog lookup stays far under the per-invocation KV operation limit
-var RESOLVABLE_BADGES = new Set(["rookie_debut", "rookie_year"]);
+// top_shot_debut: every player with any Moment has a Top Shot Debut Moment
+// (his first on the platform), so it resolves to "has at least one Moment".
+var RESOLVABLE_BADGES = new Set(["rookie_debut", "rookie_year", "top_shot_debut"]);
 
 function eligJson(body, status = 200) {
   return Response.json(body, { status });
@@ -579,7 +581,9 @@ function eligCacheKey(q) {
 
 async function handleEligible(request, env, url) {
   const token = request.headers.get("X-Tome-Internal");
-  if (!env.TOME_INTERNAL_TOKEN || !token || token !== env.TOME_INTERNAL_TOKEN) {
+  // Trimmed on both sides: a secret piped in from PowerShell can carry a
+  // trailing newline, which can make every call answer 401.
+  if (!env.TOME_INTERNAL_TOKEN || !token || token.trim() !== String(env.TOME_INTERNAL_TOKEN).trim()) {
     return eligJson({ error: "unauthorized" }, 401);
   }
   const q = parseEligibleQuery(url);
@@ -616,7 +620,7 @@ async function handleEligible(request, env, url) {
     let take = false;
     if (q.sets.length && wanted.has(name.toLowerCase())) take = true;
     if (q.badge === "rookie_debut" && isRookieDebutSet(name)) take = true;
-    if (q.badge === "rookie_year") {
+    if (q.badge === "rookie_year" || q.badge === "top_shot_debut") {
       // Any season: every set. With season=, only sets holding at least one
       // known play from that season (keeps the lookup small).
       take = q.season ? Object.keys(s.circulationByPlay || {}).some((pid) => known.get(pid)?.nbaSeason === q.season) : true;
