@@ -54,6 +54,13 @@ const SNAPSHOT_SCHEMA = 6; // 3: postseason PITP query; 4: shot zones; 5: playof
 // exactly his YTD (current-season games only). Reaching back into last season
 // mixed in other teams' games for traded players and stale form for everyone.
 const L10_MIN_SEASON_GAMES = 10;
+// Proj = Rotowire blended with the player's L10: PROJ_L10_WEIGHT of the value comes
+// from L10 (Rotowire keeps the rest), scaled down while L10 rests on fewer than
+// PROJ_L10_FULL_GAMES games. YTD never goes into Proj. A Rotowire projection of 0
+// (player not expected to play) is never blended. Players with no Rotowire row get
+// L10 as Proj only when they have no injury-report status (not Out, not questionable).
+const PROJ_L10_WEIGHT = 0.25;
+const PROJ_L10_FULL_GAMES = 10;
 const WARM_DAYS_AHEAD = 8; // cron pre-builds up to this many upcoming run dates so public reads never build
 const ET_TZ = "America/New_York";
 
@@ -1550,12 +1557,25 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
         const override = projectionOverrides[obj.stat]?.[nameKey];
         let proj;
         let projSource;
+        let rotowireProj = null;
         if (override != null) {
-          proj = round1(override.value);
-          projSource = "rotowire";
+          rotowireProj = round1(override.value);
+          const gp = l10Lines.length;
+          if (l10 != null && rotowireProj > 0 && obj.stat !== "PITP") {
+            const wL10 = PROJ_L10_WEIGHT * Math.min(1, gp / PROJ_L10_FULL_GAMES);
+            proj = round1((1 - wL10) * rotowireProj + wL10 * l10);
+            projSource = "rotowire+l10";
+          } else {
+            proj = rotowireProj;
+            projSource = "rotowire";
+          }
         } else if (obj.stat === "PITP") {
           proj = pitpYtdFallback ? ytd : l10;
           projSource = pitpYtdFallback ? "ytd-regular-fallback" : l10Source || "l10-fallback";
+        } else if (Object.keys(projectionOverrides[obj.stat] || {}).length > 0 && l10 != null && !injuryByPlayerId.get(p.id)?.status) {
+          // Rotowire was uploaded for this stat but has no row for a healthy player.
+          proj = l10;
+          projSource = "l10-fallback";
         } else {
           proj = null;
           projSource = "tbd";
@@ -1569,6 +1589,7 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
           perPlayerTarget: round1(perPlayerTarget),
           proj,
           projSource,
+          rotowireProj,
           ytd,
           l10,
           gamesPlayedL10: l10Lines.length,
@@ -1629,13 +1650,13 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
   const teamAdvanced = computeTeamAdvancedMetrics(snapshot.teamIds, snapshot.roster, snapshot.stats, snapshot.recentGames, last10Set);
 
   const notes = [
-    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; until a player has 10 games this season, L10 equals his YTD (this season only). PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league -- it never silently falls back to L10. Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight. Players listed Out on the injury report are shown but not ranked (Ovr Rank "OUT"); day-to-day players keep their rank and are flagged.`,
+    `Live BALLDONTLIE ${league} data. YTD/L10 always reflect current form (as of today), regardless of which run date is selected; until a player has 10 games this season, L10 equals his YTD (this season only). PITP (when an objective) comes from the advanced-stats endpoint and always uses the L10 average as Proj (Rotowire doesn't project it). Every other objective shows Proj as TBD until that date's Rotowire projections are uploaded for this league. Once they are, Proj is the Rotowire number blended with a share of the player's L10 (25%, scaled down while L10 rests on fewer than 10 games; YTD never goes into Proj), and a healthy player with no Rotowire row falls back to his L10 (Out / questionable players with no row stay TBD). Weight is auto-computed from the share of players projected to clear 100% of target -- the rarer objective carries more weight. Players listed Out on the injury report are shown but not ranked (Ovr Rank "OUT"); day-to-day players keep their rank and are flagged.`,
   ];
   for (const obj of weightedObjectives) {
     const overrides = projectionOverrides[obj.stat] || {};
     const overrideCount = Object.keys(overrides).length;
     if (overrideCount > 0) {
-      const matched = playerBase.filter((p) => p.objectives[obj.stat]?.projSource === "rotowire").length;
+      const matched = playerBase.filter((p) => String(p.objectives[obj.stat]?.projSource || "").startsWith("rotowire")).length;
       notes.push(`${obj.stat}: ${overrideCount} uploaded Rotowire projection(s), ${matched} matched a player on this slate.`);
       const slateKeys = new Set(playerBase.map((p) => projectionKey(p.name)));
       const unmatched = Object.entries(overrides).filter(([k]) => !slateKeys.has(k)).map(([, v]) => v?.name).filter(Boolean);
