@@ -232,7 +232,7 @@ const NBA_DATE = "2026-11-05";
 const WNBA_DATE = "2026-10-29";
 const fixtures = {
   // NBA prior games sit before this season's Sept 1 start (i.e. last season), like a real opening week.
-  NBA: makeLeagueFixture({ league: "NBA", date: NBA_DATE, numGames: 12, priorSeason: 2025, priorBase: T.addDaysStr(`${T.LEAGUES.NBA.seasonFor(T.todayStr())}-09-01`, -1) }),
+  NBA: makeLeagueFixture({ league: "NBA", date: NBA_DATE, numGames: 12, priorSeason: T.LEAGUES.NBA.seasonFor(T.todayStr()), priorBase: T.todayStr() }),
   WNBA: makeLeagueFixture({ league: "WNBA", date: WNBA_DATE, numGames: 3, priorSeason: 2026, priorBase: T.todayStr() }),
 };
 const calls = installMockFetch(fixtures);
@@ -283,12 +283,14 @@ function countSince(mark) {
   assert.equal(payload.players[payload.players.length - 1].id, p1.id, "Out player sorted to the bottom");
   assert.ok(payload.players.filter((p) => p.availability !== "out").every((p) => Number.isInteger(p.ovrRank)), "everyone else ranked");
   assert.equal(payload.players[0].ovrRank, 1, "best available player is #1");
-  assert.equal(p1.objectives.PTS.proj, 30);
-  assert.equal(p1.objectives.PTS.projSource, "rotowire");
-  assert.equal(p1.objectives.REB.projSource, "tbd");
+  // Proj = 75% Rotowire + 25% L10 (10 current-season games -> full L10 weight); YTD never enters Proj.
+  assert.equal(p1.objectives.PTS.rotowireProj, 30);
+  assert.equal(p1.objectives.PTS.projSource, "rotowire+l10");
+  assert.equal(p1.objectives.PTS.proj, Math.round((0.75 * 30 + 0.25 * p1.objectives.PTS.l10) * 10) / 10);
+  assert.equal(p1.objectives.REB.projSource, "tbd", "no Rotowire uploaded for REB: stays TBD, no L10 fallback");
   assert.equal(p1.objectives.REB.proj, null);
-  assert.equal(p1.objectives.PTS.gamesPlayedL10, 10, "L10 uses last 10 of 12 prior games (prior season)");
-  assert.equal(p1.objectives.PTS.ytd, null, "no current-season games yet -> YTD empty");
+  assert.equal(p1.objectives.PTS.gamesPlayedL10, 10, "L10 uses the last 10 of 12 current-season games");
+  assert.notEqual(p1.objectives.PTS.ytd, null, "current-season games exist -> YTD populated");
   assert.equal(p1.injuryStatus, "Out");
   assert.equal(p1.opp, "vs T1");
   assert.equal(payload.objectives.length, 2);
@@ -481,6 +483,85 @@ function countSince(mark) {
   assert.ok(!Object.keys(fd.teams).some((k) => k === "COOP" || k === "SPO"), `All-Star squads excluded from Full Data teams (${Object.keys(fd.teams).join(",")})`);
   assert.ok(!JSON.stringify(fd).includes("TEAM COOP"), "no exhibition team anywhere in Full Data");
   console.log("http surface + cron dispatch ok");
+}
+
+// -- Proj blend: Rotowire + L10 (Classic = PTS) -------------------------------------------
+{
+  const cfg = T.LEAGUES.NBA, date = "2026-11-05";
+  const gids = Array.from({ length: 10 }, (_, i) => 500 + i);
+  // [name, injury status, L10/YTD points per game]
+  const spec = [
+    ["SGA Star", null, 28],
+    ["Luka Hot", null, 38],
+    ["Healthy NoRow", null, 20],
+    ["Questionable NoRow", "Questionable", 20],
+    ["Out NoRow", "Out", 20],
+    ["Zero Projection", null, 15],
+    ["Few Games", null, 30],
+  ];
+  const roster = spec.map(([name], i) => ({ id: i + 1, name, teamId: 1, team: "AAA" }));
+  const stats = {};
+  spec.forEach(([name, , ppg], i) => {
+    stats[i + 1] = {};
+    const n = name === "Few Games" ? 2 : 10; // only 2 games played -> L10 weight scales down
+    gids.slice(0, n).forEach((g, k) => { stats[i + 1][g] = { gid: g, date: `2026-10-${String(20 + k)}`, pts: ppg }; });
+  });
+  const snap = {
+    status: "done", date, league: "NBA", schema: 2,
+    games: [{ id: 9, homeId: 1, awayId: 2, homeAbbr: "AAA", awayAbbr: "BBB", status: "pre", datetime: null }],
+    teamIds: [1], roster,
+    injuries: spec.map(([, st], i) => (st ? { playerId: i + 1, status: st } : null)).filter(Boolean),
+    last10GameIds: gids, ytdGameIds: gids, seasons: [2026], recentGames: [], stats, adv: {},
+    pendingChunks: [], totalPlayers: roster.length, finishedAt: Date.now(), startedAt: Date.now(),
+  };
+  const rotowire = (rows) => ({ NBA: { [date]: { objectives: { Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100 }] }, projections: { PTS: Object.fromEntries(rows.map(([n, v]) => [n.toLowerCase(), { name: n, value: v }])) } } } });
+  const render = (rows) => T.renderDayPayload(cfg, snap, { mode: "Classic", schedule: rotowire(rows) });
+  const byName = (payload, n) => payload.players.find((p) => p.name === n);
+
+  // Big Rotowire gap (SGA 32 vs Luka 25): SGA stays ahead despite Luka's far better L10.
+  let out = render([["SGA Star", 32], ["Luka Hot", 25], ["Zero Projection", 0], ["Few Games", 25]]);
+  const sga = byName(out, "SGA Star").objectives.PTS, luka = byName(out, "Luka Hot").objectives.PTS;
+  assert.equal(sga.proj, 31); // 0.75*32 + 0.25*28
+  assert.equal(luka.proj, 28.3); // 0.75*25 + 0.25*38 = 28.25 -> 28.3
+  assert.equal(sga.projSource, "rotowire+l10");
+  assert.equal(sga.rotowireProj, 32);
+  assert.ok(byName(out, "SGA Star").ovrRank < byName(out, "Luka Hot").ovrRank, "big Rotowire edge beats a hot L10");
+
+  // Small Rotowire gap (SGA 26 vs Luka 25): Luka's L10 is enough to flip them.
+  out = render([["SGA Star", 26], ["Luka Hot", 25], ["Zero Projection", 0], ["Few Games", 25]]);
+  assert.equal(byName(out, "SGA Star").objectives.PTS.proj, 26.5);
+  assert.equal(byName(out, "Luka Hot").objectives.PTS.proj, 28.3);
+  assert.ok(byName(out, "Luka Hot").ovrRank < byName(out, "SGA Star").ovrRank, "small Rotowire edge loses to a much hotter L10");
+
+  // YTD never enters Proj: same Rotowire and L10, wildly different YTD -> same Proj.
+  const lowYtdOut = render([["SGA Star", 32], ["Luka Hot", 25]]);
+  assert.equal(byName(lowYtdOut, "SGA Star").objectives.PTS.ytd, 28);
+  assert.equal(byName(lowYtdOut, "SGA Star").objectives.PTS.proj, 31);
+
+  // Rotowire 0 (not expected to play) is never blended with L10.
+  const zero = byName(out, "Zero Projection").objectives.PTS;
+  assert.equal(zero.proj, 0);
+  assert.equal(zero.projSource, "rotowire");
+
+  // L10 weight ramps with games played: 2 games -> 0.25 * 2/10 = 0.05.
+  const few = byName(out, "Few Games").objectives.PTS;
+  assert.equal(few.gamesPlayedL10, 2);
+  assert.equal(few.proj, 25.3); // 0.95*25 + 0.05*30 = 25.25 -> 25.3
+
+  // Fallback: healthy player with no Rotowire row gets L10; Out / questionable stay TBD.
+  const healthy = byName(out, "Healthy NoRow").objectives.PTS;
+  assert.equal(healthy.proj, 20);
+  assert.equal(healthy.projSource, "l10-fallback");
+  assert.equal(healthy.rotowireProj, null);
+  assert.equal(byName(out, "Questionable NoRow").objectives.PTS.projSource, "tbd");
+  assert.equal(byName(out, "Questionable NoRow").objectives.PTS.proj, null);
+  assert.equal(byName(out, "Out NoRow").objectives.PTS.projSource, "tbd");
+  assert.equal(byName(out, "Out NoRow").ovrRank, null, "Out player never ranked");
+
+  // No Rotowire uploaded at all for the stat: everyone is TBD (no slate-wide L10 fallback).
+  const none = T.renderDayPayload(cfg, snap, { mode: "Classic", schedule: { NBA: { [date]: { objectives: { Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100 }] } } } } });
+  assert.ok(none.players.every((p) => p.objectives.PTS.projSource === "tbd" && p.objectives.PTS.proj === null), "no upload -> TBD for all");
+  console.log("Proj blend (Rotowire + L10) ok");
 }
 
 console.log("\nALL LOCAL TESTS PASSED");
