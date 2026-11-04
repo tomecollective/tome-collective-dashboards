@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tome Vault · Cost to Complete</title>
+<title>Tome Vault · Set Tracker</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -87,6 +87,64 @@
   .modal-chart-wrap { height: 280px; position: relative; }
   .modal-locked { text-align: center; padding: 30px 10px; color: var(--text-dim); }
 
+
+  .tile-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .tile-pill { flex: none; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--panel-border); color: var(--text-dim); white-space: nowrap; }
+  .tile-pill.has { border-color: var(--forest); color: var(--forest); }
+  .modal { max-width: 760px; }
+  .modal-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .modal-tab { font-family: inherit; font-size: 14px; font-weight: 600; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--panel-border); background: transparent; color: var(--text-dim); cursor: pointer; }
+  .modal-tab.active { background: var(--forest); border-color: var(--forest); color: #fff; }
+  .cl-top { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 12px; font-size: 15px; }
+  .cl-top .mode { display: inline-flex; border: 1px solid var(--panel-border); border-radius: 999px; overflow: hidden; }
+  .cl-top .mode button { font-family: inherit; font-size: 13px; font-weight: 600; padding: 5px 12px; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; }
+  .cl-top .mode button.active { background: var(--forest); color: #fff; }
+  .cl-tally { color: var(--text-dim); }
+  .cl-tally strong { color: #fff; font-variant-numeric: tabular-nums; }
+  .cl-save { font-size: 13px; color: var(--text-dimmer); margin-left: auto; }
+  .cl-save.saving { color: var(--gold); }
+  .cl-money { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .cl-money > div { background: #0f110f; border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px 12px; }
+  .cl-money .k { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dimmer); }
+  .cl-money .v { font-size: 20px; font-weight: 700; color: var(--forest); font-variant-numeric: tabular-nums; }
+  .cl-money .v.locked { color: var(--text-dimmer); font-size: 15px; }
+  .cl-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .cl-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dimmer); padding: 6px 6px; border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; background: var(--panel); }
+  .cl-table td { padding: 5px 6px; border-bottom: 1px solid #1c1f1c; vertical-align: middle; }
+  .cl-table td.num { color: var(--text-dim); font-variant-numeric: tabular-nums; width: 56px; }
+  .cl-table td.rar { color: var(--text-dimmer); font-size: 13px; white-space: nowrap; }
+  .cl-table td.chk { text-align: center; width: 70px; }
+  .cl-table tr.owned td.name { color: var(--forest); }
+  .cl-table input[type=checkbox] { width: 18px; height: 18px; accent-color: #0D7959; cursor: pointer; }
+  .cl-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; font-size: 13px; color: var(--text-dimmer); }
+  .cl-tools button { font-family: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: transparent; color: var(--text-dim); cursor: pointer; }
+  .cl-note { font-size: 13px; color: var(--text-dimmer); margin-top: 10px; }
+  .cl-scroll { max-height: 48vh; overflow: auto; border: 1px solid var(--panel-border); border-radius: 8px; }
+  .cl-filter { font-family: inherit; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--panel-border); background: #0f110f; color: var(--text); min-width: 160px; }
+
+  .set-tools { display: flex; gap: 10px; align-items: center; margin: 6px 0 12px; flex-wrap: wrap; }
+  .set-count { color: var(--text-dimmer); font-size: 14px; }
+  .set-wrap { overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 10px; background: var(--panel); }
+  .set-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  .set-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dimmer); padding: 10px 14px; border-bottom: 1px solid var(--panel-border); white-space: nowrap; }
+  .set-table td { padding: 10px 14px; border-bottom: 1px solid #1c1f1c; vertical-align: middle; }
+  .set-table tr:last-child td { border-bottom: 0; }
+  .set-table tr:hover td { background: #171a17; }
+  .set-table td.name { font-weight: 700; color: #fff; }
+  .set-table td.name a { color: inherit; text-decoration: none; }
+  .set-table td.name a:hover { color: var(--forest); }
+  .set-table td.date { color: var(--text-dimmer); font-size: 14px; white-space: nowrap; }
+  .set-table td.value { font-weight: 700; color: var(--forest); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .set-table td.value.locked { color: var(--text-dimmer); font-weight: 400; font-size: 14px; }
+  .set-table th.value { text-align: right; }
+  .set-table td.act { white-space: nowrap; }
+  .link-pill { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--panel-border); color: var(--text-dim); text-decoration: none; cursor: pointer; background: transparent; font-family: inherit; }
+  .link-pill:hover { border-color: var(--forest); color: var(--forest); }
+  .link-pill.has { border-color: var(--forest); color: var(--forest); }
+  .link-pill.locked { color: var(--text-dimmer); }
+  .modal-open-cl { margin-top: 14px; font-size: 14px; color: var(--text-dim); }
+  .modal-open-cl a { color: var(--forest); font-weight: 600; cursor: pointer; }
+  @media (max-width: 640px) { .set-table { font-size: 15px; } .set-table th, .set-table td { padding: 8px 10px; } .set-table td.date { display: none; } .set-table th.date { display: none; } }
   footer { text-align: center; padding: 24px; font-size: 14px; color: var(--text-dimmer); }
 </style>
 </head>
@@ -97,15 +155,15 @@
     <span class="topbar-dot"></span>
     <span class="topbar-brand">Tome Collective</span>
     <span class="topbar-sep">|</span>
-    <span class="topbar-page">Tome Vault: Cost to Complete</span>
+    <span class="topbar-page">Tome Vault: Set Tracker</span>
   </div>
   <span class="tier-badge-pill" id="statusBadge">Vault</span>
 </div>
 
 <div class="header-block">
   <div class="eyebrow">TOME COLLECTIVE &middot; POKEMON &middot; LORCANA &middot; ONE PIECE</div>
-  <h1>Cost to Complete</h1>
-  <div class="subtitle">What it actually costs to complete every modern set, tracked daily.</div>
+  <h1>Set Tracker</h1>
+  <div class="subtitle">A checklist for every modern set, free for every reader. The cost to complete each one, tracked daily, is a Tome Vault benefit.</div>
   <div class="powered-by">Powered by Tome Analytics</div>
 </div>
 
@@ -117,14 +175,15 @@
 
 <div id="lockPanel" class="lock-panel" style="display:none;">
   <div class="lock-panel-text">
-    <h2>Unlock every set's real cost to complete</h2>
-    <p>Set names and release dates are free to browse. The dollar figure itself is a Tome Vault benefit.</p>
+    <h2>Unlock every set's cost to complete</h2>
+    <p>Checklists, set names and release dates are free. The dollar figures and their history are a Tome Vault benefit.</p>
   </div>
   <a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Vault</a>
 </div>
 
 <main>
-  <div class="tile-grid" id="tileGrid"></div>
+  <div class="set-tools"><input class="cl-filter" id="setFilter" placeholder="Find a set"><span class="set-count" id="setCount"></span></div>
+  <div class="set-wrap"><table class="set-table"><thead><tr><th>Set</th><th class="date">Released</th><th class="value">Cost to complete</th><th>Checklist</th><th>History</th></tr></thead><tbody id="tileGrid"></tbody></table></div>
   <div id="emptyState" class="empty-state" style="display:none;">No sets found for this game yet.</div>
 </main>
 
@@ -138,7 +197,7 @@
   </div>
 </div>
 
-<footer>Powered by Tome Analytics &middot; Data via JustTCG, tracked daily since set_value began being measured (Dec 2025)</footer>
+<footer>Powered by Tome Analytics &middot; Set values via JustTCG, tracked daily since Dec 2025 &middot; Card lists from public card databases (TCGdex) &middot; Checklist progress saves to your Tome account when this page is opened from read.tomecollective.com; otherwise it stays in this browser</footer>
 
 <script>
   const API_BASE = "https://tome-set-value.tomecollective.workers.dev";
@@ -177,14 +236,37 @@
   const modalTitle = document.getElementById("modalTitle");
   const modalBody = document.getElementById("modalBody");
 
-  function formatPrice(p) { return p == null ? "\u2014" : `$${p.toFixed(2)}`; }
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function formatPrice(p) { return p == null ? "—" : money.format(p); }
+  const CARDS_BASE = "cards"; // static per-set JSON, served next to this page by GitHub Pages
+  const sidOf = () => sessionStorage.getItem("tome_sid") || "";
+  const hasSid = () => /^sub_[0-9a-f-]{36}$/.test(sidOf());
+
+  // ---- progress: localStorage cache + server copy (newest updated_at wins) ----
+  const lsKey = (game, setId) => `tome_cl:${game}:${setId}`;
+  function readLocal(game, setId) { try { return JSON.parse(localStorage.getItem(lsKey(game, setId)) || "null"); } catch (e) { return null; } }
+  function writeLocal(game, setId, rec) { try { localStorage.setItem(lsKey(game, setId), JSON.stringify(rec)); } catch (e) {} }
+  let mine = {}; // setId -> {cards, printings} from the server, for the tile pills
+  async function loadMine(game) {
+    mine = {};
+    if (hasSid()) {
+      try { const r = await fetch(`${API_BASE}/api/checklist/mine?game=${encodeURIComponent(game)}&sid=${encodeURIComponent(sidOf())}`); if (r.ok) mine = (await r.json()).sets || {}; } catch (e) {}
+    }
+    // local progress counts too (direct-link readers, or saves the server hasn't seen yet)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i); if (!k || !k.startsWith(`tome_cl:${game}:`)) continue;
+      const setId = k.slice(`tome_cl:${game}:`.length); const rec = readLocal(game, setId); if (!rec || !rec.owned) continue;
+      const cards = Object.values(rec.owned).filter((v) => Array.isArray(v) && v.length).length;
+      if (!mine[setId] || (rec.updated_at || 0) > (mine[setId].updated_at || 0)) mine[setId] = { cards, updated_at: rec.updated_at || 0 };
+    }
+  }
 
   async function loadSets(game) {
     currentGame = game;
     tileGrid.innerHTML = "";
     try {
       const url = `${API_BASE}/api/sets?game=${encodeURIComponent(game)}${accessQueryString()}`;
-      const res = await fetch(url);
+      const [res] = await Promise.all([fetch(url), loadMine(game)]);
       const data = await res.json();
       isLocked = data.locked;
       currentSets = data.sets || [];
@@ -198,64 +280,190 @@
     }
   }
 
-  function render() {
-    tileGrid.innerHTML = "";
-    emptyState.style.display = currentSets.length ? "none" : "block";
-    for (const s of currentSets) {
-      const tile = document.createElement("div");
-      tile.className = "tile";
-      const isUpcoming = s.release_date && new Date(s.release_date) > new Date();
-      const valueHtml = s.current_value == null
-        ? `<div class="tile-value locked">&#128274; Vault only</div>`
-        : (s.current_value === 0 && isUpcoming)
-        ? `<div class="tile-value locked">Not yet released</div>`
-        : `<div class="tile-value">${formatPrice(s.current_value)}</div>`;
-      tile.innerHTML = `
-        <div class="tile-name">${s.name}</div>
-        <div class="tile-date">${s.release_date || ""}</div>
-        ${valueHtml}
-        <div class="tile-label">Cost to Complete</div>
-      `;
-      tile.addEventListener("click", () => openModal(s));
-      tileGrid.appendChild(tile);
-    }
+  function pillText(setId) {
+    const m = mine[setId];
+    return m && m.cards ? `Checklist · ${m.cards}` : "Checklist";
   }
 
-  async function openModal(set) {
+  let setFilter = "";
+  function render() {
+    tileGrid.innerHTML = "";
+    const q = setFilter.trim().toLowerCase();
+    const rows = currentSets.filter((s) => !q || s.name.toLowerCase().includes(q));
+    emptyState.style.display = rows.length ? "none" : "block";
+    document.getElementById("setCount").textContent = `${rows.length} of ${currentSets.length} sets`;
+    const now = new Date();
+    for (const s of rows) {
+      const tr = document.createElement("tr");
+      const isUpcoming = s.release_date && new Date(s.release_date) > now;
+      const value = s.current_value == null
+        ? `<td class="value locked">&#128274; Vault</td>`
+        : (s.current_value === 0 && isUpcoming) ? `<td class="value locked">Not yet released</td>`
+        : `<td class="value">${formatPrice(s.current_value)}</td>`;
+      const m = mine[s.id];
+      tr.innerHTML = `<td class="name"><a data-act="checklist">${s.name}</a></td><td class="date">${(s.release_date || "").slice(0, 10)}</td>${value}
+        <td class="act"><button class="link-pill ${m && m.cards ? "has" : ""}" data-act="checklist" data-pill="${s.id}">${pillText(s.id)}</button></td>
+        <td class="act"><button class="link-pill ${isLocked ? "locked" : ""}" data-act="history">${isLocked ? "&#128274; History" : "History"}</button></td>`;
+      tr.querySelectorAll("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); openModal(s, el.dataset.act); }));
+      tileGrid.appendChild(tr);
+    }
+  }
+  document.getElementById("setFilter").addEventListener("input", (e) => { setFilter = e.target.value; render(); });
+
+  // ---- modal with two tabs ----
+  let modalSet = null, modalTab = "checklist";
+  async function openModal(set, tab) {
+    modalSet = set; modalTab = tab || "checklist";
     modalTitle.textContent = set.name;
     modalOverlay.classList.add("open");
+    renderModal();
+  }
+  function renderModal() {
+    modalBody.innerHTML = `<div class="modal-tabs">
+      <button class="modal-tab ${modalTab === "checklist" ? "active" : ""}" data-tab="checklist">Checklist</button>
+      <button class="modal-tab ${modalTab === "history" ? "active" : ""}" data-tab="history">History</button>
+    </div><div id="modalPane"></div>`;
+    modalBody.querySelectorAll(".modal-tab").forEach((b) => b.addEventListener("click", () => { modalTab = b.dataset.tab; renderModal(); }));
+    if (modalTab === "history") renderHistory(modalSet); else renderChecklist(modalSet);
+  }
 
+  async function renderHistory(set) {
+    const pane = document.getElementById("modalPane");
     if (isLocked) {
-      modalBody.innerHTML = `<div class="modal-locked">
-        <p>Historical price trends are a Tome Vault benefit.</p>
-        <a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Vault</a>
-      </div>`;
+      pane.innerHTML = `<div class="modal-locked"><p>The cost-to-complete history is a Tome Vault benefit.</p><a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Vault</a><div class="modal-open-cl">The checklist for this set is free: <a id="goChecklist">open the checklist</a>.</div></div>`;
+      document.getElementById("goChecklist").addEventListener("click", () => { modalTab = "checklist"; renderModal(); });
       return;
     }
-
-    modalBody.innerHTML = `<div class="modal-chart-wrap"><canvas id="historyCanvas"></canvas></div>`;
+    pane.innerHTML = `<div class="modal-chart-wrap"><canvas id="historyCanvas"></canvas></div><div class="modal-open-cl"><a id="goChecklist">Open the checklist</a> for this set.</div>`;
+    document.getElementById("goChecklist").addEventListener("click", () => { modalTab = "checklist"; renderModal(); });
     try {
       const url = `${API_BASE}/api/sets/${encodeURIComponent(set.id)}/history?game=${encodeURIComponent(currentGame)}${accessQueryString()}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const points = (data.history || []).map((h) => ({ x: h.date, y: h.value }));
-      const canvas = document.getElementById("historyCanvas");
-      new Chart(canvas, {
+      const data = await (await fetch(url)).json();
+      const hist = data.history || [];
+      new Chart(document.getElementById("historyCanvas"), {
         type: "line",
-        data: { datasets: [{ label: "Cost to Complete", data: points, borderColor: "#0D7959", backgroundColor: "#0D7959", pointRadius: 3, tension: 0.1 }] },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: {
-            x: { type: "time", time: { unit: "week" }, ticks: { color: "#9a9a92" }, grid: { color: "#262a26" } },
-            y: { ticks: { color: "#9a9a92" }, grid: { color: "#262a26" }, title: { display: true, text: "USD", color: "#9a9a92" } },
-          },
-          plugins: { legend: { display: false } },
-        },
+        data: { labels: hist.map((h) => h.date), datasets: [{ label: "Cost to Complete", data: hist.map((h) => h.value), borderColor: "#0D7959", backgroundColor: "#0D7959", pointRadius: 2, tension: 0.1 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          scales: { x: { ticks: { color: "#9a9a92", maxTicksLimit: 8 }, grid: { color: "#262a26" } },
+                    y: { ticks: { color: "#9a9a92", callback: (v) => money.format(v) }, grid: { color: "#262a26" } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => money.format(c.parsed.y) } } } },
       });
-    } catch (err) {
-      modalBody.innerHTML = `<div class="modal-locked"><p>Error loading history.</p></div>`;
-      console.error(err);
+    } catch (err) { pane.innerHTML = `<div class="modal-locked"><p>Error loading history.</p></div>`; console.error(err); }
+  }
+
+  // ---- checklist ----
+  // One static bundle per game (cards/<game>.json, built from public card databases, gzip-served by GitHub Pages),
+  // loaded once and indexed by set id. No worker, no KV, no JustTCG involved.
+  const bundles = {};
+  async function loadCards(game, setId) {
+    if (bundles[game] === undefined) {
+      try { const r = await fetch(`${CARDS_BASE}/${encodeURIComponent(game)}.json`); bundles[game] = r.ok ? await r.json() : {}; } catch (e) { bundles[game] = {}; }
     }
+    return bundles[game][setId] || null;
+  }
+  let cl = null; // {game,setId,list,owned,updated_at,mode,dirty,timer,filter}
+  async function renderChecklist(set) {
+    const pane = document.getElementById("modalPane");
+    pane.innerHTML = `<div class="modal-locked"><p>Loading card list…</p></div>`;
+    const list = await loadCards(currentGame, set.id);
+    if (!list) {
+      pane.innerHTML = `<div class="modal-locked"><p>No checklist for this set yet. Promo sets, trainer kits and brand-new releases are added as public card lists become available.</p></div>`;
+      return;
+    }
+    // local first, then server; newest updated_at wins
+    let rec = readLocal(currentGame, set.id) || { owned: {}, updated_at: 0 };
+    if (hasSid()) {
+      try {
+        const r = await fetch(`${API_BASE}/api/checklist/${encodeURIComponent(set.id)}?game=${encodeURIComponent(currentGame)}&sid=${encodeURIComponent(sidOf())}`);
+        if (r.ok) { const srv = await r.json(); if ((srv.updated_at || 0) > (rec.updated_at || 0)) { rec = { owned: srv.owned || {}, updated_at: srv.updated_at }; writeLocal(currentGame, set.id, rec); } }
+      } catch (e) {}
+    }
+    cl = { game: currentGame, setId: set.id, set, list, owned: rec.owned || {}, updated_at: rec.updated_at || 0, mode: localStorage.getItem("tome_cl_mode") || "base", dirty: false, timer: null, filter: "", status: "" };
+    drawChecklist();
+  }
+  const isOfficial = (c) => { const n = parseInt(String(c.n), 10); return !Number.isFinite(n) || !cl.list.official || n <= cl.list.official; };
+  function tallies() {
+    const cards = cl.list.cards;
+    const base = cards.filter(isOfficial);
+    const ownedAny = (c) => (cl.owned[c.n] || []).length > 0;
+    const byPrint = {};
+    for (const c of cards) for (const v of c.v) { byPrint[v] ||= { have: 0, total: 0 }; byPrint[v].total++; if ((cl.owned[c.n] || []).includes(v)) byPrint[v].have++; }
+    const master = { have: Object.values(byPrint).reduce((a, x) => a + x.have, 0), total: Object.values(byPrint).reduce((a, x) => a + x.total, 0) };
+    return { base: { have: base.filter(ownedAny).length, total: base.length }, master, byPrint, ownedCards: cards.filter(ownedAny).length };
+  }
+  function drawChecklist() {
+    const pane = document.getElementById("modalPane");
+    const t = tallies();
+    const printings = Object.keys(t.byPrint);
+    const head = cl.mode === "base" ? t.base : t.master;
+    const unit = cl.mode === "base" ? "cards" : "printings";
+    const valueBlock = isLocked
+      ? `<div class="cl-money"><div><div class="k">Set value</div><div class="v locked">&#128274; Vault</div></div><div><div class="k">Cost to complete</div><div class="v locked">&#128274; Vault</div></div></div>`
+      : `<div class="cl-money"><div><div class="k">Set value (JustTCG)</div><div class="v">${formatPrice(cl.set.current_value)}</div></div><div><div class="k">Owned</div><div class="v">${t.ownedCards} of ${cl.list.total} cards</div></div></div>`;
+    const rows = cl.list.cards.filter((c) => !cl.filter || c.name.toLowerCase().includes(cl.filter) || String(c.n).includes(cl.filter)).map((c) => {
+      const o = cl.owned[c.n] || [];
+      const cells = printings.map((pName) => c.v.includes(pName) ? `<td class="chk"><input type="checkbox" data-n="${c.n}" data-v="${pName}" ${o.includes(pName) ? "checked" : ""}></td>` : `<td class="chk"></td>`).join("");
+      return `<tr class="${o.length ? "owned" : ""}"><td class="num">${c.n}</td><td class="name">${c.name}</td><td class="rar">${c.r || ""}</td>${cells}</tr>`;
+    }).join("");
+    pane.innerHTML = `
+      <div class="cl-top">
+        <span class="mode"><button data-mode="base" class="${cl.mode === "base" ? "active" : ""}">Base set</button><button data-mode="master" class="${cl.mode === "master" ? "active" : ""}">Master set</button></span>
+        <span class="cl-tally">Owned <strong>${head.have}</strong> &middot; Remaining <strong>${head.total - head.have}</strong> of ${head.total} ${unit}</span>
+        <input class="cl-filter" id="clFilter" placeholder="Find a card" value="${cl.filter}">
+        <span class="cl-save ${cl.status === "Saving…" ? "saving" : ""}" id="clSave">${cl.status}</span>
+      </div>
+      ${valueBlock}
+      <div class="cl-scroll"><table class="cl-table"><thead><tr><th>#</th><th>Card</th><th>Rarity</th>${printings.map((pName) => `<th>${pName}<br><span style="font-weight:400">${t.byPrint[pName].have}/${t.byPrint[pName].total}</span></th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="cl-tools">
+        <button id="clExport">Export JSON</button><button id="clImport">Import JSON</button><input type="file" id="clFile" accept="application/json" style="display:none">
+        <span>${cl.list.official ? `Base set = cards 1–${cl.list.official}, any printing. Master set = every printing of every card.` : "Master set = every printing of every card."}</span>
+      </div>
+      ${hasSid() ? "" : `<div class="cl-note">Progress is saved in this browser only. Open the tracker from your Tome account on read.tomecollective.com and it saves across devices.</div>`}`;
+    pane.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { cl.mode = b.dataset.mode; localStorage.setItem("tome_cl_mode", cl.mode); drawChecklist(); }));
+    pane.querySelectorAll("input[type=checkbox]").forEach((box) => box.addEventListener("change", () => {
+      const n = box.dataset.n, v = box.dataset.v; const cur = new Set(cl.owned[n] || []);
+      if (box.checked) cur.add(v); else cur.delete(v);
+      if (cur.size) cl.owned[n] = [...cur].sort(); else delete cl.owned[n];
+      cl.updated_at = Date.now(); writeLocal(cl.game, cl.setId, { owned: cl.owned, updated_at: cl.updated_at });
+      scheduleSave(); refreshTallies();
+    }));
+    const f = document.getElementById("clFilter");
+    f.addEventListener("input", () => { cl.filter = f.value.trim().toLowerCase(); const pos = f.selectionStart; drawChecklist(); const nf = document.getElementById("clFilter"); nf.focus(); nf.setSelectionRange(pos, pos); });
+    document.getElementById("clExport").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify({ game: cl.game, set: cl.setId, owned: cl.owned, updated_at: cl.updated_at }, null, 1)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `tome-checklist-${cl.setId}.json`; a.click();
+    });
+    document.getElementById("clImport").addEventListener("click", () => document.getElementById("clFile").click());
+    document.getElementById("clFile").addEventListener("change", async (e) => {
+      try { const d = JSON.parse(await e.target.files[0].text()); if (d && d.owned && typeof d.owned === "object") { cl.owned = d.owned; cl.updated_at = Date.now(); writeLocal(cl.game, cl.setId, { owned: cl.owned, updated_at: cl.updated_at }); scheduleSave(); drawChecklist(); } } catch (err) { alert("That file is not a Tome checklist export."); }
+    });
+  }
+  function refreshTallies() {
+    // cheap partial update: redraw tallies and pill without rebuilding the table
+    const t = tallies(); const head = cl.mode === "base" ? t.base : t.master;
+    const el = document.querySelector(".cl-tally"); if (el) el.innerHTML = `Owned <strong>${head.have}</strong> &middot; Remaining <strong>${head.total - head.have}</strong> of ${head.total} ${cl.mode === "base" ? "cards" : "printings"}`;
+    document.querySelectorAll(".cl-table thead th").forEach((th, i) => { if (i < 3) return; const name = Object.keys(t.byPrint)[i - 3]; th.innerHTML = `${name}<br><span style="font-weight:400">${t.byPrint[name].have}/${t.byPrint[name].total}</span>`; });
+    document.querySelectorAll(".cl-table tbody tr").forEach((tr) => { const n = tr.querySelector("input")?.dataset.n; if (n != null) tr.classList.toggle("owned", (cl.owned[n] || []).length > 0); });
+    const ownedBox = document.querySelector(".cl-money .v:not(.locked)"); if (ownedBox && !isLocked) { const vs = document.querySelectorAll(".cl-money .v"); if (vs[1]) vs[1].textContent = `${t.ownedCards} of ${cl.list.total} cards`; }
+    mine[cl.setId] = { cards: t.ownedCards, updated_at: cl.updated_at };
+    const pill = document.querySelector(`[data-pill="${cl.setId}"]`); if (pill) { pill.textContent = pillText(cl.setId); pill.classList.toggle("has", t.ownedCards > 0); }
+  }
+  function setStatus(txt) { cl.status = txt; const el = document.getElementById("clSave"); if (el) { el.textContent = txt; el.classList.toggle("saving", txt === "Saving…"); } }
+  function scheduleSave() {
+    if (!hasSid()) { setStatus("Saved in this browser"); return; }
+    cl.dirty = true; setStatus("Saving…");
+    clearTimeout(cl.timer); cl.timer = setTimeout(saveNow, 1500);
+  }
+  async function saveNow() {
+    if (!cl || !cl.dirty || !hasSid()) return;
+    const snap = { owned: cl.owned, updated_at: cl.updated_at };
+    try {
+      const r = await fetch(`${API_BASE}/api/checklist/${encodeURIComponent(cl.setId)}?game=${encodeURIComponent(cl.game)}&sid=${encodeURIComponent(sidOf())}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snap) });
+      if (r.status === 409) { const srv = await r.json(); cl.owned = srv.owned || {}; cl.updated_at = srv.updated_at; writeLocal(cl.game, cl.setId, { owned: cl.owned, updated_at: cl.updated_at }); cl.dirty = false; setStatus("Updated from another device"); drawChecklist(); return; }
+      if (r.status === 429) { cl.timer = setTimeout(saveNow, 1500); return; }
+      if (!r.ok) throw new Error("save " + r.status);
+      cl.dirty = false; setStatus("Saved");
+    } catch (e) { setStatus("Not saved yet — will retry"); /* localStorage holds it; the next change retries */ }
   }
 
   document.getElementById("modalClose").addEventListener("click", () => modalOverlay.classList.remove("open"));

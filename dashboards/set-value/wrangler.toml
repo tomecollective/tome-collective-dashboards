@@ -6,6 +6,14 @@ compatibility_date = "2026-01-01"
 binding = "SET_VALUE_KV"
 id = "f1bcbe15c77b4d9da98573cb0fb9d1d6"
 
+# Free per-set checklists (card ticks keyed by Beehiiv subscription id). Create once:
+#   npx wrangler d1 create tome-checklists      -> paste the database_id below
+#   npx wrangler d1 execute tome-checklists --remote --file=./migrations/0001_checklists.sql
+[[d1_databases]]
+binding = "CHECKLISTS"
+database_name = "tome-checklists"
+database_id = "f8687190-8f8a-4872-bf70-c3ccd782244f"
+
 [[services]]
 binding = "AUTH"
 service = "tome-proxy"

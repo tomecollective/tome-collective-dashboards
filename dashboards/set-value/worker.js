@@ -163,12 +163,92 @@ async function snapshotSetValues(env, game) {
   return { game, setsFound: sets.length, snapshotted: sets.length - skippedNoValue, skippedNoValue };
 }
 
+// ---- Checklist storage (D1) ---------------------------------------------------
+// Per-set card checklists are a free feature for every reader. The card lists themselves are static JSON
+// files served by GitHub Pages next to the page (dashboards/set-value/cards/<game>/<setId>.json), built once
+// from public card databases; nothing here touches JustTCG. A reader's progress is keyed by the Beehiiv
+// subscription id the page already receives (sid). The sid is an identifier, not a credential: it unlocks
+// nothing priced, and the only thing stored against it is which cards are ticked. D1, not KV: the daily
+// indexer already spends ~270 KV writes a day and a checklist produces a write per save.
+const SID_RE = /^sub_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SETID_RE = /^[a-z0-9][a-z0-9._-]{0,120}$/;
+const OWNED_MAX_BYTES = 64 * 1024;
+const PUT_MIN_INTERVAL_MS = 1000;
+
+function checklistParams(url) {
+  const game = url.searchParams.get("game");
+  const sid = (url.searchParams.get("sid") || "").trim();
+  const setId = decodeURIComponent(url.pathname.split("/")[3] || "");
+  return { game, sid, setId };
+}
+
+async function handleChecklistGet(url, env) {
+  const { game, sid, setId } = checklistParams(url);
+  if (!GAMES.includes(game)) return Response.json({ error: "bad game" }, { status: 400 });
+  if (!SID_RE.test(sid)) return Response.json({ error: "sid required" }, { status: 400 });
+  if (!env.CHECKLISTS) return Response.json({ error: "checklist storage not configured" }, { status: 503 });
+  if (setId === "mine") {
+    // Every set this reader has progress on, as counts, for the tile pills. One query.
+    const { results } = await env.CHECKLISTS.prepare("SELECT set_id, owned, updated_at FROM checklists WHERE sid = ?1 AND game = ?2").bind(sid, game).all();
+    const sets = {};
+    for (const r of results || []) {
+      let owned = {}; try { owned = JSON.parse(r.owned) || {}; } catch (e) {}
+      let cards = 0, printings = 0;
+      for (const v of Object.values(owned)) { if (Array.isArray(v) && v.length) { cards++; printings += v.length; } }
+      sets[r.set_id] = { cards, printings, updated_at: r.updated_at };
+    }
+    return Response.json({ game, sets });
+  }
+  if (!SETID_RE.test(setId)) return Response.json({ error: "bad set id" }, { status: 400 });
+  const row = await env.CHECKLISTS.prepare("SELECT owned, updated_at FROM checklists WHERE sid = ?1 AND game = ?2 AND set_id = ?3").bind(sid, game, setId).first();
+  if (!row) return Response.json({ game, set_id: setId, owned: {}, updated_at: null });
+  let owned = {}; try { owned = JSON.parse(row.owned) || {}; } catch (e) {}
+  return Response.json({ game, set_id: setId, owned, updated_at: row.updated_at });
+}
+
+async function handleChecklistPut(request, url, env) {
+  const { game, sid, setId } = checklistParams(url);
+  if (!GAMES.includes(game)) return Response.json({ error: "bad game" }, { status: 400 });
+  if (!SID_RE.test(sid)) return Response.json({ error: "sid required" }, { status: 400 });
+  if (!SETID_RE.test(setId)) return Response.json({ error: "bad set id" }, { status: 400 });
+  if (!env.CHECKLISTS) return Response.json({ error: "checklist storage not configured" }, { status: 503 });
+  const text = await request.text();
+  if (text.length > OWNED_MAX_BYTES + 4096) return Response.json({ error: "too large" }, { status: 413 });
+  let body; try { body = JSON.parse(text); } catch (e) { return Response.json({ error: "bad json" }, { status: 400 }); }
+  const owned = body && typeof body.owned === "object" && body.owned && !Array.isArray(body.owned) ? body.owned : null;
+  if (!owned) return Response.json({ error: "owned object required" }, { status: 400 });
+  // Normalise: card number -> sorted list of short printing labels; drop empties and anything odd.
+  const clean = {};
+  for (const [k, v] of Object.entries(owned)) {
+    if (!/^[A-Za-z0-9._/-]{1,24}$/.test(k) || !Array.isArray(v)) continue;
+    const labels = [...new Set(v.filter((x) => typeof x === "string" && /^[A-Za-z0-9 ]{1,24}$/.test(x)))].sort();
+    if (labels.length) clean[k] = labels;
+  }
+  const serialized = JSON.stringify(clean);
+  if (serialized.length > OWNED_MAX_BYTES) return Response.json({ error: "too large" }, { status: 413 });
+  const now = Date.now();
+  const updatedAt = Number.isFinite(body.updated_at) ? Math.min(body.updated_at, now) : now;
+  const prev = await env.CHECKLISTS.prepare("SELECT updated_at, saved_at FROM checklists WHERE sid = ?1 AND game = ?2 AND set_id = ?3").bind(sid, game, setId).first();
+  if (prev && now - (prev.saved_at || 0) < PUT_MIN_INTERVAL_MS) return Response.json({ error: "slow down", retry_after_ms: PUT_MIN_INTERVAL_MS }, { status: 429 });
+  if (prev && prev.updated_at > updatedAt) {
+    // The server copy is newer (another device saved after this one's last change): hand it back instead of overwriting.
+    const row = await env.CHECKLISTS.prepare("SELECT owned, updated_at FROM checklists WHERE sid = ?1 AND game = ?2 AND set_id = ?3").bind(sid, game, setId).first();
+    let o = {}; try { o = JSON.parse(row.owned) || {}; } catch (e) {}
+    return Response.json({ ok: false, conflict: true, owned: o, updated_at: row.updated_at }, { status: 409 });
+  }
+  await env.CHECKLISTS.prepare(
+    "INSERT INTO checklists (sid, game, set_id, owned, updated_at, saved_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) " +
+    "ON CONFLICT(sid, game, set_id) DO UPDATE SET owned = excluded.owned, updated_at = excluded.updated_at, saved_at = excluded.saved_at"
+  ).bind(sid, game, setId, serialized, updatedAt, now).run();
+  return Response.json({ ok: true, updated_at: updatedAt, cards: Object.keys(clean).length });
+}
+
 // ---- HTTP surface -----------------------------------------------------------
 
 function withCors(response) {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token, X-Tome-Key, X-Tome-Sub");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -197,6 +277,12 @@ async function handleRequest(request, env) {
     return Response.json(result);
   }
 
+  if (url.pathname.startsWith("/api/checklist/")) {
+    if (request.method === "GET") return handleChecklistGet(url, env);
+    if (request.method === "PUT") return handleChecklistPut(request, url, env);
+    return Response.json({ error: "method not allowed" }, { status: 405 });
+  }
+
   if (url.pathname === "/api/sets") {
     const game = url.searchParams.get("game");
     if (!GAMES.includes(game)) {
@@ -206,8 +292,9 @@ async function handleRequest(request, env) {
     const idsRaw = await env.SET_VALUE_KV.get(indexKey(game));
     const ids = idsRaw ? JSON.parse(idsRaw) : [];
     const sets = [];
-    for (const id of ids) {
-      const raw = await env.SET_VALUE_KV.get(setKey(game, id));
+    // Read the records in parallel: 217 sequential KV gets made the Pokémon tab take several seconds.
+    const raws = await Promise.all(ids.map((id) => env.SET_VALUE_KV.get(setKey(game, id))));
+    for (const raw of raws) {
       if (!raw) continue;
       const record = JSON.parse(raw);
       sets.push({
