@@ -283,10 +283,9 @@ function countSince(mark) {
   assert.equal(payload.players[payload.players.length - 1].id, p1.id, "Out player sorted to the bottom");
   assert.ok(payload.players.filter((p) => p.availability !== "out").every((p) => Number.isInteger(p.ovrRank)), "everyone else ranked");
   assert.equal(payload.players[0].ovrRank, 1, "best available player is #1");
-  // Proj = 75% Rotowire + 25% L10 (10 current-season games -> full L10 weight); YTD never enters Proj.
-  assert.equal(p1.objectives.PTS.rotowireProj, 30);
-  assert.equal(p1.objectives.PTS.projSource, "rotowire+l10");
-  assert.equal(p1.objectives.PTS.proj, Math.round((0.75 * 30 + 0.25 * p1.objectives.PTS.l10) * 10) / 10);
+  // Proj is the pure Rotowire number (L10 only enters the rank blend, never Proj); YTD never enters either.
+  assert.equal(p1.objectives.PTS.proj, 30);
+  assert.equal(p1.objectives.PTS.projSource, "rotowire");
   assert.equal(p1.objectives.REB.projSource, "tbd", "no Rotowire uploaded for REB: stays TBD, no L10 fallback");
   assert.equal(p1.objectives.REB.proj, null);
   assert.equal(p1.objectives.PTS.gamesPlayedL10, 10, "L10 uses the last 10 of 12 current-season games");
@@ -451,6 +450,9 @@ function countSince(mark) {
   // the harness can't fake, so just assert the WNBA/NBA dispatch strings).
   assert.equal(T.LEAGUE_CRONS.WNBA, "*/30 * * * *");
   assert.equal(T.LEAGUE_CRONS.NBA, "7-59/15 * * * *");
+  // The WNBA season window ends in the real calendar (Nov 3 2026), so keep the cron
+  // tests in season no matter what day this suite runs.
+  T.LEAGUES.WNBA.seasonActive = { start: "2026-05-01", end: "2099-12-31" };
   const before = calls.length;
   await worker.scheduled({ cron: T.LEAGUE_CRONS.NBA }, env);
   if (!T.isSeasonActive("NBA", T.todayStr())) assert.equal(calls.length, before, "NBA cron skipped out of season");
@@ -485,83 +487,83 @@ function countSince(mark) {
   console.log("http surface + cron dispatch ok");
 }
 
-// -- Proj blend: Rotowire + L10 (Classic = PTS) -------------------------------------------
+// -- Rank blend: rank by Rotowire Proj blended with rank by L10 (Classic = PTS) ----------------
 {
   const cfg = T.LEAGUES.NBA, date = "2026-11-05";
   const gids = Array.from({ length: 10 }, (_, i) => 500 + i);
-  // [name, injury status, L10/YTD points per game]
-  const spec = [
-    ["SGA Star", null, 28],
-    ["Luka Hot", null, 38],
-    ["Healthy NoRow", null, 20],
-    ["Questionable NoRow", "Questionable", 20],
-    ["Out NoRow", "Out", 20],
-    ["Zero Projection", null, 15],
-    ["Few Games", null, 30],
-  ];
-  const roster = spec.map(([name], i) => ({ id: i + 1, name, teamId: 1, team: "AAA" }));
-  const stats = {};
-  spec.forEach(([name, , ppg], i) => {
-    stats[i + 1] = {};
-    const n = name === "Few Games" ? 2 : 10; // only 2 games played -> L10 weight scales down
-    gids.slice(0, n).forEach((g, k) => { stats[i + 1][g] = { gid: g, date: `2026-10-${String(20 + k)}`, pts: ppg }; });
-  });
-  const snap = {
-    status: "done", date, league: "NBA", schema: 2,
-    games: [{ id: 9, homeId: 1, awayId: 2, homeAbbr: "AAA", awayAbbr: "BBB", status: "pre", datetime: null }],
-    teamIds: [1], roster,
-    injuries: spec.map(([, st], i) => (st ? { playerId: i + 1, status: st } : null)).filter(Boolean),
-    last10GameIds: gids, ytdGameIds: gids, seasons: [2026], recentGames: [], stats, adv: {},
-    pendingChunks: [], totalPlayers: roster.length, finishedAt: Date.now(), startedAt: Date.now(),
+  const build = (spec, gamesByName = {}) => {
+    const roster = spec.map(([name], i) => ({ id: i + 1, name, teamId: 1, team: "AAA" }));
+    const stats = {};
+    spec.forEach(([name, ppg], i) => {
+      stats[i + 1] = {};
+      const n = gamesByName[name] ?? 10;
+      gids.slice(0, n).forEach((g, k) => { stats[i + 1][g] = { gid: g, date: `2026-10-${String(20 + k)}`, pts: ppg }; });
+    });
+    return {
+      status: "done", date, league: "NBA", schema: 2,
+      games: [{ id: 9, homeId: 1, awayId: 2, homeAbbr: "AAA", awayAbbr: "BBB", status: "pre", datetime: null }],
+      teamIds: [1], roster,
+      injuries: spec.map(([, , , st], i) => (st ? { playerId: i + 1, status: st } : null)).filter(Boolean),
+      last10GameIds: gids, ytdGameIds: gids, seasons: [2026], recentGames: [], stats, adv: {},
+      pendingChunks: [], totalPlayers: roster.length, finishedAt: Date.now(), startedAt: Date.now(),
+    };
   };
-  const rotowire = (rows) => ({ NBA: { [date]: { objectives: { Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100 }] }, projections: { PTS: Object.fromEntries(rows.map(([n, v]) => [n.toLowerCase(), { name: n, value: v }])) } } } });
-  const render = (rows) => T.renderDayPayload(cfg, snap, { mode: "Classic", schedule: rotowire(rows) });
-  const byName = (payload, n) => payload.players.find((p) => p.name === n);
+  const sched = (rows) => ({ NBA: { [date]: { objectives: { Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100 }] }, projections: rows ? { PTS: Object.fromEntries(rows.map(([n, v]) => [n.toLowerCase(), { name: n, value: v }])) } : undefined } } });
+  const render = (snap, rows) => T.renderDayPayload(cfg, snap, { mode: "Classic", schedule: sched(rows) });
+  const get = (payload, n) => payload.players.find((p) => p.name === n);
 
-  // Big Rotowire gap (SGA 32 vs Luka 25): SGA stays ahead despite Luka's far better L10.
-  let out = render([["SGA Star", 32], ["Luka Hot", 25], ["Zero Projection", 0], ["Few Games", 25]]);
-  const sga = byName(out, "SGA Star").objectives.PTS, luka = byName(out, "Luka Hot").objectives.PTS;
-  assert.equal(sga.proj, 31); // 0.75*32 + 0.25*28
-  assert.equal(luka.proj, 28.3); // 0.75*25 + 0.25*38 = 28.25 -> 28.3
-  assert.equal(sga.projSource, "rotowire+l10");
-  assert.equal(sga.rotowireProj, 32);
-  assert.ok(byName(out, "SGA Star").ovrRank < byName(out, "Luka Hot").ovrRank, "big Rotowire edge beats a hot L10");
+  // spec rows: [name, L10 ppg, (unused), injury]
+  // SGA 28.48 vs Luka 27.98 Rotowire; Luka has the far better L10 (rank 1 vs SGA rank 6).
+  const fillers = [["F1", 33], ["F2", 32], ["F3", 31], ["F4", 30]];
+  const rows = [["SGA Star", 28.48], ["Luka Hot", 27.98], ...fillers.map(([n], i) => [n, 10 - i])];
+  let spec = [["SGA Star", 29], ["Luka Hot", 38], ...fillers];
+  let out = render(build(spec), rows);
+  // Proj is untouched Rotowire.
+  assert.equal(get(out, "SGA Star").objectives.PTS.proj, 28.5); // round1 of 28.48
+  assert.equal(get(out, "Luka Hot").objectives.PTS.proj, 28);
+  assert.equal(get(out, "SGA Star").objectives.PTS.projSource, "rotowire");
+  // Ranks: SGA proj #1 / L10 #6, Luka proj #2 / L10 #1 -> blended SGA 2.0, Luka 1.8: Luka ranks #1.
+  assert.equal(get(out, "SGA Star").objectives.PTS.projRank, 1);
+  assert.equal(get(out, "SGA Star").objectives.PTS.l10Rank, 6);
+  assert.equal(get(out, "Luka Hot").objectives.PTS.projRank, 2);
+  assert.equal(get(out, "Luka Hot").objectives.PTS.l10Rank, 1);
+  assert.equal(get(out, "SGA Star").objectives.PTS.l10RankWeight, 0.2);
+  assert.equal(get(out, "Luka Hot").ovrRank, 1, "much hotter L10 flips a razor-thin Rotowire gap");
+  assert.equal(get(out, "SGA Star").ovrRank, 2);
 
-  // Small Rotowire gap (SGA 26 vs Luka 25): Luka's L10 is enough to flip them.
-  out = render([["SGA Star", 26], ["Luka Hot", 25], ["Zero Projection", 0], ["Few Games", 25]]);
-  assert.equal(byName(out, "SGA Star").objectives.PTS.proj, 26.5);
-  assert.equal(byName(out, "Luka Hot").objectives.PTS.proj, 28.3);
-  assert.ok(byName(out, "Luka Hot").ovrRank < byName(out, "SGA Star").ovrRank, "small Rotowire edge loses to a much hotter L10");
+  // Modest L10 edge (Luka L10 rank 1, SGA rank 2): the Rotowire leader keeps the #1 spot.
+  spec = [["SGA Star", 36], ["Luka Hot", 38], ...fillers.map(([n, v]) => [n, v - 10])];
+  out = render(build(spec), rows);
+  assert.equal(get(out, "SGA Star").objectives.PTS.l10Rank, 2);
+  assert.equal(get(out, "SGA Star").ovrRank, 1, "a small L10 edge does not overturn the Rotowire order");
+  assert.equal(get(out, "Luka Hot").ovrRank, 2);
 
-  // YTD never enters Proj: same Rotowire and L10, wildly different YTD -> same Proj.
-  const lowYtdOut = render([["SGA Star", 32], ["Luka Hot", 25]]);
-  assert.equal(byName(lowYtdOut, "SGA Star").objectives.PTS.ytd, 28);
-  assert.equal(byName(lowYtdOut, "SGA Star").objectives.PTS.proj, 31);
+  // YTD never matters: same L10 ranks, ovrRank unchanged when the YTD windows differ.
+  assert.equal(get(out, "SGA Star").objectives.PTS.ytd, 36); // informational only
+  assert.ok(!("ytdRank" in get(out, "SGA Star").objectives.PTS));
 
-  // Rotowire 0 (not expected to play) is never blended with L10.
-  const zero = byName(out, "Zero Projection").objectives.PTS;
-  assert.equal(zero.proj, 0);
-  assert.equal(zero.projSource, "rotowire");
+  // L10 weight ramps with games: a 2-game L10 gets 0.2 * 2/10 = 0.04, so SGA's poor L10 rank
+  // (6th) barely hurts him (0.96*1 + 0.04*6 = 1.2 vs Luka's 1.8) and he stays #1.
+  spec = [["SGA Star", 29], ["Luka Hot", 38], ...fillers];
+  out = render(build(spec, { "SGA Star": 2 }), rows);
+  assert.equal(get(out, "SGA Star").objectives.PTS.gamesPlayedL10, 2);
+  assert.equal(get(out, "SGA Star").objectives.PTS.l10RankWeight, 0.04);
+  assert.equal(get(out, "SGA Star").ovrRank, 1, "a 2-game L10 barely moves the rank");
 
-  // L10 weight ramps with games played: 2 games -> 0.25 * 2/10 = 0.05.
-  const few = byName(out, "Few Games").objectives.PTS;
-  assert.equal(few.gamesPlayedL10, 2);
-  assert.equal(few.proj, 25.3); // 0.95*25 + 0.05*30 = 25.25 -> 25.3
+  // Fallback: healthy player with no Rotowire row gets L10 as Proj; Out / questionable stay TBD.
+  spec = [["SGA Star", 29, 0, null], ["Healthy NoRow", 20, 0, null], ["Questionable NoRow", 20, 0, "Questionable"], ["Out NoRow", 20, 0, "Out"]];
+  out = render(build(spec), [["SGA Star", 28.48]]);
+  assert.equal(get(out, "Healthy NoRow").objectives.PTS.proj, 20);
+  assert.equal(get(out, "Healthy NoRow").objectives.PTS.projSource, "l10-fallback");
+  assert.equal(get(out, "Questionable NoRow").objectives.PTS.projSource, "tbd");
+  assert.equal(get(out, "Questionable NoRow").objectives.PTS.proj, null);
+  assert.equal(get(out, "Out NoRow").objectives.PTS.projSource, "tbd");
+  assert.equal(get(out, "Out NoRow").ovrRank, null, "Out player never ranked");
 
-  // Fallback: healthy player with no Rotowire row gets L10; Out / questionable stay TBD.
-  const healthy = byName(out, "Healthy NoRow").objectives.PTS;
-  assert.equal(healthy.proj, 20);
-  assert.equal(healthy.projSource, "l10-fallback");
-  assert.equal(healthy.rotowireProj, null);
-  assert.equal(byName(out, "Questionable NoRow").objectives.PTS.projSource, "tbd");
-  assert.equal(byName(out, "Questionable NoRow").objectives.PTS.proj, null);
-  assert.equal(byName(out, "Out NoRow").objectives.PTS.projSource, "tbd");
-  assert.equal(byName(out, "Out NoRow").ovrRank, null, "Out player never ranked");
-
-  // No Rotowire uploaded at all for the stat: everyone is TBD (no slate-wide L10 fallback).
-  const none = T.renderDayPayload(cfg, snap, { mode: "Classic", schedule: { NBA: { [date]: { objectives: { Classic: [{ stat: "PTS", label: "PTS", dailyTeamTarget: 100 }] } } } } });
+  // No Rotowire uploaded for the stat: everyone TBD (no slate-wide L10 fallback).
+  const none = render(build(spec), null);
   assert.ok(none.players.every((p) => p.objectives.PTS.projSource === "tbd" && p.objectives.PTS.proj === null), "no upload -> TBD for all");
-  console.log("Proj blend (Rotowire + L10) ok");
+  console.log("Rank blend (Rotowire rank + L10 rank) ok");
 }
 
 console.log("\nALL LOCAL TESTS PASSED");
