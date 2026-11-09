@@ -371,6 +371,14 @@ header to sort.
     <span class="fd-meta" id="hx-meta"></span>
     <button class="export-btn" id="hx-csv-btn" style="margin-left:0">Download CSV</button>
   </div>
+  <div class="hx-bar hx-coll" id="hx-coll">
+    <span class="hx-lbl">Your collection</span>
+    <input type="text" class="hx-input ph-no-capture" id="hx-coll-user" placeholder="0x Flow address (or Top Shot username)" autocomplete="off" spellcheck="false" style="width:300px;max-width:100%;font-family:var(--mono,monospace);">
+    <button class="export-btn" id="hx-coll-load" style="margin-left:0">Fill my discounts</button>
+    <a href="#" id="hx-coll-forget" style="display:none;font-size:0.72rem;color:var(--text-3);">Forget</a>
+    <span class="fd-meta" id="hx-coll-status"></span>
+    <div style="flex-basis:100%;font-size:0.7rem;color:var(--text-3);line-height:1.45;">Read-only, from the public Flow blockchain: each player gets the discount for the best Moment of him you hold (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Find your Flow address in Top Shot under Settings (it starts with 0x). Never enter a password, recovery phrase or private key. Only what you type is saved, in this browser. You can still change any discount by hand.</div>
+  </div>
 
   <div id="hx-slate">
     <div id="hx-teams" class="schedule-row"></div>
@@ -402,7 +410,7 @@ header to sort.
     </table></div></div>
   </div>
 
-  <p class="note" id="hx-note">Everyone starts at 0%. Set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
+  <p class="note" id="hx-note">Everyone starts at 0%. Load your collection above to fill these in, or set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Floor / Ceiling = a typical bad / good night (20th / 80th percentile of Historic games, shown from 5 games); Low / High = single worst / best game. All before discounts. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
 </div>
 
 <div id="view-admin">
@@ -1144,6 +1152,11 @@ const hxRP = (p) => Math.ceil((p.rp * (100 - hxPct(p)) - 50) / 100);
 const hxVal = (p) => (hx.rating === "avg" ? p.avg : p.blend);
 const hxSum = (l, f) => l.reduce((a, p) => a + f(p), 0);
 const hxMean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+// Linear-interpolated percentile (q in 0..1).
+function hxPctile(a, q) {
+  const s = [...a].sort((x, y) => x - y), k = (s.length - 1) * q, f = Math.floor(k);
+  return s[f] + (s[Math.min(f + 1, s.length - 1)] - s[f]) * (k - f);
+}
 function hxSaveDisc() { try { localStorage.setItem(HX_LS, JSON.stringify(hx.disc)); } catch (e) {} }
 
 // Adds mean / blend / games to each player once (idempotent). Blend = season AVG
@@ -1176,6 +1189,13 @@ function hxPrepare(D) {
   D.players.forEach((p) => {
     p.mean = p.n_games ? hxMean(p.g) : null;
     p.l10 = p.n_games ? hxMean(p.g.slice(-10)) : null;
+    // Range: Floor / Ceiling = typical bad / good night (20th / 80th
+    // percentile of Historic games, from 5 games on); Low / High = single
+    // worst / best game on record.
+    p.floor = p.n_games >= 5 ? hxPctile(p.g, 0.2) : null;
+    p.ceil = p.n_games >= 5 ? hxPctile(p.g, 0.8) : null;
+    p.lo = p.n_games ? Math.min(...p.g) : null;
+    p.hi = p.n_games ? Math.max(...p.g) : null;
     const a = p.avg + D.shift;
     let wSum = 0, wg = 0;
     p.g.forEach((x, i) => { const w = hl ? Math.pow(0.5, (p.n_games - 1 - i) / hl) : 1; wSum += w; wg += w * x; });
@@ -1264,13 +1284,15 @@ function hxDiscButtons(p) {
   return `<span class="dsc">` + HX_PCTS.map((v) =>
     `<button data-hxn="${hxEsc(p.n)}" data-pct="${v}" class="${cur === v ? "on" : ""}" title="${HX_TIER_NAMES[v]}">${v}%</button>`).join("") + `</span>`;
 }
+const hxRangeCells = (p) => `<td>${hxF1(p.floor)}</td><td>${hxF1(p.ceil)}</td><td style="color:var(--text-3)">${hxF1(p.lo)}</td><td style="color:var(--text-3)">${hxF1(p.hi)}</td>`;
+const hxRangeCsv = (p) => [p.floor, p.ceil, p.lo, p.hi].map((x) => (x == null ? "" : x.toFixed(1)));
 const hxRpCell = (p) => (hxPct(p) ? `<span class="hx-was">${p.rp}</span>${hxRP(p)}` : `${p.rp}`);
 function hxHead(id, cols, st) {
   document.getElementById(id).innerHTML = "<tr>" + cols.map((c) =>
     `<th data-k="${c.k || ""}" class="${c.k && c.k === st.k ? (st.d === 1 ? "sorted-asc" : "sorted-desc") : ""}"${c.k ? "" : ' style="cursor:default"'}>${c.t}</th>`).join("") + "</tr>";
 }
 function hxSorter(st) {
-  const g = (p) => st.k === "val" ? hxVal(p) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : p[st.k];
+  const g = (p) => st.k === "val" ? hxVal(p) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : (p[st.k] ?? -1);
   return (a, b) => { const A = g(a), B = g(b); return (A > B ? 1 : A < B ? -1 : 0) * st.d; };
 }
 function hxRender() {
@@ -1289,10 +1311,10 @@ function hxRender() {
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shownSlate = list;
-    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10", k: "l10" }, { t: "Discount" }, { t: "Skip" }], st);
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10", k: "l10" }, { t: "Floor", k: "floor" }, { t: "Ceiling", k: "ceil" }, { t: "Low", k: "lo" }, { t: "High", k: "hi" }, { t: "Discount" }, { t: "Skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
-      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${hxF1(p.l10)}</td><td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
+      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${hxF1(p.l10)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
     const r = document.getElementById("hx-result");
     if (hx.result && hx.result.best.length) {
       const L = [...hx.result.best].sort((a, b) => hxVal(b) - hxVal(a));
@@ -1308,9 +1330,9 @@ function hxRender() {
     const list = hx.players.filter((p) => (!tf || p.t === tf) && (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shown = list;
     document.getElementById("hx-pmeta").textContent = `${list.length} players · ${Object.values(hx.disc).filter((v) => v > 0).length} discounted`;
-    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp" }, { t: "Your RP" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Discount" }], st);
+    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp" }, { t: "Your RP" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Floor", k: "floor" }, { t: "Ceiling", k: "ceil" }, { t: "Low", k: "lo" }, { t: "High", k: "hi" }, { t: "Discount" }], st);
     document.getElementById("hx-players-body").innerHTML = list.map((p, i) =>
-      `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td><td>${hxDiscButtons(p)}</td></tr>`).join("");
+      `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td></tr>`).join("");
   }
 }
 // CSV of whatever table is on screen (Today's slate or Players & discounts), in the
@@ -1321,18 +1343,107 @@ function hxDownloadCSV() {
   let headers, rows, view;
   if (hx.sub === "slate") {
     view = "slate";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Skipped"];
-    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), hx.excluded.has(p.n) ? "Yes" : ""]);
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Floor", "Ceiling", "Low", "High", "Skipped"];
+    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), ...hxRangeCsv(p), hx.excluded.has(p.n) ? "Yes" : ""]);
   } else {
     view = "players";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend"];
-    rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1)]);
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Floor", "Ceiling", "Low", "High"];
+    rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), ...hxRangeCsv(p)]);
   }
   const slug = String(slate.label || "slate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   triggerDownload([headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))], `tome-edge-fastbreak-nba-historic-${view}-${slug}-${todayFileSuffix()}.csv`);
 }
 document.getElementById("hx-csv-btn").addEventListener("click", hxDownloadCSV);
 function hxSetDisc(name, pct) { if (pct) hx.disc[name] = pct; else delete hx.disc[name]; }
+
+// -- Your collection -> discounts (read-only) ------------------------------------
+// tome-topshot reads the public Top Shot collection on Flow (no sign-in, no
+// signature) and returns each player's best Moment tier. Only the typed
+// address/username is kept, in this browser; the collection stays in memory.
+const TOPSHOT_BASE = "https://tome-topshot.tomecollective.workers.dev";
+const HX_COLL_LS = "fbHistoricCollUser";
+const HX_TIER_PCT = { Ultimate: 20, Legendary: 15, Rare: 10, Fandom: 5, Common: 5 };
+// Top Shot sometimes lists a legend under another name than the Historic roster.
+const HX_NAME_ALIASES = { "penny hardaway": "anfernee hardaway", "ron artest": "metta world peace", "metta sandiford artest": "metta world peace", "john hot rod williams": "hot rod williams", "john williams": "hot rod williams" };
+function hxNorm(name) {
+  const fold = { "ø": "o", "ł": "l", "đ": "d", "æ": "ae", "œ": "oe", "ß": "ss", "ı": "i" };
+  const k = String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[øłđæœßı]/g, (c) => fold[c]).replace(/[.'’]/g, "").replace(/[-,]/g, " ").replace(/\s+/g, " ").trim();
+  return HX_NAME_ALIASES[k] || k;
+}
+// A private key is 64 hex characters; a recovery phrase is 12+ words.
+const hxLooksSecret = (v) => /^(0x)?[0-9a-fA-F]{64}$/.test(v) || v.trim().split(/\s+/).length >= 12;
+function hxCollStatus(text, isErr) {
+  const el = document.getElementById("hx-coll-status");
+  el.textContent = text;
+  el.style.color = isErr ? "#f87171" : "";
+}
+// Pure: collection body -> { disc, matched } keyed by Historic player name.
+function hxDiscFromCollection(body, players) {
+  const best = new Map();
+  for (const cp of body.players || []) {
+    const pct = HX_TIER_PCT[cp.best && cp.best.tier] || Math.max(0, ...(cp.moments || []).map((m) => HX_TIER_PCT[m.tier] || 0));
+    if (!pct) continue;
+    const k = hxNorm(cp.name);
+    best.set(k, Math.max(best.get(k) || 0, pct));
+  }
+  const disc = {};
+  for (const p of players) { const pct = best.get(hxNorm(p.n)); if (pct) disc[p.n] = pct; }
+  return { disc, matched: Object.keys(disc).length };
+}
+async function hxCollLoad() {
+  const input = document.getElementById("hx-coll-user");
+  const v = String(input.value || "").trim();
+  if (!v) { hxCollStatus("Enter your 0x Flow address first.", true); return; }
+  if (hxLooksSecret(v)) {
+    input.value = "";
+    hxCollStatus("That looks like a private key or recovery phrase. Don't share it with anyone. Enter your 0x Flow address only.", true);
+    return;
+  }
+  if (!hx.data) { hxCollStatus("Historic data is still loading. Try again in a moment.", true); return; }
+  const btn = document.getElementById("hx-coll-load");
+  btn.disabled = true;
+  hxCollStatus("Reading your collection...");
+  try {
+    const res = await fetch(`${TOPSHOT_BASE}/api/topshot/collection?user=${encodeURIComponent(v)}`, { headers: readHeaders() });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && body.locked) { hxCollStatus("Collection lookup is part of Tome Edge. Open this dashboard from the Dashboards page on read.tomecollective.com.", true); return; }
+    if (res.status === 503 && body.retry) { hxCollStatus("Couldn't confirm your subscription right now. Try again in a minute.", true); return; }
+    if (!res.ok) { hxCollStatus(body.error || `Couldn't read the collection (HTTP ${res.status}).`, true); return; }
+    if (!body.resolved) { hxCollStatus(body.message || "Couldn't find that collection. Check the 0x address in Top Shot settings.", true); return; }
+    const { disc, matched } = hxDiscFromCollection(body, hx.players);
+    hx.disc = disc;
+    hxSaveDisc();
+    hx.result = null;
+    try { localStorage.setItem(HX_COLL_LS, v); } catch (e) {}
+    document.getElementById("hx-coll-forget").style.display = "";
+    const at = new Date(body.updatedAt || Date.now()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    let msg = `Read ${Number(body.count || 0).toLocaleString()} Moments at ${at}. Discounts set for ${matched} of ${hx.players.length} Historic players.`;
+    if (body.pendingPlays) msg += ` ${body.pendingPlays} Moments are still being indexed; load again in a minute.`;
+    if (body.truncated) msg += ` Read the first ${Number(body.count).toLocaleString()} of ${Number(body.totalOwned).toLocaleString()} Moments.`;
+    hxCollStatus(msg);
+    hxRender();
+  } catch (err) {
+    hxCollStatus("Couldn't reach the collection reader. Try again in a minute.", true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+(function hxCollWire() {
+  const input = document.getElementById("hx-coll-user");
+  let saved = null;
+  try { saved = localStorage.getItem(HX_COLL_LS); } catch (e) {}
+  if (saved) { input.value = saved; document.getElementById("hx-coll-forget").style.display = ""; }
+  document.getElementById("hx-coll-load").addEventListener("click", hxCollLoad);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") hxCollLoad(); });
+  document.getElementById("hx-coll-forget").addEventListener("click", (e) => {
+    e.preventDefault();
+    try { localStorage.removeItem(HX_COLL_LS); } catch (err) {}
+    input.value = "";
+    e.target.style.display = "none";
+    hxCollStatus("Address forgotten. Your discounts stay as they are.");
+  });
+})();
 (function hxWire() {
   const $ = (id) => document.getElementById(id);
   $("view-historic").addEventListener("click", (e) => {

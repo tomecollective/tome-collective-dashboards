@@ -7,6 +7,7 @@
 //             + POST /admin/sweep-sets-range (incremental set sweep)
 
 import { normalizeName } from "../../shared/names.js";
+import { handleCollection } from "./collection.js";
 
 var FLOW_REST = "https://rest-mainnet.onflow.org/v1";
 var TOPSHOT_ADDR = "0x0b2a3299cc857e29";
@@ -735,6 +736,38 @@ async function runSetSweepRange(env, fromID, toID) {
   return { from: fromID, to: toID, setsAdded: added, flowCalls: calls, inventorySets: Object.keys(inventory).length, stoppedEarly: calls >= 44 };
 }
 
+// Edge gate for reader-facing routes (collection view). Same rules as the Fast
+// Break worker: a Beehiiv subscription id (X-Tome-Sub / ?sid=) checked with
+// tome-proxy over the AUTH binding (need=edge; Bundle includes Edge), or a
+// shared key from TOME_SUBSCRIBER_KEYS (X-Tome-Key / ?key=), or the admin token.
+// NOTE: checkEdgeAccess above sends X-Internal-Token and reads `authorized`,
+// which tome-proxy doesn't use (it wants X-Tome-Internal and answers
+// `allowed`), so its sid path never passes. Left as-is; this gate is separate.
+async function edgeGate(request, url, env) {
+  if (checkAdminAuth(request, env)) return null;
+  const keys = String(env.TOME_SUBSCRIBER_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
+  const key = request.headers.get("X-Tome-Key") || url.searchParams.get("key") || "";
+  if (key && keys.includes(key)) return null;
+  const sid = (request.headers.get("X-Tome-Sub") || url.searchParams.get("sid") || "").trim();
+  if (sid && env.AUTH && env.TOME_INTERNAL_TOKEN) {
+    try {
+      const res = await env.AUTH.fetch(new Request(
+        "https://tome-proxy/auth/subscription?sid=" + encodeURIComponent(sid) + "&need=edge",
+        { headers: { "X-Tome-Internal": env.TOME_INTERNAL_TOKEN } }
+      ));
+      if (res.status === 503) return Response.json({ error: "Could not verify your subscription right now. Try again in a minute.", retry: true }, { status: 503 });
+      if (res.ok) {
+        const body = await res.json();
+        if (body && body.allowed) return null;
+        return Response.json({ error: "The collection view is part of Tome Edge.", locked: true, reason: body?.reason || "unknown" }, { status: 401 });
+      }
+    } catch {
+      return Response.json({ error: "Could not verify your subscription right now. Try again in a minute.", retry: true }, { status: 503 });
+    }
+  }
+  return Response.json({ error: "The collection view is part of Tome Edge.", locked: true }, { status: 401 });
+}
+
 function withCors(response) {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
@@ -776,6 +809,9 @@ async function handleRequest(request, env) {
     const snap = await updateEditionsSnapshot(env, result.touched);
     delete result.touched;
     return Response.json({ ...result, snapshot: snap });
+  }
+  if (url.pathname === "/api/topshot/collection" && request.method === "GET") {
+    return handleCollection(request, env, url, edgeGate, { getPlayIdentity, getSetName });
   }
   if (url.pathname === "/api/topshot/eligible" && request.method === "GET") {
     return handleEligible(request, env, url);
