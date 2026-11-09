@@ -418,7 +418,7 @@ header to sort.
     </table></div></div>
   </div>
 
-  <p class="note" id="hx-note">Everyone starts at 0%. Load your collection above to fill these in, or set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Last 5 = the last five Historic games as bars (green beat the projection). Range = worst-to-best game as a thin line, a typical bad-to-good night (20th–80th percentile, from 5 games) as the thick bar, projection as the tick. Hover or tap any chart or ? for details. All before discounts; the CSV has the exact numbers. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
+  <p class="note" id="hx-note">Everyone starts at 0%. Load your collection above to fill these in, or set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = the last ten Historic games as bars (green beat the projection, gray within his typical range, red below his floor) with their average. Pts/RP = projection per Roster Point at your price. Range = worst-to-best game as a thin line, a typical bad-to-good night (20th–80th percentile, from 5 games) as the thick bar, projection as the tick. Hover or tap any chart or ? for details. All before discounts; the CSV has the exact numbers. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
 </div>
 
 <div id="view-admin">
@@ -1303,8 +1303,8 @@ const HX_HELP = {
   avg: "Top Shot's listed season average (Fast Break Points per game) for the player's real career.",
   blend: "Our projection. Mixes the site AVG with every Historic game this player has played, leaning on recent games. This is what the optimizer uses.",
   mean: "Plain average of all Historic games on record.",
-  l10: "Plain average of the last 10 Historic games.",
-  l5: "Bars = the last 5 Historic games, oldest to newest. Green = beat his projection, gray = fell short. Sorts by the 5-game average.",
+  l10: "Bars = the last 10 Historic games, oldest to newest. Green = beat his projection. Gray = short of it but inside his typical range. Red = below his typical bad night (floor). The number is the 10-game average, which the column sorts by.",
+  ppr: "Projected points per Roster Point, at your discounted price (projection ÷ your RP). Higher = more points for the money; handy for filling the last spots. The optimizer already balances points and price, so a high number alone doesn't make a pick.",
   range: "Thin line = worst to best Historic game. Thick bar = a typical bad night to a typical good night (20th to 80th percentile, from 5 games). Tick = projection. Numbers = typical bad – good night. Sorts by the bad-night number (floor). Hover or tap for exact values. Before discounts.",
   disc: "Your collector discount for this player: Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%. Use Fill my discounts above, or click to set by hand.",
   skip: "Leave this player out when you click Optimize lineup.",
@@ -1323,25 +1323,36 @@ function hxRangeBar(p) {
     + (p.blend != null ? `<line x1="${x(p.blend)}" x2="${x(p.blend)}" y1="1" y2="13" stroke="var(--text)" stroke-width="1.5"/>` : "")
     + `</svg><span class="hx-vlbl">${p.floor == null ? "" : Math.round(p.floor) + "–" + Math.round(p.ceil)}</span></span>`;
 }
-// Last 5 form: one bar per game, green when it beat the projection.
+// Last 10 form: one bar per game, oldest to newest. Green = beat his
+// projection; gray = short of it but inside his typical range (at or above
+// his floor); red = below his floor (a genuinely bad night).
+const HX_RED = "#f87171";
+function hxFormColor(p, v) {
+  if (p.blend != null && v >= p.blend) return "var(--green)";
+  if (p.floor != null && v < p.floor) return HX_RED;
+  return "var(--text-3)";
+}
 function hxFormBars(p) {
-  const g = p.g.slice(-5);
+  const g = p.g.slice(-10);
   if (!g.length) return `<span class="hx-vlbl">--</span>`;
   // Bars start at 15 FBP (not 0) so a 40 and a 55 look clearly different.
-  const M = hx.data.vizMax || 80, B = 15, H = 22, bw = 7, gap = 3;
-  const tip = `${p.n}, last ${g.length} (oldest to newest): ${g.map((v) => hxF1(v)).join(", ")} · avg ${hxF1(p.l5)} · projection ${hxF1(p.blend)}`;
-  const bars = g.map((v, i) => { const h = Math.max(2, ((Math.min(v, M) - B) / (M - B)) * H); return `<rect x="${i * (bw + gap)}" y="${(H - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="1" fill="${p.blend != null && v >= p.blend ? "var(--green)" : "var(--text-3)"}"/>`; }).join("");
-  return `<span class="hx-viz" tabindex="0" data-tip="${hxEsc(tip)}"><svg width="${5 * (bw + gap) - gap}" height="${H}" aria-label="${hxEsc(tip)}" role="img">${bars}</svg><span class="hx-vlbl">${hxF1(p.l5)}</span></span>`;
+  const M = hx.data.vizMax || 80, B = 15, H = 22, bw = 6, gap = 2;
+  const tip = `${p.n}, last ${g.length} (oldest to newest): ${g.map((v) => hxF1(v)).join(", ")} · avg ${hxF1(p.l10)} · projection ${hxF1(p.blend)}${p.floor != null ? " · typical night " + hxF1(p.floor) + " to " + hxF1(p.ceil) : ""}`;
+  const bars = g.map((v, i) => { const h = Math.max(2, ((Math.min(v, M) - B) / (M - B)) * H); return `<rect x="${i * (bw + gap)}" y="${(H - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="1" fill="${hxFormColor(p, v)}"/>`; }).join("");
+  return `<span class="hx-viz" tabindex="0" data-tip="${hxEsc(tip)}"><svg width="${10 * (bw + gap) - gap}" height="${H}" aria-label="${hxEsc(tip)}" role="img">${bars}</svg><span class="hx-vlbl">${hxF1(p.l10)}</span></span>`;
 }
+// Projected points per Roster Point, at your discounted price.
+const hxPPR = (p) => { const rp = hxRP(p), v = hxVal(p); return rp > 0 && v != null ? v / rp : null; };
+const hxPPRCell = (p) => { const x = hxPPR(p); return `<td>${x == null ? "--" : x.toFixed(2)}</td>`; };
 const hxRangeCells = (p) => `<td>${hxFormBars(p)}</td><td>${hxRangeBar(p)}</td>`;
-const hxRangeCsv = (p) => [p.l5, p.floor, p.ceil, p.lo, p.hi].map((x) => (x == null ? "" : x.toFixed(1)));
+const hxRangeCsv = (p) => [p.floor, p.ceil, p.lo, p.hi].map((x) => (x == null ? "" : x.toFixed(1)));
 const hxRpCell = (p) => (hxPct(p) ? `<span class="hx-was">${p.rp}</span>${hxRP(p)}` : `${p.rp}`);
 function hxHead(id, cols, st) {
   document.getElementById(id).innerHTML = "<tr>" + cols.map((c) =>
     `<th data-k="${c.k || ""}" class="${c.k && c.k === st.k ? (st.d === 1 ? "sorted-asc" : "sorted-desc") : ""}"${c.k ? "" : ' style="cursor:default"'}>${c.t}${hxHelp(c.h)}</th>`).join("") + "</tr>";
 }
 function hxSorter(st) {
-  const g = (p) => st.k === "val" ? hxVal(p) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : (p[st.k] ?? -1);
+  const g = (p) => st.k === "val" ? hxVal(p) : st.k === "ppr" ? (hxPPR(p) ?? -1) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : (p[st.k] ?? -1);
   return (a, b) => { const A = g(a), B = g(b); return (A > B ? 1 : A < B ? -1 : 0) * st.d; };
 }
 function hxRender() {
@@ -1360,10 +1371,10 @@ function hxRender() {
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shownSlate = list;
-    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp", h: "rp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Obs. avg", k: "mean", h: "mean" }, { t: "Last 10", k: "l10", h: "l10" }, { t: "Last 5", k: "l5", h: "l5" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }, { t: "Skip", h: "skip" }], st);
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp", h: "rp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Pts/RP", k: "ppr", h: "ppr" }, { t: "Obs. avg", k: "mean", h: "mean" }, { t: "Last 10", k: "l10", h: "l10" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }, { t: "Skip", h: "skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
-      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${hxF1(p.l10)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
+      `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td>${hxPPRCell(p)}<td>${hxF1(p.mean)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
     const r = document.getElementById("hx-result");
     if (hx.result && hx.result.best.length) {
       const L = [...hx.result.best].sort((a, b) => hxVal(b) - hxVal(a));
@@ -1379,9 +1390,9 @@ function hxRender() {
     const list = hx.players.filter((p) => (!tf || p.t === tf) && (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shown = list;
     document.getElementById("hx-pmeta").textContent = `${list.length} players · ${Object.values(hx.disc).filter((v) => v > 0).length} discounted`;
-    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp", h: "baserp" }, { t: "Your RP", h: "yourrp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Last 5", k: "l5", h: "l5" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }], st);
+    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp", h: "baserp" }, { t: "Your RP", h: "yourrp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Pts/RP", k: "ppr", h: "ppr" }, { t: "Last 10", k: "l10", h: "l10" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }], st);
     document.getElementById("hx-players-body").innerHTML = list.map((p, i) =>
-      `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td></tr>`).join("");
+      `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td>${hxPPRCell(p)}${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td></tr>`).join("");
   }
 }
 // CSV of whatever table is on screen (Today's slate or Players & discounts), in the
@@ -1392,12 +1403,12 @@ function hxDownloadCSV() {
   let headers, rows, view;
   if (hx.sub === "slate") {
     view = "slate";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Last 5", "Floor", "Ceiling", "Low", "High", "Skipped"];
-    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), ...hxRangeCsv(p), hx.excluded.has(p.n) ? "Yes" : ""]);
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Pts/RP", "Obs. avg", "Last 10", "Floor", "Ceiling", "Low", "High", "Skipped"];
+    rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), hxPPR(p) == null ? "" : hxPPR(p).toFixed(3), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), ...hxRangeCsv(p), hx.excluded.has(p.n) ? "Yes" : ""]);
   } else {
     view = "players";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Last 5", "Floor", "Ceiling", "Low", "High"];
-    rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), ...hxRangeCsv(p)]);
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Pts/RP", "Last 10", "Floor", "Ceiling", "Low", "High"];
+    rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), hxPPR(p) == null ? "" : hxPPR(p).toFixed(3), p.l10 == null ? "" : p.l10.toFixed(1), ...hxRangeCsv(p)]);
   }
   const slug = String(slate.label || "slate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   triggerDownload([headers.join(","), ...rows.map((r) => r.map(csvEscape).join(","))], `tome-edge-fastbreak-nba-historic-${view}-${slug}-${todayFileSuffix()}.csv`);
