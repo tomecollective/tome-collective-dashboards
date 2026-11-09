@@ -7,7 +7,7 @@
 //             + POST /admin/sweep-sets-range (incremental set sweep)
 
 import { normalizeName } from "../../shared/names.js";
-import { handleCollection } from "./collection.js";
+import { handleCollection, queryTopShotProfile } from "./collection.js";
 
 var FLOW_REST = "https://rest-mainnet.onflow.org/v1";
 var TOPSHOT_ADDR = "0x0b2a3299cc857e29";
@@ -809,6 +809,33 @@ async function handleRequest(request, env) {
     const snap = await updateEditionsSnapshot(env, result.touched);
     delete result.touched;
     return Response.json({ ...result, snapshot: snap });
+  }
+  // Admin-only: what Top Shot's public API answers for a username lookup from
+  // this Worker (status + first 400 chars), to tell an outage from a block.
+  if (url.pathname === "/admin/username-probe" && request.method === "GET") {
+    if (!checkAdminAuth(request, env)) return new Response("Unauthorized", { status: 401 });
+    const u = (url.searchParams.get("u") || "").trim();
+    if (!u) return Response.json({ error: "pass u=<Top Shot username>" }, { status: 400 });
+    const t0 = Date.now();
+    try {
+      const res = await queryTopShotProfile(u);
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch {}
+      const info = parsed?.data?.getUserProfileByUsername?.publicInfo || null;
+      return Response.json({
+        status: res.status,
+        ms: Date.now() - t0,
+        server: res.headers.get("server"),
+        cfRay: res.headers.get("cf-ray"),
+        resolved: !!info?.flowAddress,
+        username: info?.username || null,
+        errors: parsed?.errors?.map((e) => e.message).slice(0, 3) || null,
+        snippet: info ? null : text.slice(0, 400),
+      });
+    } catch (err) {
+      return Response.json({ status: null, ms: Date.now() - t0, error: String(err).slice(0, 200) });
+    }
   }
   if (url.pathname === "/api/topshot/collection" && request.method === "GET") {
     return handleCollection(request, env, url, edgeGate, { getPlayIdentity, getSetName });
