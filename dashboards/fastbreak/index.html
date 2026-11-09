@@ -238,6 +238,13 @@ visually with the dashboard itself) ----------------------------------- */
 .hx-alt { font-size:0.74rem; color:var(--text-3); margin-top:8px; }
 tr.hx-pick-row td { background: rgba(15,163,119,0.14); }
 .hx-was { color:var(--text-3); text-decoration:line-through; margin-right:5px; }
+/* ? help circles + data tooltips (one floating box, so table scrolling never clips it) */
+.hx-help { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-left:4px; border-radius:50%; border:1px solid var(--text-3); color:var(--text-3); font-size:9px; font-weight:700; line-height:1; cursor:help; vertical-align:1px; text-transform:none; letter-spacing:0; }
+.hx-help:hover, .hx-help:focus { border-color:var(--green); color:var(--green); outline:none; }
+#hx-tip { position:fixed; z-index:9999; max-width:260px; background:var(--surface2, #1b1f24); color:var(--text); border:0.5px solid var(--border-str); border-radius:8px; padding:8px 10px; font-size:0.72rem; line-height:1.45; box-shadow:0 6px 20px rgba(0,0,0,0.35); pointer-events:none; display:none; white-space:normal; text-transform:none; letter-spacing:0; font-weight:400; }
+.hx-viz { display:inline-flex; align-items:center; gap:6px; cursor:help; outline:none; }
+.hx-viz svg { display:block; overflow:visible; }
+.hx-viz .hx-vlbl { font-size:0.68rem; color:var(--text-3); white-space:nowrap; font-variant-numeric:tabular-nums; }
 
 </style>
 </head>
@@ -410,7 +417,7 @@ header to sort.
     </table></div></div>
   </div>
 
-  <p class="note" id="hx-note">Everyone starts at 0%. Load your collection above to fill these in, or set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Floor / Ceiling = a typical bad / good night (20th / 80th percentile of Historic games, shown from 5 games); Low / High = single worst / best game. All before discounts. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
+  <p class="note" id="hx-note">Everyone starts at 0%. Load your collection above to fill these in, or set each player to the best collector tier you own (Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%). Your choices stay in this browser only. Blend = season AVG (offset-corrected) combined with each player's Historic games, weighting AVG like 4 games and recent games more (each game counts half as much as one five games newer). Last 10 = plain average of the player's last 10 Historic games. Last 5 = the last five Historic games as bars (green beat the projection). Range = worst-to-best game as a thin line, a typical bad-to-good night (20th–80th percentile, from 5 games) as the thick bar, projection as the tick. Hover or tap any chart or ? for details. All before discounts; the CSV has the exact numbers. Budget 350 RP, exactly 5 players. Discounted RP rounds to the nearest whole number, with .5 rounding down.</p>
 </div>
 
 <div id="view-admin">
@@ -1196,11 +1203,14 @@ function hxPrepare(D) {
     p.ceil = p.n_games >= 5 ? hxPctile(p.g, 0.8) : null;
     p.lo = p.n_games ? Math.min(...p.g) : null;
     p.hi = p.n_games ? Math.max(...p.g) : null;
+    p.l5 = p.n_games ? hxMean(p.g.slice(-5)) : null;
     const a = p.avg + D.shift;
     let wSum = 0, wg = 0;
     p.g.forEach((x, i) => { const w = hl ? Math.pow(0.5, (p.n_games - 1 - i) / hl) : 1; wSum += w; wg += w * x; });
     p.blend = p.n_games ? (k * a + wg) / (k + wSum) : a;
   });
+  // One scale for every range bar / form chart, so players compare at a glance.
+  D.vizMax = Math.max(60, Math.ceil(Math.max(0, ...D.players.map((p) => p.hi ?? 0)) / 10) * 10);
   D._prepared = true;
   return D;
 }
@@ -1284,12 +1294,50 @@ function hxDiscButtons(p) {
   return `<span class="dsc">` + HX_PCTS.map((v) =>
     `<button data-hxn="${hxEsc(p.n)}" data-pct="${v}" class="${cur === v ? "on" : ""}" title="${HX_TIER_NAMES[v]}">${v}%</button>`).join("") + `</span>`;
 }
-const hxRangeCells = (p) => `<td>${hxF1(p.floor)}</td><td>${hxF1(p.ceil)}</td><td style="color:var(--text-3)">${hxF1(p.lo)}</td><td style="color:var(--text-3)">${hxF1(p.hi)}</td>`;
-const hxRangeCsv = (p) => [p.floor, p.ceil, p.lo, p.hi].map((x) => (x == null ? "" : x.toFixed(1)));
+// Column help (the ? circles). Plain words; numbers are Fast Break Points.
+const HX_HELP = {
+  rp: "Roster Points: what the player costs. Your lineup of 5 must total 350 or less. A struck-through number is the price before your collector discount.",
+  baserp: "Top Shot's price before any collector discount.",
+  yourrp: "Price after your collector discount for this player.",
+  avg: "Top Shot's listed season average (Fast Break Points per game) for the player's real career.",
+  blend: "Our projection. Mixes the site AVG with every Historic game this player has played, leaning on recent games. This is what the optimizer uses.",
+  mean: "Plain average of all Historic games on record.",
+  l10: "Plain average of the last 10 Historic games.",
+  l5: "Bars = the last 5 Historic games, oldest to newest. Green = beat his projection, gray = fell short. Sorts by the 5-game average.",
+  range: "Thin line = worst to best Historic game. Thick bar = a typical bad night to a typical good night (20th to 80th percentile, from 5 games). Tick = projection. Numbers = typical bad – good night. Sorts by the bad-night number (floor). Hover or tap for exact values. Before discounts.",
+  disc: "Your collector discount for this player: Common/Fandom 5%, Rare 10%, Legendary 15%, Ultimate 20%. Use Fill my discounts above, or click to set by hand.",
+  skip: "Leave this player out when you click Optimize lineup.",
+};
+const hxHelp = (k) => (HX_HELP[k] ? `<span class="hx-help" tabindex="0" data-tip="${hxEsc(HX_HELP[k])}">?</span>` : "");
+// Range bar: low-high line, floor-ceiling bar, projection tick.
+function hxRangeBar(p) {
+  if (p.lo == null) return `<span class="hx-vlbl">--</span>`;
+  // Scale runs 10 FBP to the slate-wide best game, the same for every row.
+  const W = 110, H = 14, B = 10, M = hx.data.vizMax || 80, x = (v) => Math.max(0, Math.min(W, ((v - B) / (M - B)) * W)).toFixed(1);
+  const fl = p.floor ?? p.lo, ce = p.ceil ?? p.hi;
+  const tip = `${p.n}: typical night ${hxF1(p.floor)} to ${hxF1(p.ceil)} · worst ${hxF1(p.lo)} · best ${hxF1(p.hi)} · projection ${hxF1(p.blend)} (${p.n_games} games)`;
+  return `<span class="hx-viz" tabindex="0" data-tip="${hxEsc(tip)}"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-label="${hxEsc(tip)}" role="img">`
+    + `<line x1="${x(p.lo)}" x2="${x(p.hi)}" y1="7" y2="7" stroke="var(--text-3)" stroke-width="1"/>`
+    + `<rect x="${x(fl)}" y="3" width="${Math.max(2, x(ce) - x(fl))}" height="8" rx="2" fill="var(--green)" opacity="0.55"/>`
+    + (p.blend != null ? `<line x1="${x(p.blend)}" x2="${x(p.blend)}" y1="1" y2="13" stroke="var(--text)" stroke-width="1.5"/>` : "")
+    + `</svg><span class="hx-vlbl">${p.floor == null ? "" : Math.round(p.floor) + "–" + Math.round(p.ceil)}</span></span>`;
+}
+// Last 5 form: one bar per game, green when it beat the projection.
+function hxFormBars(p) {
+  const g = p.g.slice(-5);
+  if (!g.length) return `<span class="hx-vlbl">--</span>`;
+  // Bars start at 15 FBP (not 0) so a 40 and a 55 look clearly different.
+  const M = hx.data.vizMax || 80, B = 15, H = 22, bw = 7, gap = 3;
+  const tip = `${p.n}, last ${g.length} (oldest to newest): ${g.map((v) => hxF1(v)).join(", ")} · avg ${hxF1(p.l5)} · projection ${hxF1(p.blend)}`;
+  const bars = g.map((v, i) => { const h = Math.max(2, ((Math.min(v, M) - B) / (M - B)) * H); return `<rect x="${i * (bw + gap)}" y="${(H - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="1" fill="${p.blend != null && v >= p.blend ? "var(--green)" : "var(--text-3)"}"/>`; }).join("");
+  return `<span class="hx-viz" tabindex="0" data-tip="${hxEsc(tip)}"><svg width="${5 * (bw + gap) - gap}" height="${H}" aria-label="${hxEsc(tip)}" role="img">${bars}</svg><span class="hx-vlbl">${hxF1(p.l5)}</span></span>`;
+}
+const hxRangeCells = (p) => `<td>${hxFormBars(p)}</td><td>${hxRangeBar(p)}</td>`;
+const hxRangeCsv = (p) => [p.l5, p.floor, p.ceil, p.lo, p.hi].map((x) => (x == null ? "" : x.toFixed(1)));
 const hxRpCell = (p) => (hxPct(p) ? `<span class="hx-was">${p.rp}</span>${hxRP(p)}` : `${p.rp}`);
 function hxHead(id, cols, st) {
   document.getElementById(id).innerHTML = "<tr>" + cols.map((c) =>
-    `<th data-k="${c.k || ""}" class="${c.k && c.k === st.k ? (st.d === 1 ? "sorted-asc" : "sorted-desc") : ""}"${c.k ? "" : ' style="cursor:default"'}>${c.t}</th>`).join("") + "</tr>";
+    `<th data-k="${c.k || ""}" class="${c.k && c.k === st.k ? (st.d === 1 ? "sorted-asc" : "sorted-desc") : ""}"${c.k ? "" : ' style="cursor:default"'}>${c.t}${hxHelp(c.h)}</th>`).join("") + "</tr>";
 }
 function hxSorter(st) {
   const g = (p) => st.k === "val" ? hxVal(p) : st.k === "rp" ? hxRP(p) : st.k === "n" ? p.n : st.k === "t" ? p.t : st.k === "mean" ? (p.mean ?? -1) : st.k === "gp" ? p.n_games : (p[st.k] ?? -1);
@@ -1311,7 +1359,7 @@ function hxRender() {
     const st = hx.sort.slate;
     const list = hxSlatePlayers().filter((p) => (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shownSlate = list;
-    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Obs. avg", k: "mean" }, { t: "Last 10", k: "l10" }, { t: "Floor", k: "floor" }, { t: "Ceiling", k: "ceil" }, { t: "Low", k: "lo" }, { t: "High", k: "hi" }, { t: "Discount" }, { t: "Skip" }], st);
+    hxHead("hx-slate-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "RP", k: "rp", h: "rp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Obs. avg", k: "mean", h: "mean" }, { t: "Last 10", k: "l10", h: "l10" }, { t: "Last 5", k: "l5", h: "l5" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }, { t: "Skip", h: "skip" }], st);
     const picks = hx.result ? new Set(hx.result.best.map((p) => p.n)) : new Set();
     document.getElementById("hx-slate-body").innerHTML = list.map((p, i) =>
       `<tr class="${picks.has(p.n) ? "hx-pick-row" : ""}"><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${hxRpCell(p)}</td><td>${hxF1(p.avg)}</td><td><strong>${hxF1(p.blend)}</strong></td><td>${hxF1(p.mean)}</td><td>${hxF1(p.l10)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td><td><input type="checkbox" data-hxex="${hxEsc(p.n)}"${hx.excluded.has(p.n) ? " checked" : ""}></td></tr>`).join("");
@@ -1330,7 +1378,7 @@ function hxRender() {
     const list = hx.players.filter((p) => (!tf || p.t === tf) && (p.n + " " + p.t).toLowerCase().includes(q)).sort(hxSorter(st));
     hx.shown = list;
     document.getElementById("hx-pmeta").textContent = `${list.length} players · ${Object.values(hx.disc).filter((v) => v > 0).length} discounted`;
-    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp" }, { t: "Your RP" }, { t: "AVG", k: "avg" }, { t: "Blend", k: "blend" }, { t: "Floor", k: "floor" }, { t: "Ceiling", k: "ceil" }, { t: "Low", k: "lo" }, { t: "High", k: "hi" }, { t: "Discount" }], st);
+    hxHead("hx-players-head", [{ t: "#" }, { t: "Player", k: "n" }, { t: "Team", k: "t" }, { t: "Base RP", k: "rp", h: "baserp" }, { t: "Your RP", h: "yourrp" }, { t: "AVG", k: "avg", h: "avg" }, { t: "Blend", k: "blend", h: "blend" }, { t: "Last 5", k: "l5", h: "l5" }, { t: "Range", k: "floor", h: "range" }, { t: "Discount", h: "disc" }], st);
     document.getElementById("hx-players-body").innerHTML = list.map((p, i) =>
       `<tr><td>${i + 1}</td><td>${hxEsc(p.n)}</td><td>${hxEsc(p.t)}</td><td>${p.rp}</td><td>${hxRP(p)}</td><td>${hxF1(p.avg)}</td><td>${hxF1(p.blend)}</td>${hxRangeCells(p)}<td>${hxDiscButtons(p)}</td></tr>`).join("");
   }
@@ -1343,11 +1391,11 @@ function hxDownloadCSV() {
   let headers, rows, view;
   if (hx.sub === "slate") {
     view = "slate";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Floor", "Ceiling", "Low", "High", "Skipped"];
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Obs. avg", "Last 10", "Last 5", "Floor", "Ceiling", "Low", "High", "Skipped"];
     rows = (hx.shownSlate || hxSlatePlayers()).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), p.mean == null ? "" : p.mean.toFixed(1), p.l10 == null ? "" : p.l10.toFixed(1), ...hxRangeCsv(p), hx.excluded.has(p.n) ? "Yes" : ""]);
   } else {
     view = "players";
-    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Floor", "Ceiling", "Low", "High"];
+    headers = ["Player", "Team", "Base RP", "Your RP", "Discount %", "AVG", "Blend", "Last 5", "Floor", "Ceiling", "Low", "High"];
     rows = (hx.shown || hx.players).map((p) => [p.n, p.t, p.rp, hxRP(p), hxPct(p), p.avg ?? "", p.blend == null ? "" : p.blend.toFixed(1), ...hxRangeCsv(p)]);
   }
   const slug = String(slate.label || "slate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1355,6 +1403,38 @@ function hxDownloadCSV() {
 }
 document.getElementById("hx-csv-btn").addEventListener("click", hxDownloadCSV);
 function hxSetDisc(name, pct) { if (pct) hx.disc[name] = pct; else delete hx.disc[name]; }
+
+// -- Tooltips for ? circles and charts (hover, keyboard focus, or tap) ----------
+(function hxTips() {
+  const tip = document.createElement("div");
+  tip.id = "hx-tip";
+  tip.setAttribute("role", "tooltip");
+  document.body.appendChild(tip);
+  let pinned = null;
+  const show = (el) => {
+    tip.textContent = el.dataset.tip;
+    tip.style.display = "block";
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    let top = r.top - h - 8;
+    if (top < 8) top = r.bottom + 8;
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  };
+  const hide = () => { tip.style.display = "none"; };
+  const root = document.getElementById("view-historic");
+  root.addEventListener("mouseover", (e) => { const el = e.target.closest("[data-tip]"); if (el && !pinned) show(el); });
+  root.addEventListener("mouseout", (e) => { const el = e.target.closest("[data-tip]"); if (el && !pinned && !el.contains(e.relatedTarget)) hide(); });
+  root.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip]"); if (el) show(el); });
+  root.addEventListener("focusout", () => { if (!pinned) hide(); });
+  // Tap / click pins the tip (phones have no hover); tap anywhere else closes it.
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest && e.target.closest("#view-historic [data-tip]");
+    if (el) { pinned = pinned === el ? null : el; if (pinned) show(el); else hide(); return; }
+    if (pinned) { pinned = null; hide(); }
+  });
+  window.addEventListener("scroll", () => { if (!pinned) hide(); }, true);
+})();
 
 // -- Your collection -> discounts (read-only) ------------------------------------
 // tome-topshot reads the public Top Shot collection on Flow (no sign-in, no
@@ -1451,6 +1531,7 @@ async function hxCollLoad() {
     const day = e.target.closest("#hx-days .run-day-btn"); if (day) { hx.slateIdx = +day.dataset.i; hx.result = null; hx.excluded.clear(); return hxRender(); }
     const d = e.target.closest("[data-hxn]"); if (d) { hxSetDisc(d.dataset.hxn, +d.dataset.pct); hxSaveDisc(); hx.result = null; return hxRender(); }
     const b = e.target.closest("#hx-bulk [data-b]"); if (b) { (hx.shown || []).forEach((p) => hxSetDisc(p.n, +b.dataset.b)); hxSaveDisc(); hx.result = null; return hxRender(); }
+    if (e.target.closest(".hx-help, .hx-viz")) return; // help / tooltip taps don't sort
     const th = e.target.closest("th[data-k]"); if (th && th.dataset.k) {
       const st = hx.sort[hx.sub], k = th.dataset.k;
       st.d = st.k === k ? -st.d : (k === "n" || k === "t" ? 1 : -1); st.k = k; return hxRender();

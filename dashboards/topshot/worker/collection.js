@@ -37,16 +37,25 @@ const ADDRESS_HELP =
 // Verified Oct 26 2026: public-api.nbatopshot.com/graphql answered a Cloudflare
 // 1033 (tunnel down) and nbatopshot.com/marketplace/graphql sits behind a bot
 // challenge, so this currently returns null and readers use the address path.
+// Top Shot's docs ask API callers to identify themselves with a User-Agent
+// (unidentified traffic may be blocked). No personal contact details here.
+export const TOPSHOT_API_UA = "TomeCollective/1.0 (+https://tomecollective.com)";
+
+// Raw call, shared by the resolver and the admin probe.
+export async function queryTopShotProfile(username, url = "https://public-api.nbatopshot.com/graphql") {
+  const query = `query ($u: String!) { getUserProfileByUsername(input: { username: $u }) { publicInfo { flowAddress username } } }`;
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": TOPSHOT_API_UA },
+    body: JSON.stringify({ query, variables: { u: username } }),
+  });
+}
+
 async function resolveTopShotUsername(username) {
   const endpoints = ["https://public-api.nbatopshot.com/graphql"];
-  const query = `query ($u: String!) { getUserProfileByUsername(input: { username: $u }) { publicInfo { flowAddress username } } }`;
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ query, variables: { u: username } }),
-      });
+      const res = await queryTopShotProfile(username, url);
       if (!res.ok) continue;
       const body = await res.json().catch(() => null);
       const info = body?.data?.getUserProfileByUsername?.publicInfo;
