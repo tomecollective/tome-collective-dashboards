@@ -380,7 +380,8 @@ header to sort.
   </div>
   <div class="hx-bar hx-coll" id="hx-coll">
     <span class="hx-lbl">Your collection</span>
-    <input type="text" class="hx-input ph-no-capture" id="hx-coll-user" placeholder="0x Flow address (or Top Shot username)" autocomplete="off" spellcheck="false" style="width:300px;max-width:100%;font-family:var(--mono,monospace);">
+    <input type="text" class="hx-input ph-no-capture" id="hx-coll-user" placeholder="0x Flow address" autocomplete="off" spellcheck="false" style="width:300px;max-width:100%;font-family:var(--mono,monospace);">
+    <span class="hx-help" tabindex="0" data-tip="Where to find it: in Top Shot, open your profile menu, go to Settings, and copy your Flow address. It starts with 0x followed by 16 letters and numbers. It's a public address, safe to share; it can't be used to sign in or move anything.">?</span>
     <button class="export-btn" id="hx-coll-load" style="margin-left:0">Fill my discounts</button>
     <a href="#" id="hx-coll-forget" style="display:none;font-size:0.72rem;color:var(--text-3);">Forget</a>
     <span class="fd-meta" id="hx-coll-status"></span>
@@ -1475,17 +1476,22 @@ async function hxCollLoad() {
   const input = document.getElementById("hx-coll-user");
   const v = String(input.value || "").trim();
   if (!v) { hxCollStatus("Enter your 0x Flow address first.", true); return; }
+  if (!hxLooksSecret(v) && !/^(0x)?[0-9a-fA-F]{16}$/.test(v)) {
+    hxCollStatus("That isn't a Flow address. It starts with 0x followed by 16 letters and numbers; find it in Top Shot under Settings.", true);
+    return;
+  }
   if (hxLooksSecret(v)) {
     input.value = "";
     hxCollStatus("That looks like a private key or recovery phrase. Don't share it with anyone. Enter your 0x Flow address only.", true);
     return;
   }
   if (!hx.data) { hxCollStatus("Historic data is still loading. Try again in a moment.", true); return; }
+  const addr = (v.startsWith("0x") || v.startsWith("0X") ? "0x" + v.slice(2) : "0x" + v).toLowerCase();
   const btn = document.getElementById("hx-coll-load");
   btn.disabled = true;
   hxCollStatus("Reading your collection...");
   try {
-    const res = await fetch(`${TOPSHOT_BASE}/api/topshot/collection?user=${encodeURIComponent(v)}`, { headers: readHeaders() });
+    const res = await fetch(`${TOPSHOT_BASE}/api/topshot/collection?user=${encodeURIComponent(addr)}`, { headers: readHeaders() });
     const body = await res.json().catch(() => ({}));
     if (res.status === 401 && body.locked) { hxCollStatus("Collection lookup is part of Tome Edge. Open this dashboard from the Dashboards page on read.tomecollective.com.", true); return; }
     if (res.status === 503 && body.retry) { hxCollStatus("Couldn't confirm your subscription right now. Try again in a minute.", true); return; }
