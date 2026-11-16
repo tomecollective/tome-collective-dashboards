@@ -2541,7 +2541,11 @@ async function loadAdminSchedule() {
 // -- Admin: Pro set / badge checkboxes -----------------------------------------
 // Fixed lists so names always match the Top Shot index exactly. Values are
 // what the Worker stores: set names go to proSets, badges to proBadge.
-const PRO_SET_OPTIONS = ["Season Tip-Off", "Fresh Threads", "Holo Icon", "Metallic Gold LE", "Cosmic", "Top Shot 50"];
+const PRO_SET_OPTIONS = [
+  "Season Tip-Off", "Fresh Threads", "Holo Icon", "Metallic Gold LE", "Cosmic", "Top Shot 50",
+  // Run 3 additions (exact Top Shot set names; any season qualifies).
+  "Origins", "Run It Back: Origins", "Run It Back: Origins 2014-19", "Equinox", "Mojo", "Deck the Hoops",
+];
 const PRO_BADGE_OPTIONS = [
   { key: "rookie_debut", label: "Rookie Debut", verify: true },
   { key: "rookie_year", label: "Rookie Year", verify: true },
