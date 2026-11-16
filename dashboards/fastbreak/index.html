@@ -735,11 +735,20 @@ let RUNS = {
     runDates: ["2026-10-17", "2026-10-19", "2026-10-21", "2026-10-24", "2026-10-26", "2026-10-29", "2026-10-31"],
   },
   NBA: {
-    runLabel: "Run 2",
-    runStart: "2026-11-02",
-    runEnd: "2026-11-15",
-    // No games Nov 3, so it gets no tab.
-    runDates: ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"],
+    // Every run this season, in order (the Worker sends the same list). The
+    // dashboard shows the current one. Runs 3-9 are projected until Top Shot
+    // publishes them: 13-14 game days each through Feb 18 (All-Star break
+    // Feb 19-21), no games Thanksgiving (Nov 26) or Christmas Eve (Dec 24).
+    runs: [
+      { label: "Run 2", start: "2026-11-02", end: "2026-11-15", runDates: ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"] },
+      { label: "Run 3", start: "2026-11-16", end: "2026-11-30", projected: true, runDates: ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30"] },
+      { label: "Run 4", start: "2026-12-01", end: "2026-12-14", projected: true, runDates: ["2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06", "2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12", "2026-12-13", "2026-12-14"] },
+      { label: "Run 5", start: "2026-12-15", end: "2026-12-28", projected: true, runDates: ["2026-12-15", "2026-12-16", "2026-12-17", "2026-12-18", "2026-12-19", "2026-12-20", "2026-12-21", "2026-12-22", "2026-12-23", "2026-12-25", "2026-12-26", "2026-12-27", "2026-12-28"] },
+      { label: "Run 6", start: "2026-12-29", end: "2027-01-10", projected: true, runDates: ["2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03", "2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08", "2027-01-09", "2027-01-10"] },
+      { label: "Run 7", start: "2027-01-11", end: "2027-01-23", projected: true, runDates: ["2027-01-11", "2027-01-12", "2027-01-13", "2027-01-14", "2027-01-15", "2027-01-16", "2027-01-17", "2027-01-18", "2027-01-19", "2027-01-20", "2027-01-21", "2027-01-22", "2027-01-23"] },
+      { label: "Run 8", start: "2027-01-24", end: "2027-02-05", projected: true, runDates: ["2027-01-24", "2027-01-25", "2027-01-26", "2027-01-27", "2027-01-28", "2027-01-29", "2027-01-30", "2027-01-31", "2027-02-01", "2027-02-02", "2027-02-03", "2027-02-04", "2027-02-05"] },
+      { label: "Run 9", start: "2027-02-06", end: "2027-02-18", projected: true, runDates: ["2027-02-06", "2027-02-07", "2027-02-08", "2027-02-09", "2027-02-10", "2027-02-11", "2027-02-12", "2027-02-13", "2027-02-14", "2027-02-15", "2027-02-16", "2027-02-17", "2027-02-18"] },
+    ],
   },
 };
 
@@ -993,8 +1002,35 @@ function etNow() {
   return { dateStr: `${get("year")}-${get("month")}-${get("day")}`, hour };
 }
 
+// Current run for a league. With a runs list, the run is picked from the same
+// reference date the day row uses (yesterday until 10:00 AM ET, else today),
+// so the last day of a run stays up the next morning.
+const runShape = (r) => ({ runLabel: r.label + (r.projected ? " (projected)" : ""), runStart: r.start, runEnd: r.end, runDates: r.runDates, projected: !!r.projected });
+function runRefDate() {
+  const { dateStr, hour } = etNow();
+  if (hour >= 10) return dateStr;
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return ymd(d);
+}
 function runFor(league) {
-  return RUNS[league] || RUNS.WNBA;
+  const cfg = RUNS[league] || RUNS.WNBA;
+  if (!Array.isArray(cfg.runs) || !cfg.runs.length) return cfg;
+  const ref = runRefDate();
+  const r = cfg.runs.find((x) => x.end >= ref) || cfg.runs[cfg.runs.length - 1];
+  return { ...cfg, ...runShape(r) };
+}
+// The run a given date belongs to (admin day labels), or null.
+function runForDateClient(league, date) {
+  const cfg = RUNS[league] || RUNS.WNBA;
+  const list = Array.isArray(cfg.runs) && cfg.runs.length ? cfg.runs : [{ label: cfg.runLabel, start: cfg.runStart, end: cfg.runEnd, runDates: cfg.runDates }];
+  return list.find((r) => (r.runDates && r.runDates.length ? r.runDates.includes(date) : date >= r.start && date <= r.end)) || null;
+}
+// Whole-season window (first run start .. last run end) for the admin pickers.
+function seasonWindow(league) {
+  const cfg = RUNS[league] || RUNS.WNBA;
+  if (!Array.isArray(cfg.runs) || !cfg.runs.length) return { start: cfg.runStart, end: cfg.runEnd };
+  return { start: cfg.runs[0].start, end: cfg.runs[cfg.runs.length - 1].end };
 }
 
 // -- Run day toggle -----------------------------------------------------------
@@ -1063,6 +1099,8 @@ async function loadRuns() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     for (const league of Object.keys(RUNS)) {
+      // Brings enabled/seasonActive and, for leagues with several runs, the
+      // runs list (runFor picks the current run from it).
       if (data[league]?.runStart && data[league]?.runEnd) RUNS[league] = { ...RUNS[league], ...data[league] };
     }
   } catch (err) {
@@ -1117,7 +1155,7 @@ function syncLeagueToggles() {
     const enabled = RUNS[league].enabled !== false;
     document.querySelectorAll(`#mode-toggle button[data-league="${league}"]:not([data-mode="Historic"])`).forEach((btn) => {
       btn.disabled = !enabled;
-      btn.title = enabled ? "" : `${league} ${RUNS[league].runLabel || ""} goes live on ${RUNS[league].runStart || "season start"} -- the ${league} data feed is not switched on yet`;
+      btn.title = enabled ? "" : `${league} ${runFor(league).runLabel || ""} goes live on ${runFor(league).runStart || "season start"} -- the ${league} data feed is not switched on yet`;
     });
   }
   // If the active selection just got disabled, fall back to the first enabled button.
@@ -2416,10 +2454,13 @@ function refreshAdminView() {
   document.getElementById("admin-badge-name").style.display = isPro ? "block" : "none";
   document.getElementById("admin-pro-elig").style.display = isPro ? "block" : "none";
   // Default the date pickers into the selected league's run window.
-  const run = runFor(adminLeague);
+  // Any date in any run this season can be set up ahead of time.
+  const win = seasonWindow(adminLeague);
   for (const id of ["admin-date", "proj-date", "inv-date"]) {
     const el = document.getElementById(id);
-    if (!el.value || el.value < run.runStart || el.value > run.runEnd) el.value = earliestSelectableRunDate(adminLeague);
+    el.min = win.start;
+    el.max = win.end;
+    if (!el.value || el.value < win.start || el.value > win.end) el.value = earliestSelectableRunDate(adminLeague);
   }
   if (isHistoric) loadHistoricStatus();
   else loadAdminSchedule();
@@ -2443,15 +2484,18 @@ document.getElementById("hist-has-second").addEventListener("change", (e) => {
 
 // -- Admin: view schedule (selected league) ------------------------------------
 function dayNumberFor(league, date) {
-  const run = runFor(league);
-  if (run.runDates && run.runDates.length) {
-    const idx = run.runDates.indexOf(date);
-    return idx >= 0 ? `Day ${idx + 1}` : "--";
-  }
-  const n = Math.round((new Date(`${date}T00:00:00Z`) - new Date(`${run.runStart}T00:00:00Z`)) / 86400000) + 1;
-  return date >= run.runStart && date <= run.runEnd ? `Day ${n}` : "--";
+  const r = runForDateClient(league, date);
+  if (!r) return "--";
+  const n = r.runDates && r.runDates.length
+    ? r.runDates.indexOf(date) + 1
+    : Math.round((new Date(`${date}T00:00:00Z`) - new Date(`${r.start}T00:00:00Z`)) / 86400000) + 1;
+  return `${r.label}${r.projected ? "*" : ""} · Day ${n}`;
 }
 
+let adminShowPast = false;
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "admin-toggle-past") { e.preventDefault(); adminShowPast = !adminShowPast; loadAdminSchedule(); }
+});
 async function loadAdminSchedule() {
   const tbody = document.getElementById("admin-schedule-body");
   tbody.innerHTML = `<tr><td colspan="6">Loading...</td></tr>`;
@@ -2460,12 +2504,19 @@ async function loadAdminSchedule() {
     const data = await res.json();
     adminScheduleCache = data.schedule || {};
     prefillProChecks();
-    const days = Object.entries(data.schedule?.[adminLeague] || {}).sort(([a], [b]) => a.localeCompare(b));
+    const allDays = Object.entries(data.schedule?.[adminLeague] || {}).sort(([a], [b]) => a.localeCompare(b));
+    // Expired days (before today, ET) are hidden by default; nothing is deleted.
+    const today = etNow().dateStr;
+    const pastCount = allDays.filter(([d]) => d < today).length;
+    const days = adminShowPast ? allDays : allDays.filter(([d]) => d >= today);
+    const pastRow = pastCount
+      ? `<tr><td colspan="6" style="font-size:0.72rem;color:var(--text-3);">${adminShowPast ? "Showing" : "Hiding"} ${pastCount} past day${pastCount === 1 ? "" : "s"}. <a href="#" id="admin-toggle-past">${adminShowPast ? "Hide them" : "Show them"}</a> · * = projected run dates</td></tr>`
+      : `<tr><td colspan="6" style="font-size:0.72rem;color:var(--text-3);">* = projected run dates</td></tr>`;
     if (!days.length) {
-      tbody.innerHTML = `<tr><td colspan="6">No ${adminLeague} dates configured yet.</td></tr>`;
+      tbody.innerHTML = pastRow + `<tr><td colspan="6">No upcoming ${adminLeague} dates configured yet. Pick a date above to add one.</td></tr>`;
       return;
     }
-    tbody.innerHTML = days
+    tbody.innerHTML = pastRow + days
       .map(([date, entry]) => {
         const fmt = (list) => (list || []).map((o) => `${o.label || o.stat} (${o.dailyTeamTarget})`).join(" + ") || "--";
         const proj = Object.entries(entry.projections || {})
