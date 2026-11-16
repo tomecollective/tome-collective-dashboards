@@ -126,13 +126,26 @@ const LEAGUES = {
     // v2 advanced stats carries points_paint (flat, top-level). GOAT tier.
     advancedUrl: `${BDL_ROOT}/nba/v2/stats/advanced`,
     advancedPostseasonQs: "postseason=true",
-    // Run 2 (2026-27 season): Nov 2 through Nov 15; no games Nov 3, so that date
-    // gets no tab (Day N = index in runDates). Run 1 was Oct 20 - Nov 1.
-    run: {
-      label: "Run 2",
-      start: "2026-11-02",
-      end: "2026-11-15",
-      runDates: ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"],
+    // Runs for the 2026-27 season, in order. Day N = index in runDates.
+    // Run 1 was Oct 20 - Nov 1; Run 2 Nov 2 - 15 (no games Nov 3).
+    // Runs 3-9 are PROJECTED until Top Shot publishes them: back-to-back runs
+    // of 13-14 game days from Nov 16 to the last day before the All-Star break
+    // (Feb 19-21, 2027), skipping Thanksgiving (Nov 26) and Christmas Eve
+    // (Dec 24). Replace a projected run with Top Shot's real dates (and drop
+    // projected: true) as each one is announced.
+    runs: [
+      { label: "Run 2", start: "2026-11-02", end: "2026-11-15", runDates: ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"] },
+      { label: "Run 3", start: "2026-11-16", end: "2026-11-30", projected: true, runDates: ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30"] },
+      { label: "Run 4", start: "2026-12-01", end: "2026-12-14", projected: true, runDates: ["2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06", "2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12", "2026-12-13", "2026-12-14"] },
+      { label: "Run 5", start: "2026-12-15", end: "2026-12-28", projected: true, runDates: ["2026-12-15", "2026-12-16", "2026-12-17", "2026-12-18", "2026-12-19", "2026-12-20", "2026-12-21", "2026-12-22", "2026-12-23", "2026-12-25", "2026-12-26", "2026-12-27", "2026-12-28"] },
+      { label: "Run 6", start: "2026-12-29", end: "2027-01-10", projected: true, runDates: ["2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03", "2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08", "2027-01-09", "2027-01-10"] },
+      { label: "Run 7", start: "2027-01-11", end: "2027-01-23", projected: true, runDates: ["2027-01-11", "2027-01-12", "2027-01-13", "2027-01-14", "2027-01-15", "2027-01-16", "2027-01-17", "2027-01-18", "2027-01-19", "2027-01-20", "2027-01-21", "2027-01-22", "2027-01-23"] },
+      { label: "Run 8", start: "2027-01-24", end: "2027-02-05", projected: true, runDates: ["2027-01-24", "2027-01-25", "2027-01-26", "2027-01-27", "2027-01-28", "2027-01-29", "2027-01-30", "2027-01-31", "2027-02-01", "2027-02-02", "2027-02-03", "2027-02-04", "2027-02-05"] },
+      { label: "Run 9", start: "2027-02-06", end: "2027-02-18", projected: true, runDates: ["2027-02-06", "2027-02-07", "2027-02-08", "2027-02-09", "2027-02-10", "2027-02-11", "2027-02-12", "2027-02-13", "2027-02-14", "2027-02-15", "2027-02-16", "2027-02-17", "2027-02-18"] },
+    ],
+    // The current run: the first one that hasn't ended yet (ET), else the last.
+    get run() {
+      return currentRunOf(this.runs);
     },
     seasonActive: { start: "2026-10-15", end: "2027-06-30" },
     // L10 never reaches back into last season (see L10_MIN_SEASON_GAMES), so
@@ -176,21 +189,38 @@ function leagueConfig(league) {
   return LEAGUES[league] || LEAGUES[DEFAULT_LEAGUE];
 }
 
+function runHasDate(run, dateStr) {
+  if (Array.isArray(run.runDates) && run.runDates.length) return run.runDates.includes(dateStr);
+  return dateStr >= run.start && dateStr <= run.end;
+}
+
+function currentRunOf(runs, today = todayStr()) {
+  return runs.find((r) => r.end >= today) || runs[runs.length - 1];
+}
+
+// The run a date belongs to (a game day in its list, else the run whose
+// window covers it, e.g. an off day); falls back to the current run.
+function runForDate(league, dateStr) {
+  const cfg = leagueConfig(league);
+  if (!Array.isArray(cfg.runs)) return cfg.run;
+  return cfg.runs.find((r) => runHasDate(r, dateStr)) || cfg.runs.find((r) => dateStr >= r.start && dateStr <= r.end) || cfg.run;
+}
+
 function dayNumberForDate(league, dateStr) {
-  const rd = leagueConfig(league).run.runDates;
+  const run = runForDate(league, dateStr);
+  const rd = run.runDates;
   if (Array.isArray(rd) && rd.length) {
     const i = rd.indexOf(dateStr);
     return i >= 0 ? i + 1 : null; // off day between games: no day number
   }
-  const start = new Date(`${leagueConfig(league).run.start}T00:00:00Z`);
+  const start = new Date(`${run.start}T00:00:00Z`);
   const d = new Date(`${dateStr}T00:00:00Z`);
   return Math.round((d - start) / 86400000) + 1;
 }
 
 function isWithinRun(league, dateStr) {
-  const run = leagueConfig(league).run;
-  if (Array.isArray(run.runDates) && run.runDates.length) return run.runDates.includes(dateStr);
-  return dateStr >= run.start && dateStr <= run.end;
+  const cfg = leagueConfig(league);
+  return (Array.isArray(cfg.runs) ? cfg.runs : [cfg.run]).some((r) => runHasDate(r, dateStr));
 }
 
 function isSeasonActive(league, dateStr) {
@@ -1479,8 +1509,8 @@ function renderDayPayload(cfg, snapshot, { mode, schedule, proElig = null }) {
     mode,
     date,
     dayNumber: dayNumberForDate(league, date),
-    runLength: dayNumberForDate(league, cfg.run.end),
-    runLabel: cfg.run.label,
+    runLength: dayNumberForDate(league, runForDate(league, date).end),
+    runLabel: runForDate(league, date).label,
     last_updated: todayStr(),
     objectives,
     badgeSetName,
@@ -1903,7 +1933,7 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
       mode: targetMode,
       date: targetDate,
       dayNumber: dayNumberForDate(cfg.key, targetDate),
-      runLabel: cfg.run.label,
+      runLabel: runForDate(cfg.key, targetDate).label,
       building: true,
       queued: true,
       progress: { loaded: 0, total: 0 },
@@ -2188,6 +2218,8 @@ function runInfo(league, enabledMap = LEAGUE_ENABLED_DEFAULT) {
     runStart: cfg.run.start,
     runEnd: cfg.run.end,
     ...(cfg.run.runDates ? { runDates: cfg.run.runDates } : {}),
+    ...(cfg.run.projected ? { runProjected: true } : {}),
+    ...(Array.isArray(cfg.runs) ? { runs: cfg.runs.map((r) => ({ label: r.label, start: r.start, end: r.end, runDates: r.runDates, projected: !!r.projected })) } : {}),
     runLength: dayNumberForDate(league, cfg.run.end),
     seasonActive: cfg.seasonActive,
     enabled: enabledMap[league] !== false,
@@ -2730,6 +2762,8 @@ export const __testables__ = {
   projectionsForDate,
   dayNumberForDate,
   isWithinRun,
+  runForDate,
+  currentRunOf,
   isSeasonActive,
   getGamesForDate,
   isExhibitionGame,
