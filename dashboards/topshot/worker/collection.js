@@ -15,17 +15,39 @@ import { normalizeName } from "../../shared/names.js";
 
 const TOPSHOT_CONTRACT = "0x0b2a3299cc857e29"; // same import as the editions indexer
 const FLOW_REST_URL = "https://rest-mainnet.onflow.org/v1";
-const COLL_CACHE_PREFIX = "coll:";
+const COLL_CACHE_PREFIX = "coll2:"; // bumped Nov 17 2026 when tiers became value-aware, so old cached reads are not served
 const COLL_CACHE_TTL_S = 60 * 60;
 const COLL_REFRESH_MIN_MS = 10 * 60 * 1000; // ?refresh=1 at most once per 10 min per address
 const COLL_RL_PREFIX = "collrl:";
 const USER_CACHE_PREFIX = "tsuser:";
 const USER_CACHE_TTL_S = 7 * 24 * 60 * 60;
-const MAX_MOMENTS = 5000;
+const MAX_MOMENTS = 15000; // 12 Flow calls at ID_CHUNK; was 5000, which cut off larger collections
 const PLAY_LOOKUP_BUDGET = 30; // Flow calls per read for plays the indexes don't know yet (cached forever)
 const PARTIAL_CACHE_TTL_S = 5 * 60; // a read with plays still pending is cached briefly
-const ID_CHUNK = 500;
+const ID_CHUNK = 1250; // 1500 verified in ~0.6 s on a 5,249-Moment wallet; 2500 took ~4 s
 const TIER_RANK = { Ultimate: 4, Legendary: 3, Rare: 2, Fandom: 1, Common: 1 };
+// Collector discount tier = the BETTER of a Moment's set tier and a tier earned by
+// its value (Top Shot's rule, per collectors: "rarity or value, whichever is
+// higher"). Value = average sale price, else median recent sale, else low ask.
+// Calibrated Nov 17 2026 on one 5,249-Moment wallet checked against the game's own
+// discounts: Moments from $5.50 up were lifted to 10% (Rare) while ones at or
+// under $4.99 stayed at 5%. Legendary / Ultimate cutoffs are NOT known yet; null
+// means "value never lifts a Moment to that tier" until a real data point lands.
+export const VALUE_TIER_MIN_PRICE = { Ultimate: null, Legendary: null, Rare: 5 };
+const VALUE_TIER_ORDER = ["Ultimate", "Legendary", "Rare"];
+export function valueTier(price) {
+  if (price == null || !(price > 0)) return null;
+  for (const t of VALUE_TIER_ORDER) {
+    const min = VALUE_TIER_MIN_PRICE[t];
+    if (min != null && price >= min) return t;
+  }
+  return null;
+}
+export function effectiveTier(setTier, price) {
+  const vt = valueTier(price);
+  if (vt && (TIER_RANK[vt] || 0) > (TIER_RANK[setTier] || 0)) return vt;
+  return setTier;
+}
 const ROOKIE_DEBUT_RE = /^(WNBA )?Rookie (Debut|Revelation)$/i;
 
 const ADDRESS_HELP =
@@ -153,11 +175,16 @@ function buildCollection({ address, username, moments, total, inventory, snapsho
       continue;
     }
     const setName = ed?.setName || set?.name || null;
-    const tier = set?.tier || ed?.tier || "Unknown";
+    const setTier = set?.tier || ed?.tier || "Unknown";
+    const value = ed?.avgSalePrice ?? ed?.marketValue ?? ed?.lowAsk ?? null;
+    const tier = effectiveTier(setTier, value);
     const moment = {
       id: m.id,
       setName,
       tier,
+      setTier,
+      tierSource: tier !== setTier ? "value" : "set",
+      value: value == null ? null : Math.round(value * 100) / 100,
       serial: m.serial,
       nbaSeason: play.nbaSeason || null,
       lowAsk: ed?.lowAsk ?? null,

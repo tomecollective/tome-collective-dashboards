@@ -1287,6 +1287,9 @@ async function initHistoric() {
       const o = document.createElement("option"); o.value = o.textContent = t; sel.appendChild(o);
     });
     hx.loaded = true;
+    // Returning visitor with a saved address: fill the discounts without another
+    // click. Runs once per page load, after the roster is in memory.
+    if (hxSavedAddr() && !hx.autoCollDone) { hx.autoCollDone = true; hxCollLoad({ auto: true }); }
   }
   hxRender();
 }
@@ -1522,8 +1525,26 @@ function hxDiscFromCollection(body, players) {
   for (const p of players) { const pct = best.get(hxNorm(p.n)); if (pct) disc[p.n] = pct; }
   return { disc, matched: Object.keys(disc).length };
 }
-async function hxCollLoad() {
+// The address is public, so besides localStorage it is also kept in a first-party
+// cookie (1 year). Some browsers (Safari, in-app browsers, privacy modes) clear
+// localStorage between visits; the cookie lets those users skip re-pasting.
+function hxSavedAddr() {
+  try { const v = localStorage.getItem(HX_COLL_LS); if (v) return v; } catch (e) {}
+  try { const m = document.cookie.match(/(?:^|;\s*)fbCollUser=([^;]+)/); if (m) return decodeURIComponent(m[1]); } catch (e) {}
+  return "";
+}
+function hxSaveAddr(v) {
+  try { localStorage.setItem(HX_COLL_LS, v); } catch (e) {}
+  try { document.cookie = "fbCollUser=" + encodeURIComponent(v) + "; max-age=31536000; path=/; SameSite=Lax; Secure"; } catch (e) {}
+}
+function hxForgetAddr() {
+  try { localStorage.removeItem(HX_COLL_LS); } catch (e) {}
+  try { document.cookie = "fbCollUser=; max-age=0; path=/; SameSite=Lax; Secure"; } catch (e) {}
+}
+async function hxCollLoad(opts) {
+  const auto = !!(opts && opts.auto);
   const input = document.getElementById("hx-coll-user");
+  if (auto && !input.value) input.value = hxSavedAddr();
   const v = String(input.value || "").trim();
   if (!v) { hxCollStatus("Enter your 0x Flow address first.", true); return; }
   if (!hxLooksSecret(v) && !/^(0x)?[0-9a-fA-F]{16}$/.test(v)) {
@@ -1551,7 +1572,7 @@ async function hxCollLoad() {
     hx.disc = disc;
     hxSaveDisc();
     hx.result = null;
-    try { localStorage.setItem(HX_COLL_LS, v); } catch (e) {}
+    hxSaveAddr(v);
     document.getElementById("hx-coll-forget").style.display = "";
     const at = new Date(body.updatedAt || Date.now()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     let msg = `Read ${Number(body.count || 0).toLocaleString()} Moments at ${at}. Discounts set for ${matched} of ${hx.players.length} Historic players.`;
@@ -1568,13 +1589,13 @@ async function hxCollLoad() {
 (function hxCollWire() {
   const input = document.getElementById("hx-coll-user");
   let saved = null;
-  try { saved = localStorage.getItem(HX_COLL_LS); } catch (e) {}
+  saved = hxSavedAddr();
   if (saved) { input.value = saved; document.getElementById("hx-coll-forget").style.display = ""; }
-  document.getElementById("hx-coll-load").addEventListener("click", hxCollLoad);
+  document.getElementById("hx-coll-load").addEventListener("click", () => hxCollLoad());
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") hxCollLoad(); });
   document.getElementById("hx-coll-forget").addEventListener("click", (e) => {
     e.preventDefault();
-    try { localStorage.removeItem(HX_COLL_LS); } catch (err) {}
+    hxForgetAddr();
     input.value = "";
     e.target.style.display = "none";
     hxCollStatus("Address forgotten. Your discounts stay as they are.");
