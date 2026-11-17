@@ -19,6 +19,16 @@
 // the exact procedure to re-run this test after future changes.
 // If the rollback call fails for any reason, this still completes steps 1-4, so a
 // human still gets alerted even if the auto-fix itself doesn't work.
+//
+// Rollback guards (added 2026-11-05 after the Oct 25-26 ping-pong, where every
+// timeout flipped tome-fastbreak and tome-tcg between their two latest versions):
+//   - a timeout is never a rollback reason (the Workers answer in <1s outside
+//     their refresh windows; a slow check is the check, not the deploy);
+//   - only HTTP 5xx or a failed shape check is rollback-eligible, and only after
+//     two consecutive eligible failures (state in HEALTHCHECK_KV);
+//   - the candidate must differ from the live version and must not be a version
+//     this Worker has already rolled back from (remembered in KV forever);
+//   - the check timeout is 25s.
 
 // NOTE: url is kept only for logging/reference -- actual requests go through the
 // service binding (see `binding` below), not a public fetch. Workers on
@@ -60,32 +70,55 @@ const TARGETS = [
   },
 ];
 
+const CHECK_TIMEOUT_MS = 25000;        // was 10s; the refresh windows can push a cold read past that
+const CONSECUTIVE_FAILURES_REQUIRED = 2; // eligible failures in a row before any rollback
+const KV_CONSEC = (name) => `rollback:consecutive:${name}`;
+const KV_BAD = (scriptName) => `rollback:bad_versions:${scriptName}`;
+
+// Classify a failure so the scheduler can decide whether it is rollback-eligible.
+// "timeout" and "config" never roll back; "http5xx" and "shape" do (after the
+// consecutive-failure threshold). Anything else ("http4xx", "error") does not:
+// a 401/403 is a key problem, not a deploy problem.
+function isRollbackEligible(result) {
+  return result.kind === "http5xx" || result.kind === "shape";
+}
+
 async function checkTarget(target, env) {
   try {
     const service = env[target.binding];
     if (!service) {
-      return { name: target.name, healthy: false, reason: `Missing service binding ${target.binding} -- bind it in Settings > Bindings` };
+      return { name: target.name, healthy: false, kind: "config", reason: `Missing service binding ${target.binding} -- bind it in Settings > Bindings` };
     }
     // Service binding fetch: routed Worker-to-Worker internally, not over the
     // public network, so the workers.dev-to-workers.dev restriction doesn't apply.
     const headers = {};
     if (target.gated) {
       if (!env.TOME_SUBSCRIBER_KEY) {
-        return { name: target.name, healthy: false, reason: "TOME_SUBSCRIBER_KEY variable is not set on the healthcheck Worker (data routes are subscriber-gated)" };
+        return { name: target.name, healthy: false, kind: "config", reason: "TOME_SUBSCRIBER_KEY variable is not set on the healthcheck Worker (data routes are subscriber-gated)" };
       }
       headers["X-Tome-Key"] = env.TOME_SUBSCRIBER_KEY;
     }
-    const res = await service.fetch(`https://${target.name}${target.path}`, { headers, signal: AbortSignal.timeout(10000) });
+    const res = await service.fetch(`https://${target.name}${target.path}`, { headers, signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
     if (!res.ok) {
-      return { name: target.name, healthy: false, reason: `HTTP ${res.status}` };
+      return { name: target.name, healthy: false, kind: res.status >= 500 ? "http5xx" : "http4xx", reason: `HTTP ${res.status}` };
     }
     const data = await res.json();
-    if (!target.validate(data)) {
-      return { name: target.name, healthy: false, reason: "Response shape invalid -- got 200 but data doesn't match expected structure" };
+    if (data && (data.teaser === true || data.locked === true)) {
+      // A gate rejection is a key problem on this Worker, never a bad deploy.
+      return { name: target.name, healthy: false, kind: "auth", reason: "Gate returned a teaser/locked payload -- check TOME_SUBSCRIBER_KEY (no rollback)" };
     }
-    return { name: target.name, healthy: true, reason: null };
+    if (!target.validate(data)) {
+      return { name: target.name, healthy: false, kind: "shape", reason: "Response shape invalid -- got 200 but data doesn't match expected structure" };
+    }
+    return { name: target.name, healthy: true, kind: null, reason: null };
   } catch (err) {
-    return { name: target.name, healthy: false, reason: err.message || "Request failed or timed out" };
+    const timedOut = err && (err.name === "TimeoutError" || err.name === "AbortError" || /timed? ?out/i.test(err.message || ""));
+    return {
+      name: target.name,
+      healthy: false,
+      kind: timedOut ? "timeout" : "error",
+      reason: timedOut ? `Timed out after ${CHECK_TIMEOUT_MS / 1000}s (no rollback: a slow check is not a bad deploy)` : (err.message || "Request failed"),
+    };
   }
 }
 
@@ -219,10 +252,17 @@ async function alertDiscordFreshness(webhookUrl, failures) {
   });
 }
 
-async function alertDiscord(webhookUrl, failures) {
-  const lines = failures.map(f => `- **${f.name}**: ${f.reason}`).join("\n");
+async function alertDiscord(webhookUrl, failures, rollbackPlan = {}) {
+  const lines = failures.map(f => {
+    const plan = rollbackPlan[f.name];
+    const note = plan ? ` _(${plan})_` : "";
+    return `- **${f.name}**: ${f.reason}${note}`;
+  }).join("\n");
+  const anyRollback = Object.values(rollbackPlan).some(p => p === "rolling back");
   const body = {
-    content: `Tome Analytics health check failure\n${lines}\n\nAttempting automated rollback where possible -- check this channel for a follow-up message confirming whether that worked.`,
+    content: `Tome Analytics health check failure\n${lines}\n\n${anyRollback
+      ? "Attempting automated rollback where marked -- check this channel for a follow-up message confirming whether that worked."
+      : "No rollback attempted this run (see notes per line)."}`,
   };
   await fetch(webhookUrl, {
     method: "POST",
@@ -234,7 +274,7 @@ async function alertDiscord(webhookUrl, failures) {
 async function alertDiscordRollbackResult(webhookUrl, target, success, detail) {
   const body = {
     content: success
-      ? `Auto-rollback succeeded for **${target}** -- reverted to last known-good deployment.`
+      ? `Auto-rollback succeeded for **${target}** -- reverted ${detail || ""}. The version rolled back from is now blocked from auto-redeploy; clear \`rollback:bad_versions:*\` in HEALTHCHECK_KV after a real fix ships.`
       : `Auto-rollback did NOT succeed for **${target}**: ${detail}\nThis needs a human to look at it directly.`,
   };
   await fetch(webhookUrl, {
@@ -256,8 +296,6 @@ async function attemptRollback(env, scriptName) {
   }
 
   try {
-    // List deployments, find the second-most-recent (the last known-good one,
-    // assuming the most recent is the one that just broke).
     const listRes = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/deployments`,
       { headers: { "Authorization": `Bearer ${apiToken}` } }
@@ -268,15 +306,35 @@ async function attemptRollback(env, scriptName) {
     }
 
     const deployments = listData.result.deployments;
-    if (deployments.length < 2) {
-      return { success: false, detail: "No prior deployment to roll back to -- this is the first version" };
+    const versionOf = (d) => d?.versions?.[0]?.version_id || null;
+    const liveVersionId = versionOf(deployments[0]);
+    if (!liveVersionId) {
+      return { success: false, detail: "Could not find a version_id on the live deployment -- check the deployments API response shape" };
     }
 
-    // [0] is the current/broken deployment, [1] is the last known-good one.
-    const previousVersionId = deployments[1].versions?.[0]?.version_id;
-    if (!previousVersionId) {
-      return { success: false, detail: "Could not find a version_id on the previous deployment -- check the deployments API response shape" };
+    // Versions this Worker has already rolled back from. Never redeploy one:
+    // that is exactly the ping-pong (roll back to B, B fails, "previous" is A
+    // again, roll back to A, A fails, ...).
+    const badKey = KV_BAD(scriptName);
+    const bad = new Set((await env.HEALTHCHECK_KV.get(badKey, "json")) || []);
+
+    // Candidate: the newest prior deployment whose version is not live and not
+    // known-bad. deployments[0] is live, so start at [1].
+    let candidateId = null;
+    for (const d of deployments.slice(1)) {
+      const id = versionOf(d);
+      if (!id || id === liveVersionId || bad.has(id)) continue;
+      candidateId = id;
+      break;
     }
+    if (!candidateId) {
+      return { success: false, detail: `No eligible prior version: live is ${liveVersionId.slice(0, 8)}, ${bad.size} version(s) already rolled back from. Redeploy from the repo.` };
+    }
+
+    // Remember the version we are leaving BEFORE the deploy, so a failed deploy
+    // call cannot leave it eligible next run.
+    bad.add(liveVersionId);
+    await env.HEALTHCHECK_KV.put(badKey, JSON.stringify([...bad]));
 
     const rollbackRes = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/deployments`,
@@ -288,7 +346,7 @@ async function attemptRollback(env, scriptName) {
         },
         body: JSON.stringify({
           strategy: "percentage",
-          versions: [{ version_id: previousVersionId, percentage: 100 }],
+          versions: [{ version_id: candidateId, percentage: 100 }],
         }),
       }
     );
@@ -296,10 +354,23 @@ async function attemptRollback(env, scriptName) {
     if (!rollbackData.success) {
       return { success: false, detail: JSON.stringify(rollbackData.errors || "Unknown API error") };
     }
-    return { success: true, detail: null };
+    return { success: true, detail: `${liveVersionId.slice(0, 8)} -> ${candidateId.slice(0, 8)}` };
   } catch (err) {
     return { success: false, detail: err.message };
   }
+}
+
+// Consecutive eligible-failure counter per target. Returns the new count.
+async function bumpConsecutive(env, name, eligible) {
+  const key = KV_CONSEC(name);
+  if (!eligible) {
+    await env.HEALTHCHECK_KV.put(key, "0");
+    return 0;
+  }
+  const prev = parseInt((await env.HEALTHCHECK_KV.get(key)) || "0", 10) || 0;
+  const next = prev + 1;
+  await env.HEALTHCHECK_KV.put(key, String(next));
+  return next;
 }
 
 export default {
@@ -340,16 +411,38 @@ export default {
       }
     }
 
+    // Update the consecutive-failure counters for every target, healthy or not,
+    // so one good run resets the clock.
+    const plan = {};
+    const toRollBack = [];
+    for (const r of results) {
+      const eligible = !r.healthy && isRollbackEligible(r);
+      const count = await bumpConsecutive(env, r.name, eligible);
+      if (r.healthy) continue;
+      if (!eligible) {
+        plan[r.name] = r.kind === "timeout" ? "no rollback: timeout" : `no rollback: ${r.kind}`;
+      } else if (count < CONSECUTIVE_FAILURES_REQUIRED) {
+        plan[r.name] = `no rollback yet: ${count}/${CONSECUTIVE_FAILURES_REQUIRED} consecutive`;
+      } else {
+        plan[r.name] = "rolling back";
+        toRollBack.push(r);
+      }
+    }
+
     const failures = results.filter(r => !r.healthy);
     if (failures.length === 0) return; // all healthy, nothing to do
 
     if (env.DISCORD_WEBHOOK_URL) {
-      await alertDiscord(env.DISCORD_WEBHOOK_URL, failures);
+      await alertDiscord(env.DISCORD_WEBHOOK_URL, failures, plan);
     }
 
-    for (const failure of failures) {
+    for (const failure of toRollBack) {
       const target = TARGETS.find(t => t.name === failure.name);
       const rollbackResult = await attemptRollback(env, target.scriptName);
+      // Whatever happened, the next run starts a fresh count: a successful
+      // rollback needs two new failures to roll again, and a refused one
+      // should not retry every tick.
+      await env.HEALTHCHECK_KV.put(KV_CONSEC(failure.name), "0");
       if (env.DISCORD_WEBHOOK_URL) {
         await alertDiscordRollbackResult(env.DISCORD_WEBHOOK_URL, failure.name, rollbackResult.success, rollbackResult.detail);
       }

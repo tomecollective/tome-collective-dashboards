@@ -111,6 +111,11 @@
   .cl-table { width: 100%; border-collapse: collapse; font-size: 15px; }
   .cl-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dimmer); padding: 6px 6px; border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; background: var(--panel); }
   .cl-table td { padding: 5px 6px; border-bottom: 1px solid #1c1f1c; vertical-align: middle; }
+  .cl-table td.thumb { width: 44px; padding: 3px 4px; }
+  .cl-table td.thumb img { width: 36px; height: 50px; object-fit: cover; border-radius: 3px; background: #0f110f; display: block; }
+  .cl-table td.shop { white-space: nowrap; }
+  .cl-table td.shop a { font-size: 12px; font-weight: 600; color: var(--text-dim); text-decoration: none; border: 1px solid var(--panel-border); border-radius: 999px; padding: 2px 9px; }
+  .cl-table td.shop a:hover { color: var(--forest); border-color: var(--forest); }
   .cl-table td.num { color: var(--text-dim); font-variant-numeric: tabular-nums; width: 56px; }
   .cl-table td.rar { color: var(--text-dimmer); font-size: 13px; white-space: nowrap; }
   .cl-table td.chk { text-align: center; width: 70px; }
@@ -178,7 +183,7 @@
     <h2>Unlock every set's cost to complete</h2>
     <p>Checklists, set names and release dates are free. The dollar figures and their history are a Tome Vault benefit.</p>
   </div>
-  <a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Vault</a>
+  <a class="unlock-btn" href="https://read.tomecollective.com/upgrade">Unlock with Tome Vault</a>
 </div>
 
 <main>
@@ -197,7 +202,7 @@
   </div>
 </div>
 
-<footer>Powered by Tome Analytics &middot; Set values via JustTCG, tracked daily since Dec 2025 &middot; Card lists from public card databases (TCGdex) &middot; Checklist progress saves to your Tome account when this page is opened from read.tomecollective.com; otherwise it stays in this browser</footer>
+<footer>Powered by Tome Analytics &middot; Set values via JustTCG, tracked daily since Dec 2025 &middot; Card lists and images from public card databases (TCGdex, Lorcast, OPTCG API) &middot; TCGplayer links are affiliate links; Tome Collective may earn a commission &middot; Checklist progress saves to your Tome account when this page is opened from read.tomecollective.com; otherwise it stays in this browser</footer>
 
 <script>
   const API_BASE = "https://tome-set-value.tomecollective.workers.dev";
@@ -238,7 +243,29 @@
 
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
   function formatPrice(p) { return p == null ? "—" : money.format(p); }
-  const CARDS_BASE = "cards"; // static per-set JSON, served next to this page by GitHub Pages
+  const CARDS_BASE = "cards";
+  // TCGplayer affiliate pattern used across the site (set overviews, Chase Index); search URL lands on the card without a product id.
+  const TCGP_SEARCH = { pokemon: "pokemon", "disney-lorcana": "lorcana", "one-piece-card-game": "one-piece-card-game" };
+  function tcgplayerLink(game, c, list) {
+    // One Piece card ids ("OP01-077") search cleanly on their own; Pokémon and Lorcana want name + collector number.
+    const q = game === "one-piece-card-game" ? c.n : `${c.name} ${list.official && /^\d+$/.test(String(c.n)) ? `${c.n}/${list.official}` : c.n}`;
+    const target = `https://www.tcgplayer.com/search/${TCGP_SEARCH[game] || "all"}/product?q=${encodeURIComponent(q)}`;
+    return `https://partner.tcgplayer.com/c/4128198/1830156/21018?u=${encodeURIComponent(target)}&utm_campaign=set-tracker&utm_medium=referral&utm_source=read.tomecollective.com`;
+  }
+  function thumbUrl(list, c) {
+    if (!c.i || !list.img_base) return null;
+    const suffix = list.img_suffix != null ? list.img_suffix : "/low.webp";
+    if (c.i === 1) return `${list.img_base}/${c.n}${suffix}`;
+    return /^https?:/.test(c.i) ? `${c.i}${suffix}` : `${list.img_base}/${c.i}${suffix}`;
+  }
+  // Sets that are noise on a tracker (promos, starter decks, event cards) stay out of the table. The worker still
+  // indexes them, so nothing is lost; this is a display rule only.
+  const HIDE = {
+    pokemon: /promo|mcdonald|trainer kit|battle academy|trick or trade|world championship|deck exclusives|league|prize pack|blister|jumbo|countdown|kids wb|burger king|best of|e-reader|miscellaneous|first partner|player placement|southeast asia|world collection|professor|rumble|energies|trading card game classic|classic collection/i,
+    "disney-lorcana": /illumineer|promo|d23/i,
+    "one-piece-card-game": /starter deck|ultra deck|deck set|pre-release|release event|tournament|promotion|demo deck|revision pack|collection sets|st-\d/i,
+  };
+  const visible = (game, set) => !(HIDE[game] && HIDE[game].test(set.name));
   const sidOf = () => sessionStorage.getItem("tome_sid") || "";
   const hasSid = () => /^sub_[0-9a-f-]{36}$/.test(sidOf());
 
@@ -289,9 +316,10 @@
   function render() {
     tileGrid.innerHTML = "";
     const q = setFilter.trim().toLowerCase();
-    const rows = currentSets.filter((s) => !q || s.name.toLowerCase().includes(q));
+    const shown = currentSets.filter((s) => visible(currentGame, s));
+    const rows = shown.filter((s) => !q || s.name.toLowerCase().includes(q));
     emptyState.style.display = rows.length ? "none" : "block";
-    document.getElementById("setCount").textContent = `${rows.length} of ${currentSets.length} sets`;
+    document.getElementById("setCount").textContent = `${rows.length} of ${shown.length} sets`;
     const now = new Date();
     for (const s of rows) {
       const tr = document.createElement("tr");
@@ -314,6 +342,7 @@
   let modalSet = null, modalTab = "checklist";
   async function openModal(set, tab) {
     modalSet = set; modalTab = tab || "checklist";
+    try { if (window.posthog && posthog.capture) posthog.capture("checklist opened", { game: currentGame, set_name: set.name, tab: modalTab }); } catch (e) {}
     modalTitle.textContent = set.name;
     modalOverlay.classList.add("open");
     renderModal();
@@ -330,7 +359,7 @@
   async function renderHistory(set) {
     const pane = document.getElementById("modalPane");
     if (isLocked) {
-      pane.innerHTML = `<div class="modal-locked"><p>The cost-to-complete history is a Tome Vault benefit.</p><a class="unlock-btn" href="https://tomecollective.com/pricing">Unlock with Tome Vault</a><div class="modal-open-cl">The checklist for this set is free: <a id="goChecklist">open the checklist</a>.</div></div>`;
+      pane.innerHTML = `<div class="modal-locked"><p>The cost-to-complete history is a Tome Vault benefit.</p><a class="unlock-btn" href="https://read.tomecollective.com/upgrade">Unlock with Tome Vault</a><div class="modal-open-cl">The checklist for this set is free: <a id="goChecklist">open the checklist</a>.</div></div>`;
       document.getElementById("goChecklist").addEventListener("click", () => { modalTab = "checklist"; renderModal(); });
       return;
     }
@@ -403,7 +432,8 @@
     const rows = cl.list.cards.filter((c) => !cl.filter || c.name.toLowerCase().includes(cl.filter) || String(c.n).includes(cl.filter)).map((c) => {
       const o = cl.owned[c.n] || [];
       const cells = printings.map((pName) => c.v.includes(pName) ? `<td class="chk"><input type="checkbox" data-n="${c.n}" data-v="${pName}" ${o.includes(pName) ? "checked" : ""}></td>` : `<td class="chk"></td>`).join("");
-      return `<tr class="${o.length ? "owned" : ""}"><td class="num">${c.n}</td><td class="name">${c.name}</td><td class="rar">${c.r || ""}</td>${cells}</tr>`;
+      const img = thumbUrl(cl.list, c);
+      return `<tr class="${o.length ? "owned" : ""}"><td class="thumb">${img ? `<img src="${img}" loading="lazy" alt="" width="36" height="50">` : ""}</td><td class="num">${c.n}</td><td class="name">${c.name}</td><td class="rar">${c.r || ""}</td>${cells}<td class="shop"><a href="${tcgplayerLink(cl.game, c, cl.list)}" target="_blank" rel="sponsored noopener">View on TCGplayer</a></td></tr>`;
     }).join("");
     pane.innerHTML = `
       <div class="cl-top">
@@ -413,7 +443,7 @@
         <span class="cl-save ${cl.status === "Saving…" ? "saving" : ""}" id="clSave">${cl.status}</span>
       </div>
       ${valueBlock}
-      <div class="cl-scroll"><table class="cl-table"><thead><tr><th>#</th><th>Card</th><th>Rarity</th>${printings.map((pName) => `<th>${pName}<br><span style="font-weight:400">${t.byPrint[pName].have}/${t.byPrint[pName].total}</span></th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="cl-scroll"><table class="cl-table"><thead><tr><th></th><th>#</th><th>Card</th><th>Rarity</th>${printings.map((pName) => `<th>${pName}<br><span style="font-weight:400">${t.byPrint[pName].have}/${t.byPrint[pName].total}</span></th>`).join("")}<th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="cl-tools">
         <button id="clExport">Export JSON</button><button id="clImport">Import JSON</button><input type="file" id="clFile" accept="application/json" style="display:none">
         <span>${cl.list.official ? `Base set = cards 1–${cl.list.official}, any printing. Master set = every printing of every card.` : "Master set = every printing of every card."}</span>
@@ -442,7 +472,7 @@
     // cheap partial update: redraw tallies and pill without rebuilding the table
     const t = tallies(); const head = cl.mode === "base" ? t.base : t.master;
     const el = document.querySelector(".cl-tally"); if (el) el.innerHTML = `Owned <strong>${head.have}</strong> &middot; Remaining <strong>${head.total - head.have}</strong> of ${head.total} ${cl.mode === "base" ? "cards" : "printings"}`;
-    document.querySelectorAll(".cl-table thead th").forEach((th, i) => { if (i < 3) return; const name = Object.keys(t.byPrint)[i - 3]; th.innerHTML = `${name}<br><span style="font-weight:400">${t.byPrint[name].have}/${t.byPrint[name].total}</span>`; });
+    document.querySelectorAll(".cl-table thead th").forEach((th, i) => { if (i < 4) return; const name = Object.keys(t.byPrint)[i - 4]; if (!name) return; th.innerHTML = `${name}<br><span style="font-weight:400">${t.byPrint[name].have}/${t.byPrint[name].total}</span>`; });
     document.querySelectorAll(".cl-table tbody tr").forEach((tr) => { const n = tr.querySelector("input")?.dataset.n; if (n != null) tr.classList.toggle("owned", (cl.owned[n] || []).length > 0); });
     const ownedBox = document.querySelector(".cl-money .v:not(.locked)"); if (ownedBox && !isLocked) { const vs = document.querySelectorAll(".cl-money .v"); if (vs[1]) vs[1].textContent = `${t.ownedCards} of ${cl.list.total} cards`; }
     mine[cl.setId] = { cards: t.ownedCards, updated_at: cl.updated_at };
@@ -477,8 +507,34 @@
     });
   });
 
-  loadSets("pokemon");
+  // Deep link: ?game=<pokemon|disney-lorcana|one-piece-card-game>&set=<set name or id> opens that set's checklist.
+  (async function boot() {
+    const p = new URLSearchParams(window.location.search);
+    const games = ["pokemon", "disney-lorcana", "one-piece-card-game"];
+    const g = games.includes(p.get("game")) ? p.get("game") : "pokemon";
+    const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const want = norm(p.get("set"));
+    document.querySelectorAll(".tab-pill").forEach((b) => b.classList.toggle("active", b.dataset.game === g));
+    await loadSets(g);
+    if (!want) return;
+    const hit = currentSets.find((x) => norm(x.id) === want || norm(x.name) === want)
+      || currentSets.filter((x) => norm(x.name).includes(want)).sort((x, y) => x.name.length - y.name.length)[0];
+    if (hit) openModal(hit, "checklist");
+  })();
 </script>
 
+<!-- tome-analytics: Cloudflare Web Analytics (page views/visits) + PostHog (clicks) -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "475914bb7a024aee83147bb5951b09d9"}'></script>
+<script>
+(function () {
+  var KEY = 'phc_wv7eff5tUfpMXxryhAJn62RwEXanchZAX8fGUVY9TUtX', HOST = 'https://us.i.posthog.com';
+  if (!KEY || KEY.indexOf('__') === 0) return;   // not configured yet
+  !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session identify reset get_distinct_id get_session_id set_config startSessionRecording stopSessionRecording opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+  posthog.init(KEY, { api_host: HOST, person_profiles: 'identified_only', autocapture: true, capture_pageview: true, capture_pageleave: true });
+  // Segment every event by dashboard and sign-in state. The access key and subscriber id are never sent.
+  var hasKey = !!sessionStorage.getItem('tome_key'), hasSid = !!sessionStorage.getItem('tome_sid');
+  posthog.register({ dashboard: 'set-tracker', access: (hasKey || hasSid) ? 'member' : 'anonymous', auth_via: hasSid ? 'subscription' : (hasKey ? 'key' : 'none') });
+})();
+</script>
 </body>
 </html>

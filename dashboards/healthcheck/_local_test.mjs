@@ -7,13 +7,30 @@ const worker = (await import("./index.js")).default;
 
 const posts = [];
 let analytics = { data: { viewer: { accounts: [{ workersInvocationsAdaptive: [{ dimensions: { scriptName: "tome-tcg" }, sum: { requests: 100, errors: 0 } }] }] } } };
+// Simulated Cloudflare deployments: newest first, [0] is live. A rollback POST
+// moves the deployed version to the front, like the real API does.
+let deployments = [{ versions: [{ version_id: "vB-new" }] }, { versions: [{ version_id: "vA-old" }] }];
 globalThis.fetch = async (url, init) => {
-  posts.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
-  if (String(url).includes("/graphql")) return new Response(JSON.stringify(analytics), { status: 200 });
+  const u = String(url);
+  const rec = { url: u, body: init?.body ? JSON.parse(init.body) : null };
+  posts.push(rec); allPosts.push(rec);
+  if (u.includes("/graphql")) return new Response(JSON.stringify(analytics), { status: 200 });
+  if (u.includes("/deployments")) {
+    if (init?.method === "POST") {
+      const id = JSON.parse(init.body).versions[0].version_id;
+      deployments = [{ versions: [{ version_id: id }] }, ...deployments.filter(d => d.versions[0].version_id !== id)];
+      return new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ success: true, result: { deployments } }), { status: 200 });
+  }
   return new Response("{}", { status: 200 });
 };
 const kvStore = new Map();
 const kv = { get: async (k, t) => { const v = kvStore.get(k); return v == null ? null : t === "json" ? JSON.parse(v) : v; }, put: async (k, v) => kvStore.set(k, String(v)) };
+const allPosts = [];
+const rollbackPosts = () => posts.filter((p) => p.url.includes("/deployments") && p.body);
+const allRollbacks = () => allPosts.filter((p) => p.url.includes("/deployments") && p.body);
+const resetRollbackState = () => { allPosts.length = 0; for (const k of [...kvStore.keys()]) if (k.startsWith("rollback:")) kvStore.delete(k); deployments = [{ versions: [{ version_id: "vB-new" }] }, { versions: [{ version_id: "vA-old" }] }]; };
 const svc = (handler) => ({ fetch: async (url, init) => handler(new URL(url), init?.headers || {}) });
 const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
 
@@ -96,4 +113,60 @@ posts.length = 0;
 await worker.scheduled({}, makeEnv(), {});
 er = posts.filter((p) => p.url.includes("discord.test"));
 assert.match(er[0].body.content, /Account Analytics: Read/, "missing analytics permission is reported");
-console.log("ALL HEALTHCHECK LOCAL TESTS PASSED");
+
+// -- Rollback guards (2026-11-05) ------------------------------------------------
+analytics = { data: { viewer: { accounts: [{ workersInvocationsAdaptive: [] }] } } };
+const timeoutSvc = svc(async () => { const e = new Error("The operation was aborted due to timeout"); e.name = "TimeoutError"; throw e; });
+const brokenSvc = svc(() => ok({ nope: true })); // 200 but wrong shape
+const fiveHundredSvc = svc(() => new Response("boom", { status: 500 }));
+
+// 1. A timeout never rolls back, no matter how many times in a row.
+resetRollbackState(); kvStore.delete("freshness:last_alert");
+for (let i = 0; i < 3; i++) { posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: timeoutSvc }, {}); }
+assert.equal(allRollbacks().length, 0, "timeout must not trigger a rollback");
+assert.match(posts.find((p) => p.url.includes("discord.test")).body.content, /no rollback: timeout/);
+assert.match(posts.find((p) => p.url.includes("discord.test")).body.content, /25s/, "timeout reason reports the 25s limit");
+
+// 2. One shape failure: alert, no rollback. Second consecutive: rollback to vA-old.
+resetRollbackState();
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+assert.equal(rollbackPosts().length, 0, "first shape failure does not roll back");
+assert.match(posts.find((p) => p.url.includes("discord.test")).body.content, /1\/2 consecutive/);
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+assert.equal(rollbackPosts().length, 1, "second consecutive shape failure rolls back");
+assert.equal(rollbackPosts()[0].body.versions[0].version_id, "vA-old");
+assert.equal(deployments[0].versions[0].version_id, "vA-old", "vA-old is now live");
+assert.deepEqual(kvStore.get("rollback:bad_versions:tome-fastbreak") && JSON.parse(kvStore.get("rollback:bad_versions:tome-fastbreak")), ["vB-new"], "rolled-back-from version remembered");
+
+// 3. Ping-pong: still failing after the rollback. "Previous" is now vB-new, which
+//    is known-bad, so there is no eligible candidate -> no deploy, human alert.
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+assert.equal(allRollbacks().length, 1, "never redeploys a version it already rolled back from (still just the one deploy)");
+assert.equal(deployments[0].versions[0].version_id, "vA-old", "live version unchanged");
+const refused = posts.filter((p) => p.url.includes("discord.test")).map((p) => p.body.content).join("\n");
+assert.match(refused, /No eligible prior version/, "refusal is explained");
+assert.match(refused, /needs a human/);
+
+// 4. Equality guard: if the list somehow shows the same version twice, skip it.
+resetRollbackState();
+deployments = [{ versions: [{ version_id: "vSame" }] }, { versions: [{ version_id: "vSame" }] }, { versions: [{ version_id: "vOlder" }] }];
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: fiveHundredSvc }, {});
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: fiveHundredSvc }, {});
+assert.equal(rollbackPosts().length, 1, "5xx twice rolls back");
+assert.equal(rollbackPosts()[0].body.versions[0].version_id, "vOlder", "skips a candidate equal to the live version");
+
+// 5. A healthy run resets the counter: fail, pass, fail -> no rollback.
+resetRollbackState();
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+await worker.scheduled({}, makeEnv(), {});
+posts.length = 0; await worker.scheduled({}, { ...makeEnv(), FASTBREAK_SERVICE: brokenSvc }, {});
+assert.equal(allRollbacks().length, 0, "a healthy run between failures resets the count");
+
+// 6. 4xx (bad key) never rolls back.
+resetRollbackState();
+for (let i = 0; i < 3; i++) { posts.length = 0; await worker.scheduled({}, { ...makeEnv(), TOME_SUBSCRIBER_KEY: "wrong" }, {}); }
+assert.equal(allRollbacks().length, 0, "4xx/teaser is a key problem, not a deploy problem");
+assert.match(posts.find((p) => p.url.includes("discord.test")).body.content, /no rollback: auth/);
+
+console.log("ALL HEALTHCHECK LOCAL TESTS PASSED (incl. rollback guards)");
