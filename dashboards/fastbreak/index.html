@@ -1498,7 +1498,7 @@ const TOPSHOT_BASE = "https://tome-topshot.tomecollective.workers.dev";
 const HX_COLL_LS = "fbHistoricCollUser";
 const HX_TIER_PCT = { Ultimate: 20, Legendary: 15, Rare: 10, Fandom: 5, Common: 5 };
 // Top Shot sometimes lists a legend under another name than the Historic roster.
-const HX_NAME_ALIASES = { "penny hardaway": "anfernee hardaway", "ron artest": "metta world peace", "metta sandiford artest": "metta world peace", "john hot rod williams": "hot rod williams", "john williams": "hot rod williams" };
+const HX_NAME_ALIASES = { "penny hardaway": "anfernee hardaway", "mahmoud abul rauf": "mahmoud abdul rauf", "ron artest": "metta world peace", "metta sandiford artest": "metta world peace", "john hot rod williams": "hot rod williams", "john williams": "hot rod williams" };
 function hxNorm(name) {
   const fold = { "ø": "o", "ł": "l", "đ": "d", "æ": "ae", "œ": "oe", "ß": "ss", "ı": "i" };
   const k = String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()

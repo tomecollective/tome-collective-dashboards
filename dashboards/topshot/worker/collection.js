@@ -30,10 +30,21 @@ const TIER_RANK = { Ultimate: 4, Legendary: 3, Rare: 2, Fandom: 1, Common: 1 };
 // its value (Top Shot's rule, per collectors: "rarity or value, whichever is
 // higher"). Value = average sale price, else median recent sale, else low ask.
 // Calibrated Nov 17 2026 on one 5,249-Moment wallet checked against the game's own
-// discounts: Moments from $5.50 up were lifted to 10% (Rare) while ones at or
-// under $4.99 stayed at 5%. Legendary / Ultimate cutoffs are NOT known yet; null
-// means "value never lifts a Moment to that tier" until a real data point lands.
-export const VALUE_TIER_MIN_PRICE = { Ultimate: null, Legendary: null, Rare: 5 };
+// discounts (71 discounted players): every player at 10% held a Moment with an
+// average sale price of $4.33 or more; every player at 5% topped out at $2.82 or
+// less. The Rare cutoff is therefore somewhere in ($2.82, $4.33]; $3.50 is the
+// midpoint. Legendary / Ultimate cutoffs are NOT known yet; null means "value never
+// lifts a Moment to that tier" until a real data point lands.
+export const VALUE_TIER_MIN_PRICE = { Ultimate: null, Legendary: null, Rare: 3.5 };
+// Sets whose Top Shot discount does not follow our set-tier classification. Fresh
+// Threads is classed Rare by name, but two players holding only cheap Fresh
+// Threads (about $0.23) get 5% in the game, so for discounts it counts as Fandom
+// and only value can lift it. Two data points; revisit if a counter-example shows.
+const DISCOUNT_SET_TIER_OVERRIDES = [{ pattern: /^Fresh Threads$/i, tier: "Fandom" }];
+function discountSetTier(setName, tier) {
+  for (const o of DISCOUNT_SET_TIER_OVERRIDES) if (o.pattern.test(setName || "")) return o.tier;
+  return tier;
+}
 const VALUE_TIER_ORDER = ["Ultimate", "Legendary", "Rare"];
 export function valueTier(price) {
   if (price == null || !(price > 0)) return null;
@@ -175,7 +186,7 @@ function buildCollection({ address, username, moments, total, inventory, snapsho
       continue;
     }
     const setName = ed?.setName || set?.name || null;
-    const setTier = set?.tier || ed?.tier || "Unknown";
+    const setTier = discountSetTier(setName, set?.tier || ed?.tier || "Unknown");
     const value = ed?.avgSalePrice ?? ed?.marketValue ?? ed?.lowAsk ?? null;
     const tier = effectiveTier(setTier, value);
     const moment = {
