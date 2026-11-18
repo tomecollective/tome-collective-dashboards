@@ -37,6 +37,7 @@ import {
   getHistoricStatus,
 } from "./historic.js";
 import { normalizeName } from "../../shared/names.js";
+import { HISTORIC_AUTO_CRON, runHistoricAutoTick, ingestContest, fetchSchedule, historicAutoStatus } from "./historic-auto.js";
 
 const BDL_ROOT = "https://api.balldontlie.io";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -2289,7 +2290,8 @@ export default {
           fulldataTeams: fulldata?.teams ? Object.keys(fulldata.teams).length : null,
         };
       }
-      return json({ ok: true, todayET: today, checkedAt: new Date(now).toISOString(), snapshotSchema: SNAPSHOT_SCHEMA, leagues });
+      const historicAuto = await historicAutoStatus(env).catch((err) => ({ error: err.message }));
+      return json({ ok: true, todayET: today, checkedAt: new Date(now).toISOString(), snapshotSchema: SNAPSHOT_SCHEMA, leagues, historicAuto });
     }
 
     // Run metadata for one league (or all) -- the frontend builds its day
@@ -2643,6 +2645,22 @@ export default {
       }
     }
 
+    // Admin: load one Historic contest's box scores now (same path the cron
+    // takes). Body: { contestId, dryRun } -- dryRun defaults to true and
+    // returns the preview without saving. A contest is never applied twice.
+    if (url.pathname === "/api/fastbreak/historic/auto/run" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json().catch(() => ({}));
+        const contests = await fetchSchedule(env);
+        const contest = contests.find((c) => c.id === body.contestId) || null;
+        if (!contest) return json({ error: "contestId not found on the Historic page", contests: contests.map((c) => c.id) }, 400);
+        return json(await ingestContest(env, contest, { validate: validateHistoricOptimizer, dryRun: body.dryRun !== false }));
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
     if (url.pathname === "/api/fastbreak/historic/advance" && request.method === "POST") {
       if (!checkAdminToken(request, env)) return unauthorized();
       try {
@@ -2664,6 +2682,17 @@ export default {
   // today's day snapshot for its league (only while that league is in
   // season) and spends the leftover budget on that league's Full Data build.
   async scheduled(event, env) {
+    // Historic box scores have their own schedule and invocation (so they never
+    // eat a league tick's subrequest budget). See worker/historic-auto.js.
+    if (event.cron === HISTORIC_AUTO_CRON) {
+      try {
+        const r = await runHistoricAutoTick(env, { validate: validateHistoricOptimizer });
+        if (r.action !== "waiting") console.log("historic-auto:", JSON.stringify(r));
+      } catch (err) {
+        console.error("historic-auto tick failed:", err.message);
+      }
+      return;
+    }
     const league = event.cron === LEAGUE_CRONS.NBA ? "NBA" : "WNBA";
     const today = todayStr();
     // Heartbeat for /api/fastbreak/health -- written on every tick, in or out
@@ -2785,4 +2814,5 @@ export const __testables__ = {
   dayBuildKey,
   LEAGUE_CRONS,
   MAX_SUBREQUESTS,
+  validateHistoricOptimizer,
 };

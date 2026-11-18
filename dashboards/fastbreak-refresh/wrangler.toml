@@ -32,8 +32,19 @@ simple = { limit = 60, period = 60 }
 # nothing until Oct 15. These match what is live in the dashboard.
 #   "*/30 * * * *"    -> WNBA  (:00 :30)
 #   "7-59/15 * * * *" -> NBA   (:07 :22 :37 :52)
+#   "3-58/5 0-9 * * *" -> NBA Historic box scores (HISTORIC_AUTO_CRON in
+#                         worker/historic-auto.js): every 5 min 00:03-09:58 UTC,
+#                         loads each day's box scores 15 min after the last tip.
 [triggers]
-crons = ["*/30 * * * *", "7-59/15 * * * *"]
+crons = ["*/30 * * * *", "7-59/15 * * * *", "3-58/5 0-9 * * *"]
+
+# Cloudflare Browser Run (Quick Actions) for the Historic box scores: opens
+# Top Shot's public Fast Break page with no sign-in and reads the box score
+# dialogs. One run per Historic day, about 30 s, well inside the Workers Free
+# allowance (10 browser minutes per day). Needs compatibility_date >= 2026-03-24.
+# Without this binding the Historic tick logs an error and changes nothing.
+[browser]
+binding = "BROWSER"
 
 # Subscription-id auth: asks tome-proxy (over a service binding, never a public
 # fetch) whether a Beehiiv subscription id unlocks this product. Requires the

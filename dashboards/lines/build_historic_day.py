@@ -13,9 +13,10 @@ into a file (the same paste the admin panel's "Historic RP Prices" box takes). T
      teams are the teams in action,
   5. prints the dataset to stdout, ready for the admin panel's "Upload optimizer data" box.
 
-Observed-game histories (g / s) carry forward untouched. Box scores from the day are added later, after the
-simulated games finish, with the same tool once a results paste exists. Nothing here touches Collector
-Discounts; those stay in each reader's browser.
+Observed-game histories (g / s) carry forward untouched. Each day's box scores are added by the Worker
+itself, 15 minutes after the day's last game starts (dashboards/fastbreak-refresh/worker/historic-auto.js),
+and this script downloads the dataset with them included. Nothing here touches Collector Discounts; those
+stay in each reader's browser.
 """
 import json, os, re, sys, urllib.request
 

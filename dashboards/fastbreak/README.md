@@ -77,6 +77,7 @@ Eastern Time via `Intl` (handles the EDT/EST switch in November).
 | `GET /api/fastbreak/fulldata?league=` · `POST …/fulldata/build?league=` · `GET …/fulldata/status?league=` | Per-league Full Data. |
 | `GET /api/fastbreak/historic?day=` · `GET …/historic/status` | Historic public + status. |
 | `POST /api/fastbreak/historic/seed` · `POST …/historic/objectives/day` · `POST …/historic/advance` | Historic admin. |
+| `POST /api/fastbreak/historic/auto/run` | `{contestId, dryRun}` load one Historic day's box scores now (admin; `dryRun` defaults to true). |
 
 POSTs require the `X-Admin-Token` header (`FASTBREAK_ADMIN_TOKEN` secret). The admin
 password is never in `index.html`: the admin panel POSTs what was typed to
@@ -99,10 +100,37 @@ still builds on demand.
 `[[ratelimits]]` in each `wrangler.toml` adds a per-IP 60 req/min limit (Workers Rate
 Limiting binding, `PUBLIC_RATE_LIMITER`); the Workers skip the check if the binding is absent.
 
+## Historic box scores (automatic)
+`worker/historic-auto.js` adds each Historic day's box scores to the optimizer dataset
+(`fastbreak:historic:optimizer`) on its own, so the nightly results upload is no longer needed.
+
+- **When:** cron `3-58/5 0-9 * * *` (its own invocation). Each tick reads Top Shot's public
+  Fast Break page (`nbatopshot.com/fastbreak?league=simulation`, plain fetch, no sign-in), which
+  embeds every contest of the run with its games, start times and statuses. A day loads at the
+  first tick 15 minutes or more after its last game starts, once every game is Final. Between
+  days a tick is one KV read.
+- **How:** Cloudflare Browser Run (`[browser] binding = "BROWSER"`, Quick Actions `content`)
+  opens the same public page for that contest, clicks each game's Box score button and reads
+  the tables. One run per day, about 30 seconds of browser time (Workers Free includes 10
+  minutes a day). No Top Shot API call, no account, no admin token.
+- **What changes:** every matched player gets one `s` row (in `statCodes` order) and one `g`
+  game, rescored with the same 2026-27 weights and 1.5 turnover estimate as
+  `dashboards/lines/build_historic_day.py`. Prices, AVG and slates are untouched: the next
+  day's roster still comes from the roster-builder paste. Box-score players not in the
+  dataset are listed as unmatched and skipped.
+- **Never twice:** the dataset records `boxScoreContests`; `fastbreak:historic:auto` keeps the
+  run log. Days that had already ended when the automation first ran are marked skipped and
+  never backfilled. Four failed tries on a day and it stops and logs the error.
+- **Watch it:** `GET /api/fastbreak/health` now includes `historicAuto` (last run, next day due,
+  last error, unmatched names).
+- **Risk:** it reads the page, not a published feed, so a Top Shot redesign can break it. It
+  fails closed (nothing saved) and the manual upload still works.
+
 ## KV keys
 `fastbreak:objectives` (all leagues) · `fastbreak:latest` / `fastbreak:nba:latest` ·
 `fastbreak:day:<date>[:build]` / `fastbreak:nba:day:<date>[:build]` ·
-`fastbreak:fulldata[:build]` / `fastbreak:nba:fulldata[:build]` · `fastbreak:historic:*`.
+`fastbreak:fulldata[:build]` / `fastbreak:nba:fulldata[:build]` · `fastbreak:historic:*`
+(including `fastbreak:historic:optimizer` and the box-score log `fastbreak:historic:auto`).
 
 ## BALLDONTLIE tiers
 Box scores, active rosters and injuries need ALL-STAR. PITP comes from the advanced-stats
