@@ -1039,6 +1039,53 @@ function projectionsForDate(schedule, league, date, stat) {
   return schedule?.[league]?.[date]?.projections?.[stat] || null;
 }
 
+// -- Pulled projections (D1) ---------------------------------------------------
+// The RotoWire pull writes rows into the PROJECTIONS_DB D1 database (table
+// `projections`, see migrations/0001_projections.sql), so projections can be
+// loaded without the admin password. Only the night's objective stats are
+// pulled. At render time those rows overlay the manual KV uploads for the
+// same league/date/stat, name by name: a pulled value wins, and a manual
+// upload still covers any player the pull didn't include. No binding, or a
+// failed query, means KV only, exactly as before.
+async function loadPulledProjections(env, league, date) {
+  if (!env.PROJECTIONS_DB) return null;
+  try {
+    const { results } = await env.PROJECTIONS_DB
+      .prepare("SELECT stat, name, value FROM projections WHERE league = ?1 AND date = ?2")
+      .bind(league, date)
+      .all();
+    const byStat = {};
+    for (const row of results || []) {
+      const value = Number(row.value);
+      if (!row.name || !STAT_FIELD_MAP[row.stat] || !Number.isFinite(value)) continue;
+      if (!byStat[row.stat]) byStat[row.stat] = {};
+      byStat[row.stat][normalizePlayerName(row.name)] = { name: String(row.name), value };
+    }
+    return byStat;
+  } catch (err) {
+    console.error(`pulled projections lookup failed for ${league} ${date} (using KV only):`, err.message);
+    return null;
+  }
+}
+
+// Pure: returns a copy of `schedule` with `pulled` ({ [stat]: { [key]: {name, value} } })
+// overlaid on that league/date's projections. Never mutates the input, so the
+// merged view can't be written back to KV by accident.
+function mergePulledProjections(schedule, league, date, pulled) {
+  if (!pulled || !Object.keys(pulled).length) return schedule;
+  const leagueSched = schedule?.[league] || {};
+  const day = leagueSched[date] || { objectives: {} };
+  const projections = { ...(day.projections || {}) };
+  for (const [stat, values] of Object.entries(pulled)) {
+    projections[stat] = { ...(projections[stat] || {}), ...values };
+  }
+  return { ...schedule, [league]: { ...leagueSched, [date]: { ...day, projections } } };
+}
+
+async function withPulledProjections(env, schedule, league, date) {
+  return mergePulledProjections(schedule, league, date, await loadPulledProjections(env, league, date));
+}
+
 async function upsertObjectivesDay(env, { league, date, mode, objectives, badgeSetName, proSets, proSeason, proBadge }) {
   validateLeague(league);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("date must be YYYY-MM-DD");
@@ -1897,7 +1944,7 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   const cfg = leagueConfig(SUPPORTED_LEAGUES.includes(league) ? league : DEFAULT_LEAGUE);
   const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const targetMode = SUPPORTED_MODES.includes(mode) ? mode : "Classic";
-  const schedule = await loadObjectivesSchedule(env);
+  const schedule = await withPulledProjections(env, await loadObjectivesSchedule(env), cfg.key, targetDate);
   // Pro nights: one call to tome-topshot at most every 6h (cached in KV).
   let proElig = null;
   if (targetMode === "Pro") {
@@ -2738,6 +2785,8 @@ const LEAGUE_CRONS = {
 
 // Exported for local/unit testing only (not used by the Worker runtime).
 export const __testables__ = {
+  loadPulledProjections,
+  mergePulledProjections,
   normalizeProConfig,
   proConfigForDate,
   proEligibilityQuery,

@@ -32,6 +32,18 @@ simple = { limit = 60, period = 60 }
 # nothing until Oct 15. These match what is live in the dashboard.
 #   "*/30 * * * *"    -> WNBA  (:00 :30)
 #   "7-59/15 * * * *" -> NBA   (:07 :22 :37 :52)
+# RotoWire projections pulled automatically (no admin password needed to load
+# them). Rows overlay the manual KV uploads for the same league/date/stat; see
+# loadPulledProjections in worker/index.js and migrations/0001_projections.sql.
+# The Worker runs fine without this binding (KV uploads only). Fill in the id
+# from `wrangler d1 create tome-fastbreak-projections` (or the dashboard)
+# before uncommenting, and add the same binding in the dashboard if you deploy
+# via Quick Edit.
+# [[d1_databases]]
+# binding = "PROJECTIONS_DB"
+# database_name = "tome-fastbreak-projections"
+# database_id = "<id from wrangler d1 create>"
+
 [triggers]
 crons = ["*/30 * * * *", "7-59/15 * * * *"]
 

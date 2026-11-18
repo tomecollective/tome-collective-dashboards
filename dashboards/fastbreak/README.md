@@ -28,6 +28,12 @@ Two Cloudflare Workers share one KV namespace (`FASTBREAK_KV`):
   `index.html`'s `RUNS`).
 - **Classic vs Pro** differ only in their objective sets (and Pro's badge/set label).
   Rotowire projections are uploaded once per league/date and shared by both.
+- **Pulled projections (D1).** Besides the admin paste form, projections can land in the
+  `PROJECTIONS_DB` D1 database (`dashboards/fastbreak-refresh/migrations/0001_projections.sql`),
+  written by the RotoWire pull with no admin password. Only the night's objective stats are
+  pulled. The refresh Worker overlays those rows on the KV uploads for the same league/date/stat
+  (pulled value wins per player; manual-only players stay) and picks them up on its next
+  15-minute tick. Without the binding the Worker behaves exactly as before.
 - **League switch (FB-3).** `/api/fastbreak/run` reports `enabled` per league (KV
   `fastbreak:league:enabled`; NBA defaults OFF, WNBA ON). A disabled league's Classic/Pro
   buttons are greyed out on the page. Objectives Admin → "League Status" flips it and
