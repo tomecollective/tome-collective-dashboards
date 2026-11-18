@@ -78,6 +78,7 @@ Eastern Time via `Intl` (handles the EDT/EST switch in November).
 | `GET /api/fastbreak/historic?day=` · `GET …/historic/status` | Historic public + status. |
 | `POST /api/fastbreak/historic/seed` · `POST …/historic/objectives/day` · `POST …/historic/advance` | Historic admin. |
 | `POST /api/fastbreak/historic/auto/run` | `{contestId, dryRun}` load one Historic day's box scores now (admin; `dryRun` defaults to true). |
+| `GET /api/fastbreak/export/today[.md\|.json]` · `GET …/export/<table>.csv\|.json` | Read-only table exports (see below). Export gate. |
 
 POSTs require the `X-Admin-Token` header (`FASTBREAK_ADMIN_TOKEN` secret). The admin
 password is never in `index.html`: the admin panel POSTs what was typed to
@@ -163,3 +164,29 @@ it the build fails soft and PITP shows `--` with a note, rather than breaking th
 - Top Shot badge/set filtering for Pro waits on a Flow/Cadence moment-ownership integration.
 - "Top 10 Players by Utilization" tile (Top Shot's own Fast Break page signal) is unbuilt.
 - WNBA playoffs (Sept 27+) will need a new run window (`LEAGUES.WNBA.run`).
+
+## Table exports (automatic, read-only)
+`worker/exports.js` builds the same tables as the page's **Download CSV** buttons, on the
+Worker, from its own data, so they no longer have to be downloaded and passed around by hand.
+They refresh on their own: Classic/Pro read the day snapshot the NBA cron keeps fresh (every
+15 minutes in season, upcoming run dates pre-built); Historic reads the optimizer dataset that
+the box-score automation and the morning price script update. No BALLDONTLIE calls.
+
+| URL (refresh Worker) | What |
+|---|---|
+| `/api/fastbreak/export/today` (`.md`, default, or `.json`) | Every table for one date in one response: Classic, Pro, and (NBA) the Historic top projected lineup + alternates and today's slate. Built for the article-drafting chat. |
+| `/api/fastbreak/export/classic.csv` · `pro.csv` | The day table, page columns, Ovr Rank order, OUT last; Pro hides players with no Moment in tonight's sets when the set list is verified. |
+| `/api/fastbreak/export/historic-slate.csv` · `historic-players.csv` | Historic tables at **no collector discount** (Your RP = Base RP). |
+| `/api/fastbreak/export/historic-lineup.csv` | The no-discount optimal lineup (by blend) and up to two alternates, as on the page. |
+
+Every table also comes as `.json`. Query: `league` (default `NBA`), `date=YYYY-MM-DD` (default
+today ET); Historic tables also take `slate=<index>` and pick the page's default day otherwise.
+
+**Access.** Anything that opens the subscriber data opens the exports (`?key=` subscriber key,
+`X-Tome-Sub`, admin token). Optionally set an export-only key that opens these routes and
+nothing else, for a bookmarked URL you can rotate on its own:
+`wrangler secret put TOME_EXPORT_KEYS` (comma-separated), then use `?key=<that key>`.
+
+The Historic math is a copy of the page's (`hxPrepare`, `hxBest`, `hxOptimize`);
+`worker/_exports_test.mjs` pulls those functions out of `index.html` and checks the Worker gets
+the same numbers, so change them together.
