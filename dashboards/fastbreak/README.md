@@ -178,6 +178,19 @@ the box-score automation and the morning price script update. No BALLDONTLIE cal
 | `/api/fastbreak/export/classic.csv` · `pro.csv` | The day table, page columns, Ovr Rank order, OUT last; Pro hides players with no Moment in tonight's sets when the set list is verified. |
 | `/api/fastbreak/export/historic-slate.csv` · `historic-players.csv` | Historic tables at **no collector discount** (Your RP = Base RP). |
 | `/api/fastbreak/export/historic-lineup.csv` | The no-discount optimal lineup (by blend) and up to two alternates, as on the page. |
+| `/api/fastbreak/export/historic-results.csv` | Yesterday's Historic results: every player's Fast Break score and line from the slate before the selected one, the lineup the data had on top going in, and `lineup=Name1,Name2,...` totalled. |
+
+Classic/Pro carry each objective's team target (`dailyTeamTarget`, and the per-player share) and
+`targetSet`: false means no target was entered for that date and mode yet, so the number is the
+dashboard default, and the Markdown says so.
+
+**Yesterday's results.** When the box-score automation loads a day it also writes
+`fastbreak:historic:results:<YYYY-MM-DD>` (the day's ET date): every box-score player's line and
+Fast Break score, and the no-discount top lineup from the data as it stood before the games. The
+exports read it for the slate before the one shown. A day loaded by hand has no record, so the
+export falls back to each slate player's most recent game and labels it. Scores use the 1.5
+turnover estimate (Top Shot's box score has no turnovers), so they can differ a little from
+Top Shot's own.
 
 Every table also comes as `.json`. Query: `league` (default `NBA`), `date=YYYY-MM-DD` (default
 today ET); Historic tables also take `slate=<index>` and pick the page's default day otherwise.

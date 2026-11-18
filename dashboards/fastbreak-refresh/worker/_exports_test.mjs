@@ -193,4 +193,55 @@ assert.equal((await call("/api/fastbreak/export/classic.csv?key=export-key&date=
   assert.equal(j.historic, null);
 }
 
+// -- Targets and yesterday's results ------------------------------------------------
+import * as A from "./historic-auto.js";
+{
+  // Targets: set for Nov 18 Classic, not set for Pro (dashboard default, flagged).
+  await KV.put("fastbreak:objectives", JSON.stringify({ NBA: { "2026-11-18": { objectives: { Classic: [{ stat: "REB", label: "REB", dailyTeamTarget: 48 }, { stat: "BLK", label: "BLK", dailyTeamTarget: 5 }] } } } }));
+  const j = await (await call("/api/fastbreak/export/today.json?key=export-key&league=NBA&date=2026-11-18")).json();
+  assert.equal(j.classic.targetSet, true);
+  assert.deepEqual(j.classic.objectives.map((o) => [o.stat, o.dailyTeamTarget, o.perPlayerTarget]), [["REB", 48, 9.6], ["BLK", 5, 1]]);
+  assert.equal(j.pro.targetSet, false);
+  const md = await (await call("/api/fastbreak/export/today.md?key=export-key&league=NBA&date=2026-11-18")).text();
+  assert.match(md, /Target: 48 REB \+ 5 BLK \(team of 5; 9\.6 REB \+ 1 BLK per player\)/);
+  assert.match(md, /NOT SET for this date yet/);
+}
+{
+  // No results record for Day 2 (loaded by hand): falls back to each player's latest game, and says so.
+  const y = X.historicResults(DATA, 1, null, {});
+  assert.equal(y.label, "Day 2");
+  assert.equal(y.source, "most recent game");
+  const withGames = slateA.filter((n) => players.find((p) => p.n === n).g.length);
+  assert.equal(y.table.rows.length, withGames.length);
+  assert.equal(X.historicResults(DATA, 0, null, {}), null);
+}
+{
+  // The box-score loader writes a results record keyed by the contest's ET date.
+  const before = JSON.parse(JSON.stringify(DATA));
+  const contest = { id: "run-fb-historic-x-d2", name: "Day 2", locksAt: Date.parse("2026-11-18T03:00:00Z") / 1000 }; // 10 PM ET Nov 17
+  assert.equal(A.contestDateET(contest), "2026-11-17");
+  const lines = slateA.slice(0, 6).map((n, i) => ({ n, t: players.find((p) => p.n === n).t, fbp: 40 - i, s: [20 - i, 8, 3, 1, 1, 2, 0] }));
+  const rec = A.buildResultsRecord(before, contest, { lines });
+  assert.equal(rec.date, "2026-11-17");
+  assert.equal(rec.slateLabel, "Day 2");
+  const top = X.historicExport(DATA, { slateIndex: 0 }).lineup.players.map((p) => p.name).sort();
+  assert.deepEqual([...rec.dataTopLineup.players].sort(), top);
+  await KV.put("fastbreak:historic:results:2026-11-17", JSON.stringify(rec));
+  const pick = `${lines[0].n},${lines[1].n.toUpperCase()},Nobody Here`;
+  const j = await (await call(`/api/fastbreak/export/historic-results.json?key=export-key&date=2026-11-18&lineup=${encodeURIComponent(pick)}`)).json();
+  assert.equal(j.source, "box scores");
+  assert.equal(j.table.rows[0][0], lines[0].n);
+  assert.equal(j.table.rows[0][2], "40.0");
+  assert.equal(j.yourLineup.total, 79);
+  assert.deepEqual(j.yourLineup.missing, ["Nobody Here"]);
+  assert.ok(j.dataTopLineup.players.length === 5);
+  const csv = await (await call("/api/fastbreak/export/historic-results.csv?key=export-key&date=2026-11-18")).text();
+  assert.equal(csv.split("\n")[0], "Player,Team,FBP,PTS,REB,AST,STL,BLK,3PM");
+  const md = await (await call("/api/fastbreak/export/today.md?key=export-key&league=NBA&date=2026-11-18")).text();
+  assert.match(md, /## Yesterday's Historic results \(Day 2, 2026-11-17\)/);
+  assert.match(md, /Data's top lineup going in \(no discount\): [\d.]+ FBP \(projected [\d.]+\)/);
+  assert.match(md, /add &lineup=/);
+  assert.doesNotMatch(md, /\b(bet|odds|wager|buy|sell)\b/i);
+}
+
 console.log("exports: all checks passed");

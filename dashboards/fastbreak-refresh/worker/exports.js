@@ -12,6 +12,8 @@
 // math mirrors the page line for line; if you change one, change the other
 // (_exports_test.mjs checks the shared numbers).
 
+import { normalizeName } from "../../shared/names.js";
+
 // -- Shared ---------------------------------------------------------------------
 export function csvEscape(value) {
   const str = String(value ?? "");
@@ -211,6 +213,58 @@ export function historicExport(dataset, { todayET, slateIndex, date } = {}) {
   };
 }
 
+// -- Yesterday's Historic results ----------------------------------------------------
+// Actual Fast Break scores for the slate before `slateIndex`. Prefers the day's
+// results record (written when the box scores load); without one (a day loaded
+// by hand) it falls back to each slate player's most recent game in the dataset
+// and says so. `lineup` (names) totals a lineup of your choice; the record's
+// dataTopLineup is the lineup the data had on top before the games.
+// Fast Break scores use the box score with the 1.5 turnover estimate (Top
+// Shot's box score has no turnovers), so totals can differ a little from Top Shot's.
+export function historicResults(dataset, slateIndex, record, { lineup } = {}) {
+  const slates = dataset.slates || [];
+  const prevIdx = slateIndex - 1;
+  if (!(prevIdx >= 0 && prevIdx < slates.length)) return null;
+  const slate = slates[prevIdx];
+  const codes = (record && record.statCodes) || dataset.statCodes || [];
+  const norm = normalizeName;
+  let players;
+  let source;
+  if (record) {
+    source = "box scores";
+    players = record.players.map((p) => ({ n: p.n, t: p.t, fbp: p.fbp, s: p.s || [] }));
+  } else {
+    source = "most recent game";
+    const byName = Object.fromEntries((dataset.players || []).map((p) => [p.n, p]));
+    players = slate.players.map((n) => byName[n]).filter((p) => p && p.g.length).map((p) => ({ n: p.n, t: p.t, fbp: p.g[p.g.length - 1], s: (p.s && p.s[p.s.length - 1]) || [] }));
+  }
+  players.sort((a, b) => b.fbp - a.fbp);
+  const find = (name) => players.find((p) => norm(p.n) === norm(name)) || null;
+  const total = (names) => {
+    if (!names || !names.length) return null;
+    const rows = names.map((n) => { const p = find(n); return { name: p ? p.n : n, team: p ? p.t : "", fbp: p ? Number(p.fbp.toFixed(1)) : null }; });
+    const missing = rows.filter((r) => r.fbp == null).map((r) => r.name);
+    return { total: Number(rows.reduce((a, r) => a + (r.fbp || 0), 0).toFixed(1)), players: rows, missing };
+  };
+  const statCol = (p, c) => { const i = codes.indexOf(c); return i >= 0 && p.s[i] != null ? p.s[i] : ""; };
+  const shown = codes.filter((c) => ["PTS", "REB", "AST", "STL", "BLK", "3PM"].includes(c));
+  return {
+    slateIndex: prevIdx,
+    label: slate.label || null,
+    date: slate.date || null,
+    source,
+    note: source === "box scores"
+      ? "Fast Break scores from that night's box scores (turnovers estimated at 1.5, as Top Shot's box score has none)."
+      : "No results record for this day (its box scores were loaded by hand), so these are each player's most recent game in the dataset.",
+    dataTopLineup: record && record.dataTopLineup ? { ...total(record.dataTopLineup.players), projected: record.dataTopLineup.projected, rpUsed: record.dataTopLineup.rpUsed } : null,
+    yourLineup: lineup && lineup.length ? total(lineup) : null,
+    table: {
+      headers: ["Player", "Team", "FBP", ...shown],
+      rows: players.map((p) => [p.n, p.t, p.fbp.toFixed(1), ...shown.map((c) => statCol(p, c))]),
+    },
+  };
+}
+
 // Plain-text summary of every table, for pasting into (or fetching from) the
 // article-drafting chat. Informational only: projections and prices, nothing more.
 export function exportMarkdown({ generatedAt, league, date, classic, pro, historic }) {
@@ -219,7 +273,12 @@ export function exportMarkdown({ generatedAt, league, date, classic, pro, histor
     if (!d) return;
     out.push("", `## ${title}`);
     if (d.status) out.push(d.status);
-    if (d.objectives?.length) out.push(`Objectives: ${d.objectives.map((o) => o.label || o.stat).join(", ")}${d.badgeSetName ? ` · Badge/Set: ${d.badgeSetName}` : ""}`);
+    if (d.objectives?.length) {
+      const goal = d.objectives.map((o) => (o.dailyTeamTarget != null ? `${o.dailyTeamTarget} ${o.label || o.stat}` : o.label || o.stat)).join(" + ");
+      out.push(`Target: ${goal} (team of 5${d.objectives[0].perPlayerTarget != null ? `; ${d.objectives.map((o) => `${o.perPlayerTarget} ${o.label || o.stat}`).join(" + ")} per player` : ""})${d.targetSet === false ? " · NOT SET for this date yet: this is the dashboard default, not the real target" : ""}`);
+    }
+    if (d.badgeSetName) out.push(`Badge/Set: ${d.badgeSetName}`);
+    if (d.proSets?.length) out.push(`Eligible sets: ${d.proSets.join(", ")}`);
     if (d.table.rows.length) out.push("", toMarkdownTable(d.table.headers, d.table.rows));
   };
   day("Classic", classic);
@@ -237,6 +296,15 @@ export function exportMarkdown({ generatedAt, league, date, classic, pro, histor
       }
       out.push("", "### Today's slate", toMarkdownTable(h.slateTable.headers, h.slateTable.rows));
     }
+  }
+  if (historic && historic.yesterday) {
+    const y = historic.yesterday;
+    out.push("", `## Yesterday's Historic results (${[y.label, y.date].filter(Boolean).join(", ")})`, y.note);
+    const lineupLine = (title, l) => l && out.push("", `${title}: ${l.total} FBP${l.projected != null ? ` (projected ${l.projected})` : ""}: ${l.players.map((p) => `${p.name} ${p.fbp == null ? "n/a" : p.fbp}`).join(", ")}${l.missing.length ? ` · not found: ${l.missing.join(", ")}` : ""}`);
+    lineupLine("Lineup you named", y.yourLineup);
+    lineupLine("Data's top lineup going in (no discount)", y.dataTopLineup);
+    if (!y.yourLineup) out.push("", "To total the lineup you published, add &lineup=Name1,Name2,... to this link.");
+    out.push("", toMarkdownTable(y.table.headers, y.table.rows));
   }
   return out.join("\n") + "\n";
 }
