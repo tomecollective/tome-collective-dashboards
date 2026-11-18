@@ -19,11 +19,16 @@
 // when the automation first ran are marked as skipped, never backfilled.
 
 import { normalizeName } from "../../shared/names.js";
+import { prepareHistoric, optimizeSlate } from "./exports.js";
 
 export const HISTORIC_AUTO_CRON = "3-58/5 0-9 * * *"; // every 5 min, 00:03-09:58 UTC (evening ET)
 export const HISTORIC_AUTO_STATE_KEY = "fastbreak:historic:auto";
 export const HISTORIC_PAGE = "https://nbatopshot.com/fastbreak?league=simulation";
 export const DELAY_AFTER_LAST_TIP_MS = 15 * 60 * 1000;
+// One record per Historic day (ET date of the contest lock), written when its box
+// scores load: every player's line and Fast Break score that night, plus the
+// lineup the data had on top before the games (no collector discount).
+export const HISTORIC_RESULTS_PREFIX = "fastbreak:historic:results:";
 const MAX_BROWSER_ATTEMPTS = 4; // per contest; keeps a bad night well inside Browser Run's free 10 min/day
 const MAX_AGE_AFTER_LOCK_MS = 36 * 3600 * 1000; // never chase a contest older than this
 const RESULT_ID = "tome-historic-bs";
@@ -260,6 +265,7 @@ export function applyBoxScores(dataset, contest, box) {
   }
   const unmatched = [];
   const appended = [];
+  const lines = []; // every row read, for the day's results record
   // A player who isn't in the dataset yet (no roster-builder price) has nowhere to go, so
   // their line is held in pendingBoxScores. build_historic_day.py moves the held games onto the
   // player the first time they show up in a roster paste, so no game is lost.
@@ -279,6 +285,7 @@ export function applyBoxScores(dataset, contest, box) {
           if (!h) { h = { n: r.name, t: team.abbr || "", g: [], s: [] }; pending.push(h); }
           h.s.push(line);
           h.g.push(rescore(codes, line));
+          lines.push({ n: r.name, t: team.abbr || "", fbp: h.g[h.g.length - 1], s: line, held: true });
           held.push(`${r.name} (${team.abbr || "?"})`);
           continue;
         }
@@ -293,6 +300,7 @@ export function applyBoxScores(dataset, contest, box) {
         if (!Array.isArray(p.s)) p.s = p.g.map(() => codes.map(() => 0)); // keep s aligned with g
         p.s.push(line);
         p.g.push(rescore(codes, line));
+        lines.push({ n: p.n, t: p.t || team.abbr || "", fbp: p.g[p.g.length - 1], s: line });
         appended.push(p.n);
       }
     }
@@ -301,7 +309,43 @@ export function applyBoxScores(dataset, contest, box) {
   D.boxScoreContests = [...(D.boxScoreContests || []), contest.id].slice(-120);
   D.boxScoresUpdated = contest.name;
   D.boxScoresUpdatedAt = new Date().toISOString();
-  return { rows, appended: appended.length, held, unmatched };
+  return { rows, appended: appended.length, held, unmatched, lines };
+}
+
+// ET calendar date (YYYY-MM-DD) of a contest, from its lock (the last tip).
+export function contestDateET(contest) {
+  const sec = contest.locksAt ?? contest.lastStart;
+  if (!sec) return null;
+  return new Date(sec * 1000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+// The day's results record. `before` is the dataset as it stood before the
+// box scores were added, so dataTopLineup is what the data had on top going in.
+export function buildResultsRecord(before, contest, result) {
+  const date = contestDateET(contest);
+  const slate = (before.slates || []).find((s) => s.date && s.date === date) || null;
+  let dataTopLineup = null;
+  if (slate) {
+    try {
+      const D = prepareHistoric(before);
+      const byName = Object.fromEntries(D.players.map((p) => [p.n, p]));
+      const pool = slate.players.map((n) => byName[n]).filter(Boolean);
+      const best = optimizeSlate(D, pool).best;
+      if (best.length) dataTopLineup = { players: best.map((p) => p.n), rpUsed: best.reduce((a, p) => a + p.rp, 0), projected: Math.round(best.reduce((a, p) => a + p.blend, 0) * 10) / 10 };
+    } catch {
+      dataTopLineup = null;
+    }
+  }
+  return {
+    contest: contest.id,
+    name: contest.name || contest.id,
+    date,
+    slateLabel: slate ? slate.label || null : null,
+    statCodes: Array.isArray(before.statCodes) && before.statCodes.length ? before.statCodes : DEFAULT_CODES,
+    loadedAt: new Date().toISOString(),
+    players: result.lines,
+    dataTopLineup,
+  };
 }
 
 // -- Cron tick ----------------------------------------------------------------------
@@ -332,11 +376,16 @@ export async function ingestContest(env, contest, { validate, dryRun = false } =
   if (gotGames < contest.games.length) {
     throw new Error(`read ${gotGames} of ${contest.games.length} box scores${box.errors?.length ? ": " + box.errors.slice(0, 3).join("; ") : ""}`);
   }
-  const result = applyBoxScores(D, contest, box);
+  const before = JSON.parse(JSON.stringify(D));
+  const { lines, ...result } = applyBoxScores(D, contest, box);
   const problem = validate ? validate(D) : null;
   if (problem) throw new Error(`dataset failed validation: ${problem}`);
-  if (!dryRun) await saveJSON(env, "fastbreak:historic:optimizer", D);
-  return { contest: contest.id, name: contest.name, games: gotGames, ...result, dryRun };
+  const record = buildResultsRecord(before, contest, { lines });
+  if (!dryRun) {
+    await saveJSON(env, "fastbreak:historic:optimizer", D);
+    if (record.date) await saveJSON(env, HISTORIC_RESULTS_PREFIX + record.date, record);
+  }
+  return { contest: contest.id, name: contest.name, games: gotGames, ...result, resultsDate: record.date, dataTopLineup: record.dataTopLineup, dryRun };
 }
 
 export async function runHistoricAutoTick(env, { validate, now = Date.now(), fetchImpl = fetch } = {}) {

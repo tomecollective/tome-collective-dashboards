@@ -37,8 +37,8 @@ import {
   getHistoricStatus,
 } from "./historic.js";
 import { normalizeName } from "../../shared/names.js";
-import { HISTORIC_AUTO_CRON, runHistoricAutoTick, ingestContest, fetchSchedule, historicAutoStatus } from "./historic-auto.js";
-import { dayTable, historicExport, toCSV, exportMarkdown } from "./exports.js";
+import { HISTORIC_AUTO_CRON, HISTORIC_RESULTS_PREFIX, runHistoricAutoTick, ingestContest, fetchSchedule, historicAutoStatus } from "./historic-auto.js";
+import { dayTable, historicExport, historicResults, toCSV, exportMarkdown } from "./exports.js";
 
 const BDL_ROOT = "https://api.balldontlie.io";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -2170,17 +2170,28 @@ async function exportGate(request, url, env) {
   return subscriberGate(request, url, env);
 }
 
-const EXPORT_TABLES = ["classic", "pro", "historic-slate", "historic-players", "historic-lineup"];
+const EXPORT_TABLES = ["classic", "pro", "historic-slate", "historic-players", "historic-lineup", "historic-results"];
 
 // One day's Classic or Pro export. Serve-only: never spends BALLDONTLIE calls;
 // the cron keeps the snapshot fresh (every 15 min for NBA in season).
 async function exportDay(env, { league, date, mode }) {
   const d = await buildDashboard(env, { league, date, mode, serveOnly: true });
+  // Was a target set for this date and mode, or is the payload showing DEFAULT_OBJECTIVES?
+  const schedule = await loadObjectivesSchedule(env);
+  const setList = schedule?.[d.league]?.[d.date]?.objectives?.[d.mode];
+  const targetSet = Array.isArray(setList) && setList.length > 0;
   const status = d.queued ? "Not built yet; the scheduled updater builds it shortly." : d.building ? "Still building; some players may be missing." : d.refreshing ? "Last complete snapshot; a refresh is on its way." : null;
   return {
     league: d.league, date: d.date, mode: d.mode, dayNumber: d.dayNumber ?? null, runLabel: d.runLabel ?? null,
-    objectives: (d.objectives || []).map((o) => ({ stat: o.stat, label: o.label || o.stat })),
+    objectives: ((d.objectives || []).length ? d.objectives : objectivesForDate(schedule, d.league, d.date, d.mode)).map((o) => ({
+      stat: o.stat,
+      label: o.label || o.stat,
+      dailyTeamTarget: typeof o.dailyTeamTarget === "number" ? o.dailyTeamTarget : null,
+      perPlayerTarget: typeof o.dailyTeamTarget === "number" ? round1(o.dailyTeamTarget / 5) : null,
+    })),
+    targetSet,
     badgeSetName: d.badgeSetName ?? null,
+    proSets: Array.isArray(d.proSets) && d.proSets.length ? d.proSets.map((x) => (typeof x === "string" ? x : x?.name || x?.label || String(x))) : null,
     proEligibility: d.proEligibility ?? null,
     generatedAt: d._generated_at || null,
     building: Boolean(d.building), queued: Boolean(d.queued), refreshing: Boolean(d.refreshing),
@@ -2189,10 +2200,22 @@ async function exportDay(env, { league, date, mode }) {
   };
 }
 
-async function exportHistoric(env, { date, slateIndex }) {
+async function exportHistoric(env, { date, slateIndex, lineup }) {
   const data = await loadJSON(env, HISTORIC_OPTIMIZER_KEY);
   if (!data) return { error: "Historic optimizer data has not been uploaded yet." };
-  return historicExport(data, { todayET: todayStr(), date, slateIndex });
+  const h = historicExport(data, { todayET: todayStr(), date, slateIndex });
+  // Yesterday = the slate before this one; its results record, if the box
+  // scores loaded automatically (see historic-auto.js).
+  const prev = h.slateIndex > 0 ? data.slates[h.slateIndex - 1] : null;
+  const record = prev && prev.date ? await loadJSON(env, HISTORIC_RESULTS_PREFIX + prev.date) : null;
+  h.yesterday = historicResults(data, h.slateIndex, record, { lineup });
+  return h;
+}
+
+function lineupParam(url) {
+  const raw = url.searchParams.get("lineup");
+  if (!raw) return undefined;
+  return raw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 8);
 }
 
 function exportResponse(body, format, status = 200) {
@@ -2334,7 +2357,7 @@ export default {
           const [classic, pro] = await Promise.all([exportDay(env, { league, date, mode: "Classic" }), exportDay(env, { league, date, mode: "Pro" })]);
           let historic = null;
           if (league === "NBA") {
-            try { historic = await exportHistoric(env, { date: dateParam || undefined, slateIndex }); } catch (err) { historic = { error: err.message }; }
+            try { historic = await exportHistoric(env, { date: dateParam || undefined, slateIndex, lineup: lineupParam(url) }); } catch (err) { historic = { error: err.message }; }
           }
           const bundle = { generatedAt: new Date().toISOString(), league, date, classic, pro, historic };
           return exportResponse(format === "json" ? bundle : exportMarkdown(bundle), format);
@@ -2346,8 +2369,14 @@ export default {
           const d = await exportDay(env, { league, date, mode: name === "pro" ? "Pro" : "Classic" });
           return format === "csv" ? exportResponse(toCSV(d.table.headers, d.table.rows), "csv") : exportResponse(d, "json");
         }
-        const h = await exportHistoric(env, { date: dateParam || undefined, slateIndex });
+        const h = await exportHistoric(env, { date: dateParam || undefined, slateIndex, lineup: lineupParam(url) });
         if (h.error) return json({ error: h.error }, 404);
+        if (name === "historic-results") {
+          const y = h.yesterday;
+          if (!y) return json({ error: "No Historic slate before this one." }, 404);
+          if (format === "json") return exportResponse(y, "json");
+          return exportResponse(toCSV(y.table.headers, y.table.rows), "csv");
+        }
         if (name === "historic-lineup") {
           if (format === "json") return exportResponse({ updated: h.updated, budget: h.budget, lineupSize: h.lineupSize, slate: h.slate, lineup: h.lineup, alternates: h.alternates }, "json");
           const rows = [];
