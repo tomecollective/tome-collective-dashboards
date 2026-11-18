@@ -260,6 +260,11 @@ export function applyBoxScores(dataset, contest, box) {
   }
   const unmatched = [];
   const appended = [];
+  // A player who isn't in the dataset yet (no roster-builder price) has nowhere to go, so
+  // their line is held in pendingBoxScores. build_historic_day.py moves the held games onto the
+  // player the first time they show up in a roster paste, so no game is lost.
+  const pending = Array.isArray(D.pendingBoxScores) ? D.pendingBoxScores : [];
+  const held = [];
   const seen = new Set();
   let rows = 0;
   for (const game of box.games || []) {
@@ -268,6 +273,15 @@ export function applyBoxScores(dataset, contest, box) {
         rows++;
         const key = normalizeName(r.name);
         let cands = byName.get(key) || [];
+        if (!cands.length && key) {
+          const line = codes.map((c) => statFor(c, r));
+          let h = pending.find((x) => normalizeName(x.n) === key && (!x.t || !team.abbr || x.t === team.abbr));
+          if (!h) { h = { n: r.name, t: team.abbr || "", g: [], s: [] }; pending.push(h); }
+          h.s.push(line);
+          h.g.push(rescore(codes, line));
+          held.push(`${r.name} (${team.abbr || "?"})`);
+          continue;
+        }
         if (cands.length > 1 && team.abbr) cands = cands.filter((p) => p.t === team.abbr);
         const p = cands.length === 1 ? cands[0] : null;
         if (!p || seen.has(p)) {
@@ -283,10 +297,11 @@ export function applyBoxScores(dataset, contest, box) {
       }
     }
   }
+  if (pending.length) D.pendingBoxScores = pending;
   D.boxScoreContests = [...(D.boxScoreContests || []), contest.id].slice(-120);
   D.boxScoresUpdated = contest.name;
   D.boxScoresUpdatedAt = new Date().toISOString();
-  return { rows, appended: appended.length, unmatched };
+  return { rows, appended: appended.length, held, unmatched };
 }
 
 // -- Cron tick ----------------------------------------------------------------------
@@ -408,6 +423,6 @@ export async function historicAutoStatus(env) {
     lastOkAt: s.lastOkAt || null,
     lastError: s.lastError || null,
     nextContest: s.nextContest || null,
-    lastIngested: last ? { contest: last[0], name: last[1].name, appended: last[1].appended, unmatched: last[1].unmatched } : null,
+    lastIngested: last ? { contest: last[0], name: last[1].name, appended: last[1].appended, held: last[1].held, unmatched: last[1].unmatched } : null,
   };
 }
