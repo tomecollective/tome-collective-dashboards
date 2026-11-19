@@ -676,7 +676,44 @@ async function processBatch(env, resume) {
   }
   await kvPutWithRetry(env.CHASE_INDEX_KV, KEY_LAST_STATUS, JSON.stringify({ ...status, published: true, publishRetries }));
   await env.CHASE_INDEX_KV.delete(KEY_PROGRESS);
+  try { await mirrorChaseIndex(env, payload); } catch (err) { console.error("D1 mirror failed", err); }
   return { done: true, total, published: true, publishRetries, payload };
+}
+
+// -- Routine mirror (D1) ---------------------------------------------------------
+// The scheduled Claude routines (Spike Reports, Tome Cards tiles, morning health
+// check) can't reach *.workers.dev from their sandbox but can query D1 through the
+// Cloudflare connector. Whenever a published payload isn't in D1 yet, copy the
+// same public (teaser) response GET /api/chase-index serves without a key into the
+// tome-routine-data database (binding ROUTINE_DB). Only the teaser goes in: the
+// full holdings payload stays behind the subscriber gate. Without the binding this
+// is a no-op. Schema: dashboards/routine-data/migrations/0001_init.sql.
+async function mirrorChaseIndex(env, payload) {
+  if (!env.ROUTINE_DB || !env.CHASE_INDEX_KV) return { skipped: true };
+  if (!payload) {
+    const cached = await env.CHASE_INDEX_KV.get(CACHE_KEY_LATEST);
+    if (!cached) return { skipped: true, reason: "no published payload in KV" };
+    payload = JSON.parse(cached);
+  }
+  const forDate = String(payload.last_updated || "");
+  if (!forDate) return { skipped: true, reason: "payload has no last_updated" };
+  const teaser = buildTeaser(payload);
+  const body = JSON.stringify(teaser);
+  const existing = await env.ROUTINE_DB.prepare(
+    "SELECT body FROM feed_snapshots WHERE feed = 'tcg.chase_index' AND league = '' AND for_date = ?1"
+  ).bind(forDate).first();
+  if (existing && existing.body === body) return { skipped: true, reason: "already mirrored", forDate };
+  const now = new Date().toISOString();
+  await env.ROUTINE_DB.batch([
+    env.ROUTINE_DB.prepare(
+      `INSERT INTO feed_snapshots (feed, league, for_date, captured_at, status, body, last_error, last_error_at)
+       VALUES ('tcg.chase_index', '', ?1, ?2, 200, ?3, NULL, NULL)
+       ON CONFLICT (feed, league, for_date) DO UPDATE SET captured_at = excluded.captured_at, status = 200, body = excluded.body, last_error = NULL, last_error_at = NULL`
+    ).bind(forDate, now, body),
+    env.ROUTINE_DB.prepare("INSERT OR REPLACE INTO mirror_runs (worker, ran_at, ok, detail) VALUES ('tome-tcg', ?1, 1, ?2)")
+      .bind(now, JSON.stringify({ forDate, indexPoints: teaser.indexHistory.length, lastIndexDate: teaser.indexHistory.slice(-1)[0]?.date || null })),
+  ]);
+  return { mirrored: true, forDate };
 }
 
 export default {
@@ -721,6 +758,13 @@ export default {
       return new Response(JSON.stringify(status || { note: "no refresh has run yet" }), { headers: corsHeaders });
     }
 
+    if (url.pathname === "/api/mirror" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) {
+        return new Response(JSON.stringify({ error: "Invalid or missing admin token." }), { status: 401, headers: corsHeaders });
+      }
+      return new Response(JSON.stringify(await mirrorChaseIndex(env)), { headers: corsHeaders });
+    }
+
     if (url.pathname === "/api/refresh" && request.method === "POST") {
       const resume = url.searchParams.get("resume") === "1";
       // The admin token works for both; the per-run chain nonce only for
@@ -754,6 +798,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    ctx.waitUntil(mirrorChaseIndex(env).catch((err) => console.error("D1 mirror failed", err)));
     // One tick per minute during RUN_WINDOW_UTC_HOUR. Each tick: if a run is
     // in progress, do its next slice (the tick that does the last slice also
     // publishes); if today's run is already published, do nothing; if no run

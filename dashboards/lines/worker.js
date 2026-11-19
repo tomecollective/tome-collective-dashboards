@@ -819,6 +819,86 @@ async function handleVoid(request, env) {
   return json({ ok: true, pick: rec });
 }
 
+// ---------- ROUTINE MIRROR (D1) ----------
+// The scheduled Claude routines that draft previews, recaps and Tome Sports can't reach *.workers.dev
+// from their sandbox, but they can query D1 through the Cloudflare connector. So on every cron tick the
+// Worker writes the exact JSON these endpoints return into the tome-routine-data database (binding
+// ROUTINE_DB): projections for today and tomorrow (US Central) per in-season league, and the record
+// summary as of yesterday and today. The Worker runs exactly as before without the binding.
+// Schema: dashboards/routine-data/migrations/0001_init.sql.
+const MIRROR_TZ = "America/Chicago";
+// Months (1-12) when a league can have games; outside them the mirror skips it to save BALLDONTLIE calls.
+const MIRROR_MONTHS = { nba: [10, 11, 12, 1, 2, 3, 4, 5, 6], nfl: [8, 9, 10, 11, 12, 1, 2], wnba: [5, 6, 7, 8, 9, 10] };
+function centralDate(ms) { return new Intl.DateTimeFormat("en-CA", { timeZone: MIRROR_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms)); }
+function addDays(date, n) { return new Date(new Date(date + "T00:00:00Z").getTime() + n * 864e5).toISOString().slice(0, 10); }
+// Drop the per-segment ledgers (every card ever graded) so the row stays well under D1's 2 MB value limit.
+function compactRecordSummary(body) {
+  for (const L of Object.values(body.leagues || {})) for (const seg of L.segments || []) delete seg.ledger;
+  return body;
+}
+async function mirrorFeed(env, feed, league, forDate, res, transform) {
+  const now = new Date().toISOString();
+  const text = await res.text();
+  if (res.status !== 200) {
+    // Keep the last good row; record the failure next to it (or create a row that holds only the error).
+    await env.ROUTINE_DB.prepare(
+      `INSERT INTO feed_snapshots (feed, league, for_date, captured_at, status, body, last_error, last_error_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, '{}', ?6, ?4)
+       ON CONFLICT (feed, league, for_date) DO UPDATE SET last_error = excluded.last_error, last_error_at = excluded.last_error_at`
+    ).bind(feed, league, forDate, now, res.status, `${res.status}: ${text.slice(0, 500)}`).run();
+    return { feed, league, forDate, ok: false, status: res.status };
+  }
+  let body = JSON.parse(text);
+  if (transform) body = transform(body);
+  const out = JSON.stringify(body);
+  if (out.length > 1.9e6) throw new Error(`${feed} ${league} ${forDate}: ${out.length} bytes is over the D1 value limit`);
+  await env.ROUTINE_DB.prepare(
+    `INSERT INTO feed_snapshots (feed, league, for_date, captured_at, status, body, last_error, last_error_at)
+     VALUES (?1, ?2, ?3, ?4, 200, ?5, NULL, NULL)
+     ON CONFLICT (feed, league, for_date) DO UPDATE SET captured_at = excluded.captured_at, status = 200, body = excluded.body, last_error = NULL, last_error_at = NULL`
+  ).bind(feed, league, forDate, now, out).run();
+  return { feed, league, forDate, ok: true, body, now };
+}
+async function mirrorProjectionGames(env, league, forDate, body, now) {
+  const stmts = [env.ROUTINE_DB.prepare("DELETE FROM projection_games WHERE league = ?1 AND for_date = ?2").bind(league, forDate)];
+  for (const g of body.games || []) {
+    const L = g.lean || {}, m = g.market || {};
+    stmts.push(env.ROUTINE_DB.prepare(
+      `INSERT INTO projection_games (league, for_date, game_id, home, away, home_nick, away_nick, postseason,
+         projected_spread_home, projected_total, market_spread_home, market_total, market_source,
+         side, side_pick, side_edge, side_tier, total, total_pick, total_edge, total_tier, captured_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)`
+    ).bind(league, forDate, String(g.game_id), g.home ?? null, g.away ?? null, g.home_nick ?? null, g.away_nick ?? null, g.postseason ? 1 : 0,
+      g.projected_spread_home ?? null, g.projected_total ?? null, m.spread_home ?? null, m.total ?? null, m.source ?? null,
+      L.side ?? null, L.side_pick ?? null, L.side_edge ?? null, L.side_tier ?? null, L.total ?? null, L.total_pick ?? null, L.total_edge ?? null, L.total_tier ?? null, now));
+  }
+  await env.ROUTINE_DB.batch(stmts);
+}
+async function mirrorToD1(env) {
+  const today = centralDate(Date.now()), tomorrow = addDays(today, 1), yesterday = addDays(today, -1);
+  const month = parseInt(today.slice(5, 7), 10);
+  const results = [];
+  const step = async (fn) => { try { results.push(await fn()); } catch (e) { results.push({ ok: false, error: e.message }); } };
+  for (const league of Object.keys(LEAGUE)) {
+    if (!MIRROR_MONTHS[league].includes(month)) continue;
+    for (const date of [today, tomorrow]) await step(async () => {
+      const res = await handleProjection(new URL(`https://tome-lines/api/lines/projection?league=${league}&date=${date}`), env);
+      const r = await mirrorFeed(env, "lines.projection", league, date, res);
+      if (r.ok) await mirrorProjectionGames(env, league, date, r.body, r.now);
+      return { feed: r.feed, league, date, ok: r.ok, status: r.status, games: r.body?.games?.length };
+    });
+  }
+  for (const asof of [yesterday, today]) await step(async () => {
+    const res = await handleRecordSummary(new URL(`https://tome-lines/api/lines/record/summary?asof=${asof}`), env);
+    const r = await mirrorFeed(env, "lines.record_summary", "", asof, res, compactRecordSummary);
+    return { feed: r.feed, asof, ok: r.ok, status: r.status };
+  });
+  const ok = results.every((r) => r.ok);
+  await env.ROUTINE_DB.prepare("INSERT OR REPLACE INTO mirror_runs (worker, ran_at, ok, detail) VALUES ('tome-lines', ?1, ?2, ?3)")
+    .bind(new Date().toISOString(), ok ? 1 : 0, JSON.stringify(results.map(({ body, now, ...r }) => r))).run();
+  return { ok, results };
+}
+
 export default {
   // Nightly: cache yesterday's and today's market pages for every league so closes and trends fill themselves.
   async scheduled(event, env) {
@@ -829,6 +909,8 @@ export default {
     }
     // Every cron, including the nightly one: pick up previews published since the last pass.
     try { await runIngest(env, 48); } catch (e) { await env.LINES_KV.put("ingest:last", JSON.stringify({ at: new Date().toISOString(), error: e.message })); }
+    // Then copy today's numbers into D1 for the drafting routines (after ingest, so new cards are graded).
+    if (env.ROUTINE_DB) { try { await mirrorToD1(env); } catch (e) { await env.LINES_KV.put("d1mirror:last", JSON.stringify({ at: new Date().toISOString(), error: e.message })); } }
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -844,6 +926,7 @@ export default {
       }
       if (url.pathname === "/api/lines/ingest/status") return json((await env.LINES_KV.get("ingest:last", "json")) || { never: true });
       if (url.pathname === "/api/lines/ingest" && request.method === "POST") return isAdmin(request, env) ? json(await runIngest(env, parseInt(url.searchParams.get("hours") || "48", 10), parseInt(url.searchParams.get("limit") || "12", 10))) : json({ error: "unauthorized" }, 401);
+      if (url.pathname === "/api/lines/mirror" && request.method === "POST") return isAdmin(request, env) ? (env.ROUTINE_DB ? json(await mirrorToD1(env)) : json({ error: "ROUTINE_DB binding not set" }, 503)) : json({ error: "unauthorized" }, 401);
       if (url.pathname === "/api/lines/ratings") return await handleRatings(url, env);
       if (url.pathname === "/api/lines/projection") return await handleProjection(url, env);
       if (url.pathname === "/api/lines/record") return await handleRecord(url, env);
