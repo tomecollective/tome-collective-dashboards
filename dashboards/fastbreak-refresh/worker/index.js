@@ -37,6 +37,8 @@ import {
   getHistoricStatus,
 } from "./historic.js";
 import { normalizeName } from "../../shared/names.js";
+import { HISTORIC_AUTO_CRON, HISTORIC_RESULTS_PREFIX, runHistoricAutoTick, ingestContest, fetchSchedule, historicAutoStatus } from "./historic-auto.js";
+import { dayTable, historicExport, historicResults, toCSV, exportMarkdown } from "./exports.js";
 
 const BDL_ROOT = "https://api.balldontlie.io";
 const PLAYER_CHUNK_SIZE = 10; // per_page max is 100, so 10 players * 10 games/player = 100 rows
@@ -2201,6 +2203,74 @@ async function subscriberGate(request, url, env) {
   return json({ error: "This data is for Tome Edge subscribers. Open the dashboard from the Dashboards page.", locked: true, reason: sub.checked ? sub.reason : undefined }, 401);
 }
 
+// -- Export gate (read-only table exports) -----------------------------------------
+// The /api/fastbreak/export routes accept everything the subscriber gate does,
+// plus an optional export-only key (TOME_EXPORT_KEYS secret, comma-separated).
+// An export key unlocks these read-only tables and nothing else, so it can sit
+// in a bookmarked URL for the article-drafting chat and be rotated on its own.
+function exportKeys(env) {
+  return String(env.TOME_EXPORT_KEYS || "").split(",").map((k) => k.trim()).filter(Boolean);
+}
+async function exportGate(request, url, env) {
+  const keys = exportKeys(env);
+  if (keys.length && secretInList(presentedKey(request, url), keys)) return null;
+  return subscriberGate(request, url, env);
+}
+
+const EXPORT_TABLES = ["classic", "pro", "historic-slate", "historic-players", "historic-lineup", "historic-results"];
+
+// One day's Classic or Pro export. Serve-only: never spends BALLDONTLIE calls;
+// the cron keeps the snapshot fresh (every 15 min for NBA in season).
+async function exportDay(env, { league, date, mode }) {
+  const d = await buildDashboard(env, { league, date, mode, serveOnly: true });
+  // Was a target set for this date and mode, or is the payload showing DEFAULT_OBJECTIVES?
+  const schedule = await loadObjectivesSchedule(env);
+  const setList = schedule?.[d.league]?.[d.date]?.objectives?.[d.mode];
+  const targetSet = Array.isArray(setList) && setList.length > 0;
+  const status = d.queued ? "Not built yet; the scheduled updater builds it shortly." : d.building ? "Still building; some players may be missing." : d.refreshing ? "Last complete snapshot; a refresh is on its way." : null;
+  return {
+    league: d.league, date: d.date, mode: d.mode, dayNumber: d.dayNumber ?? null, runLabel: d.runLabel ?? null,
+    objectives: ((d.objectives || []).length ? d.objectives : objectivesForDate(schedule, d.league, d.date, d.mode)).map((o) => ({
+      stat: o.stat,
+      label: o.label || o.stat,
+      dailyTeamTarget: typeof o.dailyTeamTarget === "number" ? o.dailyTeamTarget : null,
+      perPlayerTarget: typeof o.dailyTeamTarget === "number" ? round1(o.dailyTeamTarget / 5) : null,
+    })),
+    targetSet,
+    badgeSetName: d.badgeSetName ?? null,
+    proSets: Array.isArray(d.proSets) && d.proSets.length ? d.proSets.map((x) => (typeof x === "string" ? x : x?.name || x?.label || String(x))) : null,
+    proEligibility: d.proEligibility ?? null,
+    generatedAt: d._generated_at || null,
+    building: Boolean(d.building), queued: Boolean(d.queued), refreshing: Boolean(d.refreshing),
+    status,
+    table: dayTable(d),
+  };
+}
+
+async function exportHistoric(env, { date, slateIndex, lineup }) {
+  const data = await loadJSON(env, HISTORIC_OPTIMIZER_KEY);
+  if (!data) return { error: "Historic optimizer data has not been uploaded yet." };
+  const h = historicExport(data, { todayET: todayStr(), date, slateIndex });
+  // Yesterday = the slate before this one; its results record, if the box
+  // scores loaded automatically (see historic-auto.js).
+  const prev = h.slateIndex > 0 ? data.slates[h.slateIndex - 1] : null;
+  const record = prev && prev.date ? await loadJSON(env, HISTORIC_RESULTS_PREFIX + prev.date) : null;
+  h.yesterday = historicResults(data, h.slateIndex, record, { lineup });
+  return h;
+}
+
+function lineupParam(url) {
+  const raw = url.searchParams.get("lineup");
+  if (!raw) return undefined;
+  return raw.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 8);
+}
+
+function exportResponse(body, format, status = 200) {
+  const types = { csv: "text/csv; charset=utf-8", md: "text/markdown; charset=utf-8", json: "application/json" };
+  const headers = { ...corsHeaders, "Content-Type": types[format] || types.json, "Cache-Control": "no-store" };
+  return new Response(typeof body === "string" ? body : JSON.stringify(body, null, 2), { status, headers });
+}
+
 // Optional Workers Rate Limiting binding (see wrangler.toml [[ratelimits]]).
 // Keyed by client IP; silently skipped when the binding isn't configured.
 async function rateLimited(request, env) {
@@ -2306,6 +2376,68 @@ export default {
       }
     }
 
+    // Read-only table exports: the same tables as the page's Download CSV
+    // buttons, built here from the Worker's own data (Historic at no
+    // collector discount). Gated by exportGate (subscriber key, sub id, admin
+    // token or an export-only key). Never spends BALLDONTLIE calls.
+    //   GET /api/fastbreak/export/today[.md|.json]?league=NBA&date=YYYY-MM-DD
+    //       every table in one response (Markdown by default)
+    //   GET /api/fastbreak/export/<table>.csv|.json  (table: classic, pro,
+    //       historic-slate, historic-players, historic-lineup)
+    //       Historic tables also take ?slate=<index> or ?date=YYYY-MM-DD.
+    if (url.pathname.startsWith("/api/fastbreak/export/") && request.method === "GET") {
+      const gate = await exportGate(request, url, env);
+      if (gate) return gate;
+      const m = url.pathname.slice("/api/fastbreak/export/".length).match(/^([a-z-]+)(?:\.(csv|json|md))?$/);
+      if (!m) return json({ error: "Unknown export.", tables: ["today", ...EXPORT_TABLES] }, 404);
+      const [, name, ext] = m;
+      const league = url.searchParams.get("league") ? leagueParam(url) : "NBA";
+      const dateParam = url.searchParams.get("date");
+      if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return json({ error: "date must be YYYY-MM-DD." }, 400);
+      const date = dateParam || todayStr();
+      const slateParam = url.searchParams.get("slate");
+      const slateIndex = slateParam == null ? undefined : Number(slateParam);
+      try {
+        if (name === "today") {
+          const format = ext || "md";
+          if (format === "csv") return json({ error: "today is Markdown or JSON; use a single table for CSV." }, 400);
+          const [classic, pro] = await Promise.all([exportDay(env, { league, date, mode: "Classic" }), exportDay(env, { league, date, mode: "Pro" })]);
+          let historic = null;
+          if (league === "NBA") {
+            try { historic = await exportHistoric(env, { date: dateParam || undefined, slateIndex, lineup: lineupParam(url) }); } catch (err) { historic = { error: err.message }; }
+          }
+          const bundle = { generatedAt: new Date().toISOString(), league, date, classic, pro, historic };
+          return exportResponse(format === "json" ? bundle : exportMarkdown(bundle), format);
+        }
+        if (!EXPORT_TABLES.includes(name)) return json({ error: "Unknown export.", tables: ["today", ...EXPORT_TABLES] }, 404);
+        const format = ext || "json";
+        if (format === "md") return json({ error: "Single tables are CSV or JSON; use today.md for Markdown." }, 400);
+        if (name === "classic" || name === "pro") {
+          const d = await exportDay(env, { league, date, mode: name === "pro" ? "Pro" : "Classic" });
+          return format === "csv" ? exportResponse(toCSV(d.table.headers, d.table.rows), "csv") : exportResponse(d, "json");
+        }
+        const h = await exportHistoric(env, { date: dateParam || undefined, slateIndex, lineup: lineupParam(url) });
+        if (h.error) return json({ error: h.error }, 404);
+        if (name === "historic-results") {
+          const y = h.yesterday;
+          if (!y) return json({ error: "No Historic slate before this one." }, 404);
+          if (format === "json") return exportResponse(y, "json");
+          return exportResponse(toCSV(y.table.headers, y.table.rows), "csv");
+        }
+        if (name === "historic-lineup") {
+          if (format === "json") return exportResponse({ updated: h.updated, budget: h.budget, lineupSize: h.lineupSize, slate: h.slate, lineup: h.lineup, alternates: h.alternates }, "json");
+          const rows = [];
+          [h.lineup, ...h.alternates].forEach((l, i) => l && l.players.forEach((p) => rows.push([i === 0 ? "Top" : `Alternate ${i}`, p.name, p.team, p.rp, p.blend.toFixed(1)])));
+          return exportResponse(toCSV(["Lineup", "Player", "Team", "RP", "Blend"], rows), "csv");
+        }
+        const t = name === "historic-slate" ? h.slateTable : h.playersTable;
+        if (format === "csv") return exportResponse(toCSV(t.headers, t.rows), "csv");
+        return exportResponse({ updated: h.updated, slate: h.slate, slates: h.slates, ...t }, "json");
+      } catch (err) {
+        return json({ error: err.message }, 400);
+      }
+    }
+
     // Freshness/health for the healthcheck Worker: pure KV reads, no
     // BALLDONTLIE calls, no subscriber data. Reports per league whether the
     // cron is ticking and how old the latest snapshot / Full Data are.
@@ -2336,7 +2468,8 @@ export default {
           fulldataTeams: fulldata?.teams ? Object.keys(fulldata.teams).length : null,
         };
       }
-      return json({ ok: true, todayET: today, checkedAt: new Date(now).toISOString(), snapshotSchema: SNAPSHOT_SCHEMA, leagues });
+      const historicAuto = await historicAutoStatus(env).catch((err) => ({ error: err.message }));
+      return json({ ok: true, todayET: today, checkedAt: new Date(now).toISOString(), snapshotSchema: SNAPSHOT_SCHEMA, leagues, historicAuto });
     }
 
     // Run metadata for one league (or all) -- the frontend builds its day
@@ -2690,6 +2823,22 @@ export default {
       }
     }
 
+    // Admin: load one Historic contest's box scores now (same path the cron
+    // takes). Body: { contestId, dryRun } -- dryRun defaults to true and
+    // returns the preview without saving. A contest is never applied twice.
+    if (url.pathname === "/api/fastbreak/historic/auto/run" && request.method === "POST") {
+      if (!checkAdminToken(request, env)) return unauthorized();
+      try {
+        const body = await request.json().catch(() => ({}));
+        const contests = await fetchSchedule(env);
+        const contest = contests.find((c) => c.id === body.contestId) || null;
+        if (!contest) return json({ error: "contestId not found on the Historic page", contests: contests.map((c) => c.id) }, 400);
+        return json(await ingestContest(env, contest, { validate: validateHistoricOptimizer, dryRun: body.dryRun !== false }));
+      } catch (err) {
+        return json({ error: err.message }, 500);
+      }
+    }
+
     if (url.pathname === "/api/fastbreak/historic/advance" && request.method === "POST") {
       if (!checkAdminToken(request, env)) return unauthorized();
       try {
@@ -2711,6 +2860,17 @@ export default {
   // today's day snapshot for its league (only while that league is in
   // season) and spends the leftover budget on that league's Full Data build.
   async scheduled(event, env) {
+    // Historic box scores have their own schedule and invocation (so they never
+    // eat a league tick's subrequest budget). See worker/historic-auto.js.
+    if (event.cron === HISTORIC_AUTO_CRON) {
+      try {
+        const r = await runHistoricAutoTick(env, { validate: validateHistoricOptimizer });
+        if (r.action !== "waiting") console.log("historic-auto:", JSON.stringify(r));
+      } catch (err) {
+        console.error("historic-auto tick failed:", err.message);
+      }
+      return;
+    }
     const league = event.cron === LEAGUE_CRONS.NBA ? "NBA" : "WNBA";
     const today = todayStr();
     // Heartbeat for /api/fastbreak/health -- written on every tick, in or out
@@ -2834,4 +2994,6 @@ export const __testables__ = {
   dayBuildKey,
   LEAGUE_CRONS,
   MAX_SUBREQUESTS,
+  validateHistoricOptimizer,
+  exportGate,
 };

@@ -13,9 +13,11 @@ into a file (the same paste the admin panel's "Historic RP Prices" box takes). T
      teams are the teams in action,
   5. prints the dataset to stdout, ready for the admin panel's "Upload optimizer data" box.
 
-Observed-game histories (g / s) carry forward untouched. Box scores from the day are added later, after the
-simulated games finish, with the same tool once a results paste exists. Nothing here touches Collector
-Discounts; those stay in each reader's browser.
+Observed-game histories (g / s) carry forward untouched. A box score for a player who wasn't in the dataset yet
+is held by the Worker in pendingBoxScores, and moves onto that player here the first time the paste has them. Each day's box scores are added by the Worker
+itself, 15 minutes after the day's last game starts (dashboards/fastbreak-refresh/worker/historic-auto.js),
+and this script downloads the dataset with them included. Nothing here touches Collector Discounts; those
+stay in each reader's browser.
 """
 import json, os, re, sys, urllib.request
 
@@ -72,7 +74,7 @@ if D.get("scoring") != "2026-27":
     D["scoring"] = "2026-27"
 
 # ---- apply -------------------------------------------------------------------------------------------
-matched, added, pool, teams = 0, 0, [], set()
+matched, added, restored, pool, teams = 0, 0, 0, [], set()
 for b in blocks:
     key = b["name"].lower()
     p = by.get(key)
@@ -88,11 +90,17 @@ for b in blocks:
         if b.get("avg") is not None: p["avg"] = b["avg"]
         if b.get("team"): p["t"] = b["team"]
         matched += 1
+    # games the Worker held for a player who wasn't in the dataset yet move onto him now
+    for h in [h for h in D.get("pendingBoxScores", []) if h["n"].lower() == p["n"].lower()]:
+        if len(p.get("s") or []) != len(p.get("g") or []): p["s"] = [[0] * len(codes) for _ in p.get("g", [])]
+        p["g"] = p.get("g", []) + h["g"]; p["s"] = p.get("s", []) + h["s"]
+        D["pendingBoxScores"].remove(h); restored += len(h["g"])
     pool.append(p["n"]); teams.add(p["t"])
+if not D.get("pendingBoxScores"): D.pop("pendingBoxScores", None)
 D["slates"] = [{"label": label, "teams": sorted(t for t in teams if t), "players": pool}]
 D["updated"] = label
 D.pop("_prepared", None); D.pop("shift", None)
 for p in D["players"]:
     for k in ("mean", "blend", "n_games"): p.pop(k, None)
-sys.stderr.write(f"{len(blocks)} players in paste: {matched} repriced, {added} new; slate has {len(pool)} players on {len(teams)} teams\n")
+sys.stderr.write(f"{len(blocks)} players in paste: {matched} repriced, {added} new, {restored} held games restored; slate has {len(pool)} players on {len(teams)} teams\n")
 json.dump(D, sys.stdout, indent=1)
