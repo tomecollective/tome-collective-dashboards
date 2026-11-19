@@ -368,10 +368,11 @@ async function handleReport(request, origin, env) {
 }
 const dateKey = (d) => d.toISOString().slice(0, 10);
 // ── Daily snapshot: fetch the NM universe per game, store {cardId: price} maps ──
-async function captureSnapshot(env) {
+async function captureSnapshot(env, sink) {
   const today = dateKey(new Date());
   for (const game of SNAP_GAMES) {
     const prices = {};
+    const meta = {};
     const cap = SNAP_PAGES[game] || 3;
     for (let i = 0; i < cap; i++) {
       const url = `${JUSTTCG_BASE}/cards?game=${encodeURIComponent(game)}` +
@@ -390,6 +391,10 @@ async function captureSnapshot(env) {
         const p = parseFloat(nm.price);
         if (!p) continue;
         prices[c.id] = p;
+        meta[c.id] = {
+          name: c.name ?? null, set_id: c.set ?? null, set_name: c.set_name ?? null, number: c.number ?? null,
+          rarity: c.rarity ?? null, printing: nm.printing ?? null, tcgplayer_id: c.tcgplayerId != null ? String(c.tcgplayerId) : null,
+        };
         if (p < cheapest) cheapest = p;
       }
       if (cheapest < 10) break;   // below the tracked universe
@@ -400,7 +405,66 @@ async function captureSnapshot(env) {
       JSON.stringify(prices),
       { expirationTtl: 60 * 60 * 24 * 400 }
     );
+    if (sink) sink[game] = { date: today, prices, meta };
   }
+}
+// ── Routine mirror (D1) ─────────────────────────────────────────────────────────
+// The scheduled Claude routines that draft the Spike Reports can't reach *.workers.dev
+// from their sandbox (and can't send X-Tome-Sub through a plain page fetch), but they can
+// query D1 through the Cloudflare connector. After the snapshot, write the same daily
+// {cardId: price} maps, plus each card's name/set/rarity, into tome-routine-data (binding
+// ROUTINE_DB). The first run also copies the last MIRROR_BACKFILL_DAYS of KV snapshots so a
+// 7-day window is computable immediately. No binding = no-op.
+// Schema: dashboards/routine-data/migrations/0001_init.sql.
+const MIRROR_BACKFILL_DAYS = 21;
+// One statement per game per day: the whole {cardId: price} map goes in as a single JSON
+// parameter and SQLite's json_each unpacks it, so a run stays far inside D1's per-invocation
+// query limit even with the backfill.
+function priceStmt(db, game, date, prices) {
+  return db.prepare(
+    'INSERT OR REPLACE INTO tcg_prices (game, date, card_id, price) SELECT ?1, ?2, key, value FROM json_each(?3) WHERE value IS NOT NULL'
+  ).bind(game, date, JSON.stringify(prices));
+}
+function cardsStmt(db, game, date, meta) {
+  return db.prepare(
+    `INSERT INTO tcg_cards (game, card_id, name, set_id, set_name, number, rarity, printing, tcgplayer_id, last_seen)
+     SELECT ?1, j.key, json_extract(j.value, '$.name'), json_extract(j.value, '$.set_id'), json_extract(j.value, '$.set_name'),
+            json_extract(j.value, '$.number'), json_extract(j.value, '$.rarity'), json_extract(j.value, '$.printing'),
+            json_extract(j.value, '$.tcgplayer_id'), ?2
+     FROM json_each(?3) AS j WHERE true
+     ON CONFLICT (game, card_id) DO UPDATE SET name = excluded.name, set_id = excluded.set_id, set_name = excluded.set_name,
+       number = excluded.number, rarity = excluded.rarity, printing = excluded.printing, tcgplayer_id = excluded.tcgplayer_id, last_seen = excluded.last_seen`
+  ).bind(game, date, JSON.stringify(meta));
+}
+async function mirrorSnapshotToD1(env, sink) {
+  if (!env.ROUTINE_DB) return { skipped: true };
+  const db = env.ROUTINE_DB;
+  const detail = {};
+  for (const game of SNAP_GAMES) {
+    const got = sink && sink[game];
+    const d = { today: 0, cards: 0, backfilled: [] };
+    if (got) {
+      await db.batch([priceStmt(db, game, got.date, got.prices), cardsStmt(db, game, got.date, got.meta)]);
+      d.today = Object.keys(got.prices).length;
+      d.cards = Object.keys(got.meta).length;
+    }
+    // Backfill any of the last MIRROR_BACKFILL_DAYS that KV has and D1 doesn't.
+    const have = new Set(((await db.prepare('SELECT DISTINCT date FROM tcg_prices WHERE game = ?1').bind(game).all()).results || []).map((r) => r.date));
+    for (let i = 1; i <= MIRROR_BACKFILL_DAYS; i++) {
+      const day = new Date(); day.setUTCDate(day.getUTCDate() - i);
+      const key = dateKey(day);
+      if (have.has(key)) continue;
+      const raw = await env.SNAPSHOTS.get(`snap:${game}:${key}`);
+      if (!raw) continue;
+      let prices; try { prices = JSON.parse(raw); } catch (e) { continue; }
+      await priceStmt(db, game, key, prices).run();
+      d.backfilled.push(key);
+    }
+    detail[game] = d;
+  }
+  await db.prepare("INSERT OR REPLACE INTO mirror_runs (worker, ran_at, ok, detail) VALUES ('tome-proxy', ?1, 1, ?2)")
+    .bind(new Date().toISOString(), JSON.stringify(detail)).run();
+  return detail;
 }
 // ── /history?game=pokemon&id=<cardId> → { id, prices: [{date, price}] } ────────
 async function serveHistory(url, origin, env) {
@@ -809,8 +873,9 @@ async function runDailyPipeline(env) {
   const t0 = Date.now();
   const status = { startedAt, finishedAt: null, durationMs: null, ok: false, step: null, error: null, steps: [] };
   const record = async () => { if (env.SNAPSHOTS) { try { await env.SNAPSHOTS.put('cron:last', JSON.stringify(status)); } catch (e) {} } };
+  const sink = {};
   const steps = [
-    ['captureSnapshot', () => captureSnapshot(env)],
+    ['captureSnapshot', () => captureSnapshot(env, sink)],
     ['captureGradedPrices', () => captureGradedPrices(env)],
     ['captureScoreHistoryAndDigest', () => captureScoreHistoryAndDigest(env)],   // reads what the step above wrote
   ];
@@ -830,6 +895,14 @@ async function runDailyPipeline(env) {
     }
   }
   status.ok = true; status.step = null;
+  // Last, and never fatal: copy the snapshot into D1 for the drafting routines.
+  const m0 = Date.now();
+  try {
+    await mirrorSnapshotToD1(env, sink);
+    status.steps.push({ name: 'mirrorSnapshotToD1', ok: true, ms: Date.now() - m0 });
+  } catch (e) {
+    status.steps.push({ name: 'mirrorSnapshotToD1', ok: false, ms: Date.now() - m0, error: String((e && e.message) || e).slice(0, 300) });
+  }
   status.finishedAt = new Date().toISOString(); status.durationMs = Date.now() - t0;
   await record();
 }

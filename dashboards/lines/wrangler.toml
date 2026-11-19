@@ -17,7 +17,18 @@ id = "bc0817505d8d4909be4742d131b202de"   # npx wrangler kv namespace create LIN
 # Nightly market cache (06:10 UTC, after the last West Coast final) plus an hourly pass that logs
 # any card printed in a preview published in the last 48 hours (no fetches unless a new preview exists).
 [triggers]
-crons = ["10 6 * * *", "20 * * * *"]
+# 06:45 UTC: one more pass after the late West Coast finals, so the D1 record copy is fresh for the
+# 12:52am Central recap routine (each pass also refreshes the D1 copies below).
+crons = ["10 6 * * *", "20 * * * *", "45 6 * * *"]
+
+# D1 copy of the projection and record-summary responses for the scheduled Claude routines, which
+# can't reach workers.dev but can query D1. Same database is bound to tome-tcg and tome-proxy.
+# Created Nov 19, 2026; tables from dashboards/routine-data/migrations/0001_init.sql already exist.
+# If you deploy via Quick Edit, add it in the dashboard: Settings > Bindings > D1 > ROUTINE_DB.
+[[d1_databases]]
+binding = "ROUTINE_DB"
+database_name = "tome-routine-data"
+database_id = "d38e62ae-d35e-4366-9fc1-bfbb4473bc92"
 
 [vars]
 # Tunables. Change here, redeploy. See README for what each does.
