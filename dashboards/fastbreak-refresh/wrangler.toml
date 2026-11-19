@@ -24,6 +24,17 @@ name = "PUBLIC_RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 60, period = 60 }
 
+# RotoWire projections pulled automatically (no admin password needed to load
+# them). Rows overlay the manual KV uploads for the same league/date/stat; see
+# loadPulledProjections in worker/index.js and migrations/0001_projections.sql.
+# The Worker runs fine without this binding (KV uploads only). The database
+# and its table already exist (created Nov 18, 2026). If you deploy via Quick
+# Edit, add the same binding in the dashboard: Settings > Bindings > D1.
+[[d1_databases]]
+binding = "PROJECTIONS_DB"
+database_name = "tome-fastbreak-projections"
+database_id = "fd66267e-1ca3-4b50-b97e-d2f6d9a652cc"
+
 # Refresh cadence, one schedule per league, offset so each league gets a full
 # invocation's subrequest budget. The Worker maps event.cron back to a league
 # (see LEAGUE_CRONS in worker/index.js -- keep these strings identical to
