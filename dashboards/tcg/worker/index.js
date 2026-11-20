@@ -476,20 +476,32 @@ function buildTeaser(payload) {
       if (c.in_index) holdings.push({ ...c, set_name: set.set_name, era: set.era, release_date: set.release_date });
     }
   }
-  // Index value series: sum over all index cards, only on dates every card
-  // has a point (same rule as index.html so the two never disagree).
-  const totals = {};
-  const counts = {};
-  for (const c of holdings) {
-    for (const pt of c.history || []) {
-      totals[pt.date] = (totals[pt.date] || 0) + pt.price;
-      counts[pt.date] = (counts[pt.date] || 0) + 1;
-    }
+  // Index value series, carry-forward: for each date, every card contributes
+  // its most recent price at or before that date; a date counts once every
+  // card has SOME price at or before it. This matches index.html's subscriber
+  // view. The previous strict rule (every card must have a point ON the date)
+  // emptied the series entirely on 2026-11-19: one holding had no JustTCG
+  // point since Nov 5 (no sales) and a newer holding had none before Nov 13,
+  // so no date qualified -- blank chart in the preview and in the D1 mirror
+  // the Tome Cards routine reads.
+  const cardPrices = holdings.map((c) => {
+    const m = {};
+    for (const pt of c.history || []) if (typeof pt.price === "number") m[pt.date] = pt.price;
+    return m;
+  });
+  const allDates = [...new Set(cardPrices.flatMap((m) => Object.keys(m)))].sort();
+  const lastKnown = new Array(holdings.length).fill(null);
+  const indexHistory = [];
+  for (const date of allDates) {
+    let total = 0;
+    let complete = holdings.length > 0;
+    cardPrices.forEach((m, i) => {
+      if (m[date] !== undefined) lastKnown[i] = m[date];
+      if (lastKnown[i] === null) complete = false;
+      else total += lastKnown[i];
+    });
+    if (complete) indexHistory.push({ date, total: Math.round(total * 100) / 100 });
   }
-  const indexHistory = Object.keys(totals)
-    .filter((d) => counts[d] === holdings.length)
-    .sort()
-    .map((date) => ({ date, total: Math.round(totals[date] * 100) / 100 }));
   const top = holdings
     .filter((c) => typeof c.price === "number")
     .sort((a, b) => b.price - a.price)
