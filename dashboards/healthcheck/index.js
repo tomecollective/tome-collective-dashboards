@@ -155,9 +155,20 @@ const FRESHNESS = [
     check: (st) => {
       const problems = [];
       if (!st || !st.ranAt) return ["no refresh has ever run (refresh:last_status missing)"];
-      const ageMs = Date.now() - Date.parse(`${st.ranAt}T13:00:00Z`); // cron is 13:00 UTC
-      if (st.published !== true) problems.push(`last run on ${st.ranAt} did not publish (${st.reason || `${st.failed}/${st.total} cards failed`})`);
+      const ageMs = Date.now() - Date.parse(`${st.ranAt}T10:30:00Z`); // cron ticks 10:00-10:59 UTC; publish lands ~10:30
+      if (st.published !== true) problems.push(`last run on ${st.ranAt} did not publish (${st.reason || st.publishError || `${st.failed}/${st.total} cards failed`})`);
       if (ageMs > 36 * 60 * 60 * 1000) problems.push(`last run was ${st.ranAt}, more than 36h ago`);
+      // Roster health (fields added to the status record 2026-11-20). Any
+      // in-index card with no JustTCG history blanks the index chart.
+      if (Array.isArray(st.unresolved) && st.unresolved.length) {
+        problems.push(`${st.unresolved.length} index holding(s) have no JustTCG history -- pin justtcg_card_id in KV: ${st.unresolved.slice(0, 3).join("; ")}${st.unresolved.length > 3 ? "; ..." : ""}`);
+      }
+      if (Array.isArray(st.staleHoldings) && st.staleHoldings.length >= 3) {
+        problems.push(`${st.staleHoldings.length} index holdings have no price point in 7+ days: ${st.staleHoldings.slice(0, 3).join("; ")}${st.staleHoldings.length > 3 ? "; ..." : ""}`);
+      }
+      if (st.indexSeriesLastDate && st.indexSeriesLastDate < st.ranAt) {
+        problems.push(`index series ends ${st.indexSeriesLastDate}, run was ${st.ranAt} -- chart will lag`);
+      }
       return problems;
     },
   },

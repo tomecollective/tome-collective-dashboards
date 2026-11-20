@@ -469,6 +469,46 @@ async function isSubscriber(request, url, env) {
   return sub.allowed;
 }
 
+// Per-run health of the 50 index holdings, published in refresh:last_status so
+// /api/refresh-status (and the healthcheck Worker, which reads it on its own
+// cron and posts to Discord) flags roster problems the day they appear:
+//   unresolved     -- in-index cards with no JustTCG id or no price history.
+//                     Two Pikachu ex printings sat like this from the Nov 2026
+//                     review until Nov 20; one such card blanks the index chart.
+//   staleHoldings  -- in-index cards whose newest price point is more than
+//                     STALE_HOLDING_DAYS behind the run date (no sales, or a
+//                     wrong id that resolves to a dead listing).
+//   indexSeriesLastDate -- last date the carry-forward index series reaches;
+//                     should equal ranAt after a healthy run.
+const STALE_HOLDING_DAYS = 7;
+
+function holdingsHealth(sets, runDate) {
+  const unresolved = [];
+  const staleHoldings = [];
+  const holdings = [];
+  for (const set of sets || []) {
+    for (const c of set.top_5 || []) {
+      if (!c.in_index) continue;
+      holdings.push(c);
+      const hist = (c.history || []).filter((p) => typeof p.price === "number");
+      if (!hist.length) {
+        unresolved.push(`${c.name} (${set.set_name})${c.justtcg_card_id ? "" : " -- no justtcg_card_id"}`);
+        continue;
+      }
+      const last = hist.map((p) => p.date).sort().slice(-1)[0];
+      const ageDays = Math.round((Date.parse(runDate + "T00:00:00Z") - Date.parse(last + "T00:00:00Z")) / 86400000);
+      if (ageDays > STALE_HOLDING_DAYS) staleHoldings.push(`${c.name} (${set.set_name}): last point ${last}, ${ageDays}d`);
+    }
+  }
+  const series = buildTeaser({ sets }).indexHistory;
+  return {
+    holdings: holdings.length,
+    unresolved,
+    staleHoldings,
+    indexSeriesLastDate: series.length ? series[series.length - 1].date : null,
+  };
+}
+
 function buildTeaser(payload) {
   const holdings = [];
   for (const set of payload.sets || []) {
@@ -640,6 +680,7 @@ async function processBatch(env, resume) {
     failed: progress.failures.length,
     failureRate: Math.round(failureRate * 100) / 100,
     sampleFailures: progress.failures.slice(0, 5),
+    ...holdingsHealth(progress.sets, progress.today),
   };
 
   // Guard: a run where most cards failed (bad/expired API key, JustTCG
