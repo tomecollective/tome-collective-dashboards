@@ -21,9 +21,9 @@ Connect it to the repo under Workers Builds like the others so a push deploys.
 
 ## How the projection works
 
-Ratings come from final scores only, so the same code runs for all three leagues. Each team's rating is its average margin with home court removed and the opponent's rating added back, iterated to convergence (a recency-weighted SRS). Recent games count more: half-life of 10 games for WNBA, 12 for NBA, 4 for NFL. Playoff games count 1.5×. Teams with few games are shrunk toward league average (8 games WNBA, 10 NBA, 6 NFL before full trust), which matters for the NFL until mid-October.
+Ratings come from final scores only, so the same code runs for all three leagues. Each team's rating is its average margin with home court removed and the opponent's rating added back, iterated to convergence (a recency-weighted SRS). Recent games count more where a half-life is set: 10 days for WNBA, 4 weeks for NFL (the half-life is measured in days, not games; an earlier version of this page said games). The NBA runs with no recency decay since the Nov 21, 2026 retune, and caps any single game's margin at 20 points. Playoff games count 1.5×. Teams with few games are shrunk toward league average (8 games WNBA, 20 NBA, 6 NFL before full trust), which matters for the NFL until mid-October.
 
-Projected margin = rating gap + home court (2.5 WNBA/NBA, 1.5 NFL) + rest (back-to-back −1.5, one day −0.5, four-plus days +0.5; ignored for NFL) + any manual adjustment you pass. Projected total = each team's recency-weighted points for against the other's points allowed, centered on the live league average (computed from the season's results, not a constant; the constant version ran 13 points hot in the WNBA backtest), minus a playoff adjustment (WNBA −3, NBA −4; both guesses until we've logged a round).
+Projected margin = rating gap + home court (2.5 WNBA, 2.0 NBA, 1.5 NFL) + rest (back-to-back −1.5, one day −0.5, four-plus days +0.5; ignored for NFL) + any manual adjustment you pass. Projected total = each team's recency-weighted points for against the other's points allowed, centered on the live league average (computed from the season's results, not a constant; the constant version ran 13 points hot in the WNBA backtest), minus a playoff adjustment (WNBA −3, NBA −4; both guesses until we've logged a round).
 
 Injuries are not automated in v1. Pass them: `&adjust=IND:-3,WAS:+1` means Indiana is 3 points worse than its rating tonight, Washington 1 better. Use on/off net rating if you have it; otherwise the player's share of scoring as a rough cut. Every adjustment you pass is echoed in the response so the preview can print it.
 
@@ -82,7 +82,7 @@ A pick on every game, most of them Coin flip or Lean; roughly a third of WNBA ga
 
 ## Tunables
 
-All in `wrangler.toml [vars]`: home court, half-lives, edge thresholds, playoff weight and total adjustments. Change, redeploy.
+All in `wrangler.toml [vars]`: home court, half-lives (`0` = no recency decay), `<LEAGUE>_PRIOR_GAMES` (games to full trust), `<LEAGUE>_MARGIN_CAP` (points, `0` = off), edge thresholds, playoff weight and total adjustments. Change, redeploy. Read `backtest-2026-nba.md` before changing the NBA values again.
 
 ## Ingest: the ledger fills itself
 
