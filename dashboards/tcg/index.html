@@ -742,13 +742,17 @@ tbody.appendChild(row);
 // does the same ("kept their last known price"), so this keeps the trend line
 // moving instead of freezing, and a mid-refresh read never shows a false crash.
 // A day only counts once every index card has SOME price at or before it.
-const cardPrices = indexCards.map(card => {
+// A holding with no history at all (unresolved at JustTCG) is left out of
+// the trend line rather than blanking it; the Worker reports such cards in
+// /api/refresh-status.unresolved so they get pinned.
+const seriesCards = indexCards.filter(card => (card.history || []).some(p => typeof p.price === "number"));
+const cardPrices = seriesCards.map(card => {
 const m = {};
 (card.history || []).forEach(p => { m[p.date] = p.price; });
 return m;
 });
 const allDates = [...new Set(cardPrices.flatMap(m => Object.keys(m)))].sort();
-const lastKnown = new Array(indexCards.length).fill(null);
+const lastKnown = new Array(seriesCards.length).fill(null);
 indexHistory = [];
 allDates.forEach(date => {
 let total = 0, complete = true;

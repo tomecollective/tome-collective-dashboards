@@ -524,17 +524,23 @@ function buildTeaser(payload) {
   // point since Nov 5 (no sales) and a newer holding had none before Nov 13,
   // so no date qualified -- blank chart in the preview and in the D1 mirror
   // the Tome Cards routine reads.
-  const cardPrices = holdings.map((c) => {
+  // A holding with NO history at all (unresolved JustTCG id) is left out of
+  // the series instead of blanking it -- the index level is then the sum of
+  // the holdings that have data, and the omission is reported in
+  // `seriesExcludes` (and in refresh:last_status.unresolved) so it gets fixed.
+  const seriesExcludes = holdings.filter((c) => !(c.history || []).some((pt) => typeof pt.price === "number")).map((c) => c.name);
+  const seriesHoldings = holdings.filter((c) => (c.history || []).some((pt) => typeof pt.price === "number"));
+  const cardPrices = seriesHoldings.map((c) => {
     const m = {};
     for (const pt of c.history || []) if (typeof pt.price === "number") m[pt.date] = pt.price;
     return m;
   });
   const allDates = [...new Set(cardPrices.flatMap((m) => Object.keys(m)))].sort();
-  const lastKnown = new Array(holdings.length).fill(null);
+  const lastKnown = new Array(seriesHoldings.length).fill(null);
   const indexHistory = [];
   for (const date of allDates) {
     let total = 0;
-    let complete = holdings.length > 0;
+    let complete = seriesHoldings.length > 0;
     cardPrices.forEach((m, i) => {
       if (m[date] !== undefined) lastKnown[i] = m[date];
       if (lastKnown[i] === null) complete = false;
@@ -561,6 +567,7 @@ function buildTeaser(payload) {
     holdingsCount: holdings.length,
     setsCount: (payload.sets || []).length,
     indexHistory,
+    seriesExcludes,
     topHoldings: top,
     sets: [],
     lockedNote: `Showing the index value and the top ${TEASER_TOP_N} of ${holdings.length} holdings. The full holdings table, per-card 90-day price history and the ${(payload.sets || []).length}-set candidate pool are for Tome Edge subscribers.`,
