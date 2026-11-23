@@ -164,7 +164,8 @@ assert.equal(T.dayNumberForDate("NBA", "2026-11-03"), null, "no games Nov 3: no 
 assert.equal(T.dayNumberForDate("NBA", "2026-11-04"), 2);
 assert.equal(T.dayNumberForDate("NBA", "2026-11-15"), 13);
 assert.equal(T.isWithinRun("NBA", "2026-11-03"), false);
-assert.equal(T.isWithinRun("NBA", "2026-11-16"), false);
+assert.equal(T.isWithinRun("NBA", "2026-11-16"), true, "Run 3 starts Nov 16");
+assert.equal(T.isWithinRun("NBA", "2026-11-26"), false, "Thanksgiving off day is not in Run 3");
 assert.equal(T.isSeasonActive("NBA", "2026-09-04"), false);
 assert.equal(T.isSeasonActive("WNBA", "2026-09-04"), true);
 assert.equal(T.LEAGUES.NBA.status({ status: "Final", status_state: "final" }), "post");
@@ -358,10 +359,10 @@ function countSince(mark) {
   const env = { FASTBREAK_KV: makeKV(), FASTBREAK_ADMIN_TOKEN: "t", BALLDONTLIE_API_KEY: "k", TOME_SUBSCRIBER_KEYS: "sub-old, sub-new" };
   let res = await worker.fetch(new Request("https://x/api/fastbreak/run?league=ALL"), env);
   let body = await res.json();
-  assert.equal(body.NBA.runStart, "2026-11-02");
+  assert.match(body.NBA.runStart, /^2026-\d\d-\d\d$/, "current NBA run has a start date (which run it is depends on today)");
   assert.equal(body.WNBA.runEnd, "2026-10-31");
   assert.equal(body.WNBA.runLength, 7);
-  assert.equal(body.NBA.runLength, 13);
+  assert.ok(body.NBA.runLength >= 13 && body.NBA.runLength <= 14, "NBA runs are 13-14 game days");
 
   res = await worker.fetch(new Request("https://x/api/fastbreak/objectives/day", { method: "POST", body: JSON.stringify({ league: "nba", date: NBA_DATE, mode: "Classic", objectives: [{ stat: "AST", dailyTeamTarget: 25 }] }) }), env);
   assert.equal(res.status, 401, "admin token required");

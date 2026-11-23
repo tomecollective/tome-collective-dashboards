@@ -1790,7 +1790,9 @@ function renderScheduleTiles() {
   const row = document.getElementById("schedule-tiles");
   row.innerHTML = "";
   if (!dashboard.games || !dashboard.games.length) {
-    row.innerHTML = '<div class="schedule-empty">No games scheduled this day.</div>';
+    row.innerHTML = dashboard.queued
+      ? '<div class="schedule-empty">Schedule loads once this day is built (queued).</div>'
+      : '<div class="schedule-empty">No games scheduled this day.</div>';
     return;
   }
   dashboard.games.forEach((g) => {

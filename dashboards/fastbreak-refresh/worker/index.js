@@ -1960,7 +1960,13 @@ async function buildDashboard(env, { league, date, mode, budget = MAX_SUBREQUEST
   const published = await loadJSON(env, dayKey(cfg, targetDate));
   const publishedOk = published && published.needsAdvanced === dateNeedsAdvanced(schedule, cfg.key, targetDate);
   if (publishedOk && snapshotIsFresh(published, targetDate)) {
-    return renderDayPayload(cfg, published, { mode: targetMode, schedule, proElig });
+    const fresh = renderDayPayload(cfg, published, { mode: targetMode, schedule, proElig });
+    // Serving a fresh snapshot costs no subrequests. renderDayPayload reports the
+    // snapshot's ORIGINAL build cost (about 40 for a full NBA night), which the cron
+    // tick added to its own spend, so on busy nights it believed it had no budget
+    // left and never warmed upcoming run dates (they stayed "queued" with no games).
+    fresh._subrequests_used = 0;
+    return fresh;
   }
 
   if (serveOnly) {
