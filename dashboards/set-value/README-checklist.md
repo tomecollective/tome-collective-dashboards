@@ -5,3 +5,5 @@ Free for every reader. Card lists are static: `cards/<game>.json` is one bundle 
 Progress is keyed by the Beehiiv subscription id the page already receives (`?sid=`), stored in D1 (`tome-checklists`, table `checklists`), with localStorage as the cache and fallback for readers who arrive without a sid. Newest `updated_at` wins across devices; the worker refuses more than one save per second per set and anything over 64 KB.
 
 Rebuilding the bundle: `python3 gen.py` in the generator folder (fetches TCGdex per card, cached on disk), then `build_bundle.py`. Lorcana and One Piece bundles follow the same shape once a public source is wired (`cards/disney-lorcana.json`, `cards/one-piece-card-game.json`).
+
+Nov 24, 2026 additions: Delta Reign (TCGdex `me06`; TCGdex had not published its printings yet, so they follow the Pitch Black pattern by rarity and should be regenerated once it does), both Radiant Collections (the RC cards of their parent sets), Base Set (Shadowless) (same 102 cards as Base Set), and One Piece Heroines Edition Vol. 2 (OPTCG `EB-05`). The Dominance of God is not in OPTCG yet. My First Battle and EX Battle Stadium joined the hidden list.
