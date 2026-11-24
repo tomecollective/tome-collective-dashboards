@@ -40,7 +40,8 @@ const LEAGUE = {
 // recency-weighted league average from the actual results is used (a stale constant here put every WNBA
 // total 13 points high in the 2026 backtest).
 const LEAGUE_AVG_PTS = { wnba: 87, nba: 114, nfl: 22 };
-// Regular-season games needed before the rating is trusted at full weight (shrinkage).
+// Regular-season games needed before the rating is trusted at full weight (shrinkage). Defaults;
+// <LEAGUE>_PRIOR_GAMES in wrangler.toml overrides.
 const PRIOR_GAMES = { wnba: 8, nba: 10, nfl: 6 };
 
 function num(v, d) { const n = parseFloat(v); return Number.isFinite(n) ? n : d; }
@@ -48,7 +49,9 @@ function cfg(env, league) {
   const L = league.toUpperCase();
   return {
     hca: num(env[`${L}_HCA`], 2),
-    halfLife: num(env[`${L}_HALF_LIFE`], 10),
+    halfLife: num(env[`${L}_HALF_LIFE`], 10),          // days (weeks for the NFL); 0 turns recency weighting off
+    priorGames: num(env[`${L}_PRIOR_GAMES`], PRIOR_GAMES[league]),
+    marginCap: num(env[`${L}_MARGIN_CAP`], 0),         // points; 0 = no cap on a single game's margin
     sideEdge: num(env[`${L}_SIDE_EDGE`], 2.5),
     totalEdge: num(env[`${L}_TOTAL_EDGE`], 4),
     playoffWeight: num(env.PLAYOFF_GAME_WEIGHT, 1.5),
@@ -210,12 +213,14 @@ function buildRatings(games, league, c, asofDate) {
   const t = (a) => (teams[a] ||= { games: [], w: 0, pf: 0, pa: 0, lastDate: null, n: 0 });
   for (const g of games) {
     const days = Math.max(0, (asof - new Date(gameDate(g) + "T00:00:00Z").getTime()) / 864e5);
-    let w = Math.pow(0.5, days / (c.halfLife * (league === "nfl" ? 7 : 1)));
+    let w = c.halfLife > 0 ? Math.pow(0.5, days / (c.halfLife * (league === "nfl" ? 7 : 1))) : 1;
     if (isPostseason(g)) w *= c.playoffWeight;
     const h = abbr(g.home_team), v = abbr(g.visitor_team);
     const hs = hScore(g), vs = vScore(g);
     // home margin with home court removed
-    const m = hs - vs - c.hca;
+    // capped so one blowout cannot swing a rating (the cap applies to the rating only, not to points for/against)
+    let m = hs - vs - c.hca;
+    if (c.marginCap > 0) m = Math.max(-c.marginCap, Math.min(c.marginCap, m));
     t(h).games.push({ opp: v, margin: m, w, date: gameDate(g) });
     t(v).games.push({ opp: h, margin: -m, w, date: gameDate(g) });
     for (const [a, pf, pa] of [[h, hs, vs], [v, vs, hs]]) {
@@ -234,7 +239,7 @@ function buildRatings(games, league, c, asofDate) {
       let sw = 0, acc = 0;
       for (const g of T.games) { sw += g.w; acc += g.w * (g.margin + rating[g.opp]); }
       const raw = sw ? acc / sw : 0;
-      const k = Math.min(1, T.n / PRIOR_GAMES[league]); // shrink toward 0 early
+      const k = Math.min(1, T.n / c.priorGames); // shrink toward 0 early
       next[n] = raw * k;
     }
     const mean = names.reduce((s, n) => s + next[n], 0) / (names.length || 1);
@@ -243,7 +248,7 @@ function buildRatings(games, league, c, asofDate) {
   const out = {};
   for (const n of names) {
     const T = teams[n];
-    const k = Math.min(1, T.n / PRIOR_GAMES[league]);
+    const k = Math.min(1, T.n / c.priorGames);
     out[n] = {
       rating: +rating[n].toFixed(2),
       games: T.n,

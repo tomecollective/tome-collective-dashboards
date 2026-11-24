@@ -33,10 +33,13 @@ database_id = "d38e62ae-d35e-4366-9fc1-bfbb4473bc92"
 [vars]
 # Tunables. Change here, redeploy. See README for what each does.
 WNBA_HCA = "2.5"
-NBA_HCA = "2.5"
+NBA_HCA = "2.0"
 NFL_HCA = "1.5"
 WNBA_HALF_LIFE = "10"
-NBA_HALF_LIFE = "12"
+# NBA retune, Nov 21 2026 (backtest-2026-nba.md): no recency decay, 20 games to full trust, 20-point cap per game.
+NBA_HALF_LIFE = "0"
+NBA_PRIOR_GAMES = "20"
+NBA_MARGIN_CAP = "20"
 NFL_HALF_LIFE = "4"
 WNBA_SIDE_EDGE = "2.5"
 WNBA_TOTAL_EDGE = "4"
